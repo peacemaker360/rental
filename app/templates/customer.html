@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>{{ customer.name }}</h1>
+<p><strong>Email:</strong> {{ customer.email }}</p>
+<p><strong>Phone:</strong> {{ customer.phone }}</p>
+<p><a href="{{ url_for('edit_customer', id=customer.id) }}" class="btn btn-secondary">Edit</a></p>
+{% endblock %}

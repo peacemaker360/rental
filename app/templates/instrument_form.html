@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>{{ action }} Instrument</h1>
+<form method="post">
+    {{ form.hidden_tag() }}
+    {{ wtf.quick_form(form) }}
+    <button type="submit" class="btn btn-primary">{{ action }} Instrument</button>
+    <a href="{{ url_for('instruments') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}
