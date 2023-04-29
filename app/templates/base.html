@@ -40,23 +40,18 @@
 <div class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-    <div class="row">
-        <div class="col">
-            {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">
-                {{ message }}
-            </div>
-            {% endfor %}
+    {% for category, message in messages %}
+    {% if category == 'message' %}
+    <div class="alert alert-warning" role="alert">
+        {% else %}
+        <div class="alert alert-{{ category }}" role="alert">
+            {% endif %}
+            {{ message }}
         </div>
-    </div>
-    {% endif %}
-    {% endwith %}
-    {% block app_content %}{% endblock %}
-</div>
-{% endblock %}
-<script src="{{ url_for('static', filename='js/jquery.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/popper.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/bootstrap.min.js') }}"></script>
-</body>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
 
-</html>
+        {% block app_content %}{% endblock %}
+    </div>
+    {% endblock %}

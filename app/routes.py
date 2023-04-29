@@ -23,36 +23,48 @@ def instruments():
     instruments = Instrument.query.all()
     return render_template('instruments.html', instruments=instruments)
 
-@app.route('/instruments/<int:id>', methods=['GET', 'POST'])
-def instrument_detail(id):
-    instrument = Instrument.query.get_or_404(id)
-    if request.method == 'POST':
-        name = request.form['name']
-        type = request.form['type']
-        description = request.form['description']
-        price = request.form['price']
-        instrument.name = name
-        instrument.type = type
-        instrument.description = description
-        instrument.price = price
-        db.session.commit()
-        return redirect(url_for('instruments'))
-    else:
-        return render_template('instrument_detail.html', instrument=instrument)
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
-def instrument_add():
+def new_instrument():
     form = InstrumentForm()
     if form.validate_on_submit():
-        name = form.name.data
-        type = form.type.data
-        description = form.description.data
-        price = form.price.data
-        instrument = Instrument(name=name, type=type, description=description, price=price)
+        instrument = Instrument(name=form.name.data, brand=form.brand.data, type=form.type.data, description=form.description.data, price=form.price.data)
         db.session.add(instrument)
         db.session.commit()
+        flash('Instrument created successfully!', 'success')
         return redirect(url_for('instruments'))
-    return render_template('instrument_add.html', form)
+    return render_template('instrument_form.html', form=form, action='Add')
+
+
+@app.route('/instruments/<int:id>')
+def view_instrument(id):
+    instrument = Instrument.query.get_or_404(id)
+    return render_template('instrument.html', instrument=instrument)
+
+
+@app.route('/instruments/<int:id>/edit', methods=['GET', 'POST'])
+def edit_instrument(id):
+    instrument = Instrument.query.get_or_404(id)
+    form = InstrumentForm(obj=instrument)
+    if form.validate_on_submit():
+        instrument.name = form.name.data
+        instrument.brand = form.brand.data
+        instrument.type = form.type.data
+        instrument.description = form.description.data
+        instrument.price = form.price.data
+        db.session.commit()
+        flash('Instrument updated successfully!', 'success')
+        return redirect(url_for('instruments'))
+    return render_template('instrument_form.html', form=form, action='Edit')
+
+
+@app.route('/instruments/<int:id>/delete', methods=['POST'])
+def delete_instrument(id):
+    instrument = Instrument.query.get_or_404(id)
+    db.session.delete(instrument)
+    db.session.commit()
+    flash('Instrument deleted successfully!', 'success')
+    return redirect(url_for('instruments'))
 
 
 #################
@@ -119,10 +131,12 @@ def rentals():
 @app.route('/rentals/new', methods=['GET', 'POST'])
 def new_rental():
     form = RentalForm()
+    form.instrument.query = db.session.query(Instrument)
+    form.customer.query = db.session.query(Customer)
     form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
     form.instrument.choices = [(i.id, i.name) for i in Instrument.query.order_by('name')]
     if form.validate_on_submit():
-        rental = Rental(customer_id=form.customer.data, instrument_id=form.instrument.data, start_date=form.start_date.data, end_date=form.end_date.data)
+        rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id, start_date=form.start_date.data, end_date=form.end_date.data)
         db.session.add(rental)
         db.session.commit()
         flash('Rental created successfully!', 'success')
