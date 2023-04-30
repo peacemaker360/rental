@@ -6,11 +6,11 @@
         <h2 class="panel-title">{{ instrument.name }}</h2>
     </div>
     <div class="panel-body">
-        <p><strong>Brand:</strong> {{ instrument.brand }}</p>
-        <p><strong>Type:</strong> {{ instrument.type }}</p>
-        <p><strong>Price:</strong> {{ instrument.price }}</p>
-        <p><strong>Notes:</strong> {{ instrument.description }}</p>
-        <p><strong>Status:</strong> {{ instrument.is_available() }}</p>
+        <p><strong>Marke:</strong> {{ instrument.brand }}</p>
+        <p><strong>Typ:</strong> {{ instrument.type }}</p>
+        <p><strong>Wert:</strong> {{ instrument.price }}</p>
+        <p><strong>Notitz:</strong> {{ instrument.description }}</p>
+        <p><strong>Verfügbar:</strong> {{ instrument.is_available() }}</p>
     </div>
     <div class="panel-footer">
         <a href="{{ url_for('edit_instrument', id=instrument.id) }}" class="btn btn-primary">Edit</a>

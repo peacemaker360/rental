@@ -1,3 +1,4 @@
+from sqlalchemy import or_
 from app import app, db
 from .forms import InstrumentForm, CustomerForm, RentalForm
 from flask import flash, jsonify, redirect, render_template, url_for, request
@@ -20,8 +21,20 @@ def index():
 
 @app.route('/instruments')
 def instruments():
-    instruments = Instrument.query.all()
-    return render_template('instruments.html', instruments=instruments, title="Instrumente")
+    search = request.args.get('search', '').strip()
+    if search:
+        if len(search) < 3:
+            flash('Please provide more than 3 search characters', 'info')
+            return redirect(url_for('instruments'))
+        else:
+            instruments = Instrument.query.filter(or_(
+            Instrument.name.ilike(f'%{search}%'),
+            Instrument.brand.ilike(f'%{search}%'),
+            Instrument.type.ilike(f'%{search}%')
+        )).all()
+    else:
+        instruments = Instrument.query.all()    
+    return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search)
 
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
