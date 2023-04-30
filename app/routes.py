@@ -21,7 +21,7 @@ def index():
 @app.route('/instruments')
 def instruments():
     instruments = Instrument.query.all()
-    return render_template('instruments.html', instruments=instruments)
+    return render_template('instruments.html', instruments=instruments, title="Instrumente")
 
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
@@ -47,6 +47,9 @@ def edit_instrument(id):
     instrument = Instrument.query.get_or_404(id)
     form = InstrumentForm(obj=instrument)
     if form.validate_on_submit():
+        if request.method == 'POST':
+            if form.cancel.data:
+                return redirect(url_for('instruments'))
         instrument.name = form.name.data
         instrument.brand = form.brand.data
         instrument.type = form.type.data
@@ -74,7 +77,7 @@ def delete_instrument(id):
 @app.route('/customers')
 def customers():
     customers = Customer.query.all()
-    return render_template('customers.html', customers=customers)
+    return render_template('customers.html', customers=customers, title="Mitglieder")
 
 
 @app.route('/customers/new', methods=['GET', 'POST'])
@@ -100,6 +103,9 @@ def edit_customer(id):
     customer = Customer.query.get_or_404(id)
     form = CustomerForm(obj=customer)
     if form.validate_on_submit():
+        if request.method == 'POST':
+            if form.cancel.data:
+                return redirect(url_for('customers'))
         customer.name = form.name.data
         customer.email = form.email.data
         customer.phone = form.phone.data
@@ -125,7 +131,7 @@ def delete_customer(id):
 @app.route('/rentals')
 def rentals():
     rentals = Rental.query.all()
-    return render_template('rentals.html', rentals=rentals)
+    return render_template('rentals.html', rentals=rentals, title="Verleihe")
 
 
 @app.route('/rentals/new', methods=['GET', 'POST'])
@@ -154,11 +160,17 @@ def view_rental(id):
 def edit_rental(id):
     rental = Rental.query.get_or_404(id)
     form = RentalForm(obj=rental)
-    form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
-    form.instrument.choices = [(i.id, i.name) for i in Instrument.query.order_by('name')]
+    form.instrument.query = db.session.query(Instrument)
+    form.customer.query = db.session.query(Customer)
+    if request.method == 'GET':
+        form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
+        form.instrument.choices = [(i.id, i.name) for i in Instrument.query.order_by('name')]
     if form.validate_on_submit():
-        rental.customer_id = form.customer.data
-        rental.instrument_id = form.instrument.data
+        if request.method == 'POST':
+            if form.cancel.data:
+                return redirect(url_for('rentals'))
+        rental.customer_id = form.customer.data.id
+        rental.instrument_id = form.instrument.data.id
         rental.start_date = form.start_date.data
         rental.end_date = form.end_date.data
         db.session.commit()

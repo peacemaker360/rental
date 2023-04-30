@@ -5,8 +5,6 @@
 <h1>{{ action }} Rental</h1>
 <form method="post">
     {{ form.hidden_tag() }}
-    {{ wtf.quick_form(form) }}
-    <button type="submit" class="btn btn-primary">{{ action }} Rental</button>
-    <a href="{{ url_for('rentals') }}" class="btn btn-secondary">Cancel</a>
+    {{ wtf.quick_form(form, button_map={'submit': 'primary'}) }}
 </form>
 {% endblock %}

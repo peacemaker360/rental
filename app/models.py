@@ -24,12 +24,15 @@ class Instrument(db.Model):
         self.is_available = self.is_available()
     
     def is_available(self):
-        active_rentals = Rental.query.filter_by(instrument_id=self.id, return_date=None).all()
-        if len(active_rentals) > 0:
-            for rental in active_rentals:
-                if rental.end_date >= date.today():
-                    return False
-        return True
+        rental = Rental.query.filter_by(instrument_id=self.id).order_by(Rental.end_date.desc()).first()
+        if rental is None:
+            return True
+        elif rental.end_date is None:
+            return False
+        elif rental.end_date < date.today():
+            return True
+        else:
+            return False
 
 class Customer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
