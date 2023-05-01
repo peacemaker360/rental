@@ -10,6 +10,12 @@ from random import choice
 
 @app.route('/generate_data', methods=['GET', 'POST'])
 def generate_data():
+    # Check if function might have been alrady triggerd.
+    customers = Customer.query.filter_by(email="member0@example.com").first()
+    if customers is not None:
+        flash('Sample data already exists!', 'info')
+        return redirect(url_for('index'))
+
     # Generate sample data for Instrument
     instruments = []
     for i in range(5):
@@ -30,12 +36,20 @@ def generate_data():
         email = 'member{}@example.com'.format(i)
         customer = Customer(firstname=firstname,lastname=lastname, phone=phone, email=email)
         customers.append(customer)
-        #db.session.add(customer)
+
+    # Generate sample data for Rental
+    # rentals = []
+    # for i in range(2):
+    #     instrument = choice(instruments)
+    #     customer = choice(customers)
+    #     rental = Rental(instrument_id=instrument.id, customer_id=customer.id, start_date=date.today())
+    #     rentals.append(rental)
 
     # Add the sample data to the database
+    #db.session.bulk_save_objects(instruments + customers + rentals)
     db.session.bulk_save_objects(instruments + customers)
     db.session.commit()
 
     # Redirect the user to the homepage
-    flash('Sample data generated!', 'info')
+    flash('Sample data generated!', 'success')
     return redirect(url_for('index'))

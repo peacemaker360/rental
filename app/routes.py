@@ -1,10 +1,10 @@
 from random import choice
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from app import app, db
 from .forms import InstrumentForm, CustomerForm, RentalForm
 from flask import flash, jsonify, redirect, render_template, url_for, request
 from datetime import date, datetime
-from .models import Instrument, Customer, Rental
+from .models import Instrument, Customer, Rental, RentalHistory
 
 #################
 ## MAIN Routes 
@@ -30,7 +30,9 @@ def instruments():
         else:
             instruments = Instrument.search_instruments(search)
     else:
-        instruments = Instrument.query.all()    
+        instruments = Instrument.query.all()
+    if instruments is None or len(instruments) == 0:
+        flash('No instrument records found.', 'info')
     return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search)
 
 
@@ -52,7 +54,8 @@ def new_instrument():
 @app.route('/instruments/<int:id>')
 def view_instrument(id):
     instrument = Instrument.query.get_or_404(id)
-    return render_template('instrument.html', instrument=instrument)
+    instrumentHistory = RentalHistory.getBy_instrumentId(id)
+    return render_template('instrument.html', instrument=instrument, history=instrumentHistory)
 
 
 @app.route('/instruments/<int:id>/edit', methods=['GET', 'POST'])
@@ -99,6 +102,8 @@ def customers():
             customers = Customer.search_customers(search)
     else:
         customers = Customer.query.all()
+    if customers is None or len(customers) == 0:
+        flash('No customer records found.', 'info')
     return render_template('customers.html', customers=customers, title="Mitglieder", search=search)
 
 
@@ -166,7 +171,9 @@ def rentals():
             rentals = Rental.search_rentals(search)
     else:
         rentals = Rental.query.all()
-    return render_template('rentals.html', rentals=rentals, title="Verleihe")
+    if rentals is None or len(rentals) == 0:
+        flash('No rental records found.', 'info')
+    return render_template('rentals.html', rentals=rentals, title="Verleihe", search=search)
 
 
 @app.route('/rentals/new', methods=['GET', 'POST'])
@@ -176,16 +183,26 @@ def new_rental():
     form.customer.query = db.session.query(Customer)
     form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
     form.instrument.choices = [(i.id, i.name) for i in Instrument.query.order_by('name')]
+
     if form.validate_on_submit():
         if request.method == 'POST':
             if form.cancel.data:
                 return redirect(url_for('rentals'))
         rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id, start_date=form.start_date.data, end_date=form.end_date.data)
-        instrument = Instrument.query.get_or_404(form.instrument.data.id)
-        if instrument.is_available:
-            flash('Rental cannot be placed. Instrument {} already in use!'.format(instrument.name), 'danger')
+        #instrument = Instrument.query.get_or_404(form.instrument.data.id)
+        if form.instrument.data.is_available() is False:
+           flash("Rental cannot be placed. Instrument '{}' already in use!".format(form.instrument.data.name), 'danger')
+           return redirect(url_for('rentals'))
+        try:
+            db.session.add(rental)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(e)
+            flash("Error: '{}'".format(e), 'danger')
             return redirect(url_for('rentals'))
-        db.session.add(rental)
+        history = RentalHistory(rental)
+        db.session.add(history)
         db.session.commit()
         flash('Rental created successfully!', 'success')
         return redirect(url_for('rentals'))
@@ -215,6 +232,16 @@ def edit_rental(id):
         rental.instrument_id = form.instrument.data.id
         rental.start_date = form.start_date.data
         rental.end_date = form.end_date.data
+        rental.description = form.description.data
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(e)
+            flash("Error: '{}'".format(e), 'danger')
+            return redirect(url_for('rentals'))
+        history = RentalHistory(rental)
+        db.session.add(history)
         db.session.commit()
         flash('Rental updated successfully!', 'success')
         return redirect(url_for('rentals'))
@@ -230,3 +257,21 @@ def delete_rental(id):
     return redirect(url_for('rentals'))
 
 
+#################
+## Rentals Routes 
+#################
+
+@app.route('/history')
+def rentals_history():
+    search = request.args.get('search', '').strip()
+    if search:
+        if len(search) < 3:
+            flash('Please provide more than 3 search characters', 'info')
+            return redirect(url_for('rentals_history'))
+        else:
+            history = RentalHistory.search_rentalshistory(search)
+    else:
+        history = RentalHistory.query.order_by(RentalHistory.timestamp.desc()).all()
+    if history is None or len(history) == 0:
+        flash('No history records found.', 'info')
+    return render_template('history.html', history=history, title="History", search=search)

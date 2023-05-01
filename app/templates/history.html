@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block app_content %}
+
+<div class="row">
+    <div class="col-md-8">
+        <h1>{{ title }}</h1>
+    </div>
+    <div class="col-md-4 text-right">
+        <form class="form-inline float-right" method="GET" action="{{ url_for('rentals_history') }}">
+            <div class="input-group">
+                <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">
+                <div class="input-group-btn">
+                    <button class="btn btn-default" type="submit" title="Search by name, brand, type">
+                        <i class="glyphicon glyphicon-search"></i>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
+    <thead>
+        <tr>
+            <th>Timestamp</th>
+            <th>Instrument</th>
+            <th>Customer</th>
+            <th>Rental note</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in history %}
+        <tr>
+            <td>{{ entry.timestamp }}</td>
+            <td>{{ entry.instrument_name }}</td>
+            <td>{{ entry.customer_name }}</td>
+            <td>{{ entry.rental_note }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
