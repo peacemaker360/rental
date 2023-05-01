@@ -1,4 +1,11 @@
 {% extends 'bootstrap/base.html' %}
+
+{% block styles %}
+{{super()}}
+<!-- Import custom bootstrap template from https://bootswatch.com/3/ library -->
+<link rel="stylesheet" href="{{url_for('.static', filename='bootstrap.css')}}">
+{% endblock %}
+
 {% block title %}
 {% if title %}{{ title }} - MGW Rentals{% else %}Welcome to MGW Rentals{% endif%}
 {% endblock %}
