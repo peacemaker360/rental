@@ -17,4 +17,4 @@ bootstrap = Bootstrap(app)
 #db.create_all()
 
 # import all outsourced python files, so that init remains as clean as possible
-from app import models, errors, routes #, views, api
+from app import models, errors, routes, sampledata #, views, api

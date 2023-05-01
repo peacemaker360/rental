@@ -5,10 +5,16 @@
 
 {% block app_content %}
 <div class="jumbotron">
-    <h1 class="display-4">Welcome to the Rental Business</h1>
-    <p class="lead">This is a simple web application for managing rentals of musical instruments.</p>
+    <h1 class="display-4">Willkommen im MG Walperswil Instumentenverwaltungs Tool</h1>
+    <p class="lead">Dies ist eine einfache Webanwendung für die Verwaltung der Vermietung von Musikinstrumenten.</p>
     <hr class="my-4">
-    <p>Use the navigation bar above to access the different sections of the application.</p>
+    <p>Mit der Navigation oben können die verschiedenen Bereiche und Funktionen verwendet werden.</p>
+    <hr class="my-4">
+    <p>Die app sieht leer aus? Dann kann mit dem Button unten beispiele generiert werden.</p>
+    <form method="post" action="{{ url_for('generate_data') }}">
+        <button type="submit">Generate Sample Data</button>
+    </form>
+
 </div>
 <div class="row">
     <div class="col-md-4">
