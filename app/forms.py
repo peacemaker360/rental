@@ -7,16 +7,19 @@ from wtforms_sqlalchemy.fields import QuerySelectField
 from .models import Instrument, Customer, Rental
 
 class InstrumentForm(FlaskForm):
-    name = StringField('Name', validators=[DataRequired()])
+    name = StringField('Name', validators=[Optional()], default=None)
     brand = StringField('Brand', validators=[DataRequired()])
     type = StringField('Type', validators=[DataRequired()])
+    serial = StringField('Serial', validators=[DataRequired()])
     description = StringField('Description')
     price = FloatField('Price', validators=[DataRequired()])
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel')
 
 class CustomerForm(FlaskForm):
-    name = StringField('Name', validators=[DataRequired()])
+    firstname = StringField('Vorname', validators=[DataRequired()])
+    lastname = StringField('nachname', validators=[DataRequired()])
+    name = StringField('Name', validators=[Optional()], default=None)
     email = StringField('Email', validators=[DataRequired(), Email()])
     phone = StringField('Phone', validators=[DataRequired()])
     submit = SubmitField('Ok')

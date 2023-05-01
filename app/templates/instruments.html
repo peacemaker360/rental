@@ -16,7 +16,7 @@
             <div class="input-group">
                 <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">
                 <div class="input-group-btn">
-                    <button class="btn btn-default" type="submit">
+                    <button class="btn btn-default" type="submit" title="Search by name, brand, type">
                         <i class="glyphicon glyphicon-search"></i>
                     </button>
                 </div>
@@ -33,6 +33,7 @@
             <th>Name</th>
             <th>Marke</th>
             <th>Typ</th>
+            <th>Serial</th>
             <th>Wert</th>
             <th>Verfügbar</th>
             <th>Optionen</th>
@@ -44,6 +45,7 @@
             <td>{{ instrument.name }}</td>
             <td>{{ instrument.brand }}</td>
             <td>{{ instrument.type }}</td>
+            <td>{{ instrument.serial }}</td>
             <td>{{ instrument.price }}</td>
             <td>{{ instrument.is_available() }}</td>
             <td>

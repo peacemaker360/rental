@@ -14,9 +14,9 @@
     <div class="col-md-4 text-right">
         <form class="form-inline float-right" method="GET" action="{{ url_for('customers') }}">
             <div class="input-group">
-                <input type="text" class="form-control" name="search" placeholder="Search...">
+                <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">
                 <div class="input-group-btn">
-                    <button class="btn btn-default" type="submit">
+                    <button class="btn btn-default" type="submit" title="Search by name, email or phone">
                         <i class="glyphicon glyphicon-search"></i>
                     </button>
                 </div>

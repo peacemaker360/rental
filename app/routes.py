@@ -1,8 +1,9 @@
+from random import choice
 from sqlalchemy import or_
 from app import app, db
 from .forms import InstrumentForm, CustomerForm, RentalForm
 from flask import flash, jsonify, redirect, render_template, url_for, request
-from datetime import datetime
+from datetime import date, datetime
 from .models import Instrument, Customer, Rental
 
 #################
@@ -27,11 +28,7 @@ def instruments():
             flash('Please provide more than 3 search characters', 'info')
             return redirect(url_for('instruments'))
         else:
-            instruments = Instrument.query.filter(or_(
-            Instrument.name.ilike(f'%{search}%'),
-            Instrument.brand.ilike(f'%{search}%'),
-            Instrument.type.ilike(f'%{search}%')
-        )).all()
+            instruments = Instrument.search_instruments(search)
     else:
         instruments = Instrument.query.all()    
     return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search)
@@ -41,7 +38,10 @@ def instruments():
 def new_instrument():
     form = InstrumentForm()
     if form.validate_on_submit():
-        instrument = Instrument(name=form.name.data, brand=form.brand.data, type=form.type.data, description=form.description.data, price=form.price.data)
+        if request.method == 'POST':
+            if form.cancel.data:
+                return redirect(url_for('instruments'))
+        instrument = Instrument(name=form.name.data, brand=form.brand.data, type=form.type.data, serial=form.serial.data, description=form.description.data, price=form.price.data)
         db.session.add(instrument)
         db.session.commit()
         flash('Instrument created successfully!', 'success')
@@ -66,6 +66,7 @@ def edit_instrument(id):
         instrument.name = form.name.data
         instrument.brand = form.brand.data
         instrument.type = form.type.data
+        instrument.serial = form.serial.data
         instrument.description = form.description.data
         instrument.price = form.price.data
         db.session.commit()
@@ -89,15 +90,26 @@ def delete_instrument(id):
 
 @app.route('/customers')
 def customers():
-    customers = Customer.query.all()
-    return render_template('customers.html', customers=customers, title="Mitglieder")
+    search = request.args.get('search', '').strip()
+    if search:
+        if len(search) < 3:
+            flash('Please provide more than 3 search characters', 'info')
+            return redirect(url_for('customers'))
+        else:
+            customers = Customer.search_customers(search)
+    else:
+        customers = Customer.query.all()
+    return render_template('customers.html', customers=customers, title="Mitglieder", search=search)
 
 
 @app.route('/customers/new', methods=['GET', 'POST'])
 def new_customer():
     form = CustomerForm()
     if form.validate_on_submit():
-        customer = Customer(name=form.name.data, email=form.email.data, phone=form.phone.data)
+        if request.method == 'POST':
+            if form.cancel.data:
+                return redirect(url_for('customers'))
+        customer = Customer(name=form.name.data, firstname=form.firstname.data, lastname=form.lastname.data, email=form.email.data, phone=form.phone.data)
         db.session.add(customer)
         db.session.commit()
         flash('Customer created successfully!', 'success')
@@ -120,6 +132,8 @@ def edit_customer(id):
             if form.cancel.data:
                 return redirect(url_for('customers'))
         customer.name = form.name.data
+        customer.firstname = form.firstname.data
+        customer.lastname = form.lastname.data
         customer.email = form.email.data
         customer.phone = form.phone.data
         db.session.commit()
@@ -143,7 +157,15 @@ def delete_customer(id):
 
 @app.route('/rentals')
 def rentals():
-    rentals = Rental.query.all()
+    search = request.args.get('search', '').strip()
+    if search:
+        if len(search) < 3:
+            flash('Please provide more than 3 search characters', 'info')
+            return redirect(url_for('rentals'))
+        else:
+            rentals = Rental.search_rentals(search)
+    else:
+        rentals = Rental.query.all()
     return render_template('rentals.html', rentals=rentals, title="Verleihe")
 
 
@@ -155,7 +177,14 @@ def new_rental():
     form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
     form.instrument.choices = [(i.id, i.name) for i in Instrument.query.order_by('name')]
     if form.validate_on_submit():
+        if request.method == 'POST':
+            if form.cancel.data:
+                return redirect(url_for('rentals'))
         rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id, start_date=form.start_date.data, end_date=form.end_date.data)
+        instrument = Instrument.query.get_or_404(form.instrument.data.id)
+        if instrument.is_available:
+            flash('Rental cannot be placed. Instrument {} already in use!'.format(instrument.name), 'danger')
+            return redirect(url_for('rentals'))
         db.session.add(rental)
         db.session.commit()
         flash('Rental created successfully!', 'success')
@@ -199,3 +228,5 @@ def delete_rental(id):
     db.session.commit()
     flash('Rental deleted successfully!', 'success')
     return redirect(url_for('rentals'))
+
+
