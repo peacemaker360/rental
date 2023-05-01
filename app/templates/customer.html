@@ -11,7 +11,10 @@
         <p><strong>Phone:</strong> {{ customer.phone }}</p>
     </div>
     {% if customer.rental %}
-    <table class="table">
+    <div class="panel-heading">
+        <h4 class="panel-title">Leigaben</h4>
+    </div>
+    <table class="table table-hover">
         <thead>
             <tr>
                 <th>#</th>
@@ -22,8 +25,10 @@
         </thead>
         <tbody>
             {% for rental in customer.rental %}
-            <tr>
-                <th scope="row">{{ rental.id }}</th>
+            <tr onclick="location.href='{{ url_for('view_rental', id=rental.id) }}'">
+                <th scope="row">
+                    {{ rental.id }}
+                </th>
                 <td>{{ rental.instrument.name }}</td>
                 <td>{{ rental.start_date }}</td>
                 <td>{{ rental.end_date }}</td>
