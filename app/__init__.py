@@ -13,11 +13,11 @@ app = Flask(__name__, static_folder='static')
 if 'WEBSITE_HOSTNAME' not in os.environ:
     # local development, where we'll use environment variables
     print("Loading config.development and environment variables from .env file.")
-    app.config.from_object('azureproject.development')
+    app.config.from_object('config.development')
 else:
     # production
     print("Loading config.production.")
-    app.config.from_object('azureproject.production')
+    app.config.from_object('config.production')
 
 # Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/app.py
 app.config.update(
