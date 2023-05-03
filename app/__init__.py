@@ -29,8 +29,8 @@ app.config.update(
     #ADMINS = ["admin@lab2.ifalabs.org"]
     
     # Pagination settings
-    POSTS_PER_PAGE = 5
-    USERS_PER_PAGE = 10
+    POSTS_PER_PAGE = 5,
+    USERS_PER_PAGE = 10,
 )
 
 
