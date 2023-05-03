@@ -6,8 +6,34 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bootstrap import Bootstrap
 from datetime import datetime
 
-app = Flask(__name__)
-app.config.from_object(Config)
+app = Flask(__name__, static_folder='static')
+#app.config.from_object(Config)
+
+if 'WEBSITE_HOSTNAME' not in os.environ:
+    # local development, where we'll use environment variables
+    print("Loading config.development and environment variables from .env file.")
+    app.config.from_object('azureproject.development')
+else:
+    # production
+    print("Loading config.production.")
+    app.config.from_object('azureproject.production')
+
+# Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/app.py
+app.config.update(
+    SQLALCHEMY_DATABASE_URI=app.config.get('DATABASE_URI'),
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+)
+
+app.config.update(
+    # Admins to notify via email
+    #ADMINS = ["admin@lab2.ifalabs.org"]
+    
+    # Pagination settings
+    POSTS_PER_PAGE = 5
+    USERS_PER_PAGE = 10
+)
+
+
 db = SQLAlchemy(app)
 migrate = Migrate(app,db)
 

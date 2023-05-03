@@ -6,6 +6,7 @@ from flask import flash, jsonify, redirect, render_template, url_for, request
 from datetime import date, datetime
 from .models import Instrument, Customer, Rental, RentalHistory
 
+
 #################
 ## MAIN Routes 
 #################
@@ -15,6 +16,15 @@ from .models import Instrument, Customer, Rental, RentalHistory
 def index():
     return render_template('index.html', title='Home')
 
+
+#################
+## Files
+#################
+# Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/app.py
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.png', mimetype='image/png')
 
 #################
 ## Instruments Routes 
