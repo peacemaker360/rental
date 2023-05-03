@@ -1,5 +1,6 @@
 # app/__init__.py
 #from config import Config
+import os
 from flask import Flask, render_template, redirect, url_for
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
