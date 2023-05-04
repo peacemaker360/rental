@@ -33,13 +33,13 @@ def not_found_error(error):
     else:
         return render_template('errorpages/404.html'), 404
 
-@app.errorhandler(500)
-def not_found_error(error):
-    db.session.rollback()
-    if request.accept_mimetypes.accept_json and \
-        not request.accept_mimetypes.accept_html:
-        response = jsonify( {'error': 'Internal Server Error' } )
-        response.status_code = 500
-        return response
-    else:
-        return render_template('errorpages/500.html'), 500
+# @app.errorhandler(500)
+# def not_found_error(error):
+#     db.session.rollback()
+#     if request.accept_mimetypes.accept_json and \
+#         not request.accept_mimetypes.accept_html:
+#         response = jsonify( {'error': 'Internal Server Error' } )
+#         response.status_code = 500
+#         return response
+#     else:
+#         return render_template('errorpages/500.html'), 500
