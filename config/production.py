@@ -19,7 +19,7 @@ CSRF_TRUSTED_ORIGINS = ['https://' + os.environ['WEBSITE_HOSTNAME']] if 'WEBSITE
 #     dbname=conn_str_params['dbname']
 
 # Connection string for a mysql db
-DATABASE_URI = 'mysql+pymysql://{dbuser}:{dbpass}@{dbhost}/{dbname}'.format(
+DATABASE_URI = 'mysql+pymysql://{dbuser}:{dbpass}@{dbhost}/{dbname}?ssl_key=azure_iac/DigiCertGlobalRootCA.crt.pem'.format(
     dbuser=os.environ['AZURE_MYSQL_USER'],
     dbpass=os.environ['AZURE_MYSQL_PASSWORD'],
     dbhost=os.environ['AZURE_MYSQL_HOST'],
