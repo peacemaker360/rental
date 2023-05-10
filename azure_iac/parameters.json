@@ -1,21 +1,15 @@
 {
-  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
-  "contentVersion": "1.0.0.0",
-  "parameters": {
-    "site_name": {
-      "value": "mgwrent"
-    },
-    "virtualNetworks_mgwrentVnet_name": {
-      "value": null
-    },
-    "serverfarms_ASP_rgmgwrental_bce7_name": {
-      "value": null
-    },
-    "flexibleServers_mgwrent_server_name": {
-      "value": null
-    },
-    "privateDnsZones_privatelink_postgres_database_azure_com_name": {
-      "value": null
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "sites_name": {
+            "value": null
+        },
+        "serverfarms_ASP_name": {
+            "value": null
+        },
+        "flexibleServers_dbserver_name": {
+            "value": null
+        }
     }
-  }
 }
