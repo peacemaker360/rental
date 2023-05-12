@@ -1,0 +1,1 @@
+#Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/azureproject/__init__.py

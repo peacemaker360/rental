@@ -14,8 +14,3 @@ class Config(object):
         SERVER_NAME = 'localhost:5000'
 
     # Who gets email notifications?
-    ADMINS = ["admin@lab2.ifalabs.org"]
-
-    # Pagination settings
-    POSTS_PER_PAGE = 5
-    USERS_PER_PAGE = 10

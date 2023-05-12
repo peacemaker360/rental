@@ -1,0 +1,813 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "sites_name": {
+      "defaultValue": "mgwrent",
+      "type": "String"
+    },
+    "serverfarms_ASP_name": {
+      "defaultValue": "ASP-rgmgwrental-bce7",
+      "type": "String"
+    },
+    "flexibleServers_dbserver_name": {
+      "defaultValue": "mgwrent-dbserver",
+      "type": "String"
+    }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[parameters('flexibleServers_dbserver_name')]",
+      "location": "Switzerland North",
+      "sku": {
+        "name": "Standard_B1s",
+        "tier": "Burstable"
+      },
+      "properties": {
+        "administratorLogin": "dbaadmin",
+        "storage": {
+          "storageSizeGB": 20,
+          "iops": 360,
+          "autoGrow": "Enabled",
+          "autoIoScaling": "Disabled"
+        },
+        "version": "5.7",
+        "availabilityZone": "3",
+        "maintenanceWindow": {
+          "customWindow": "Disabled",
+          "dayOfWeek": 0,
+          "startHour": 0,
+          "startMinute": 0
+        },
+        "replicationRole": "None",
+        "network": {},
+        "backup": {
+          "backupRetentionDays": 7,
+          "geoRedundantBackup": "Disabled"
+        },
+        "highAvailability": {
+          "mode": "Disabled"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2022-09-01",
+      "name": "[parameters('serverfarms_ASP_name')]",
+      "location": "Switzerland North",
+      "sku": {
+        "name": "B1",
+        "tier": "Basic",
+        "size": "B1",
+        "family": "B",
+        "capacity": 1
+      },
+      "kind": "linux",
+      "properties": {
+        "perSiteScaling": false,
+        "elasticScaleEnabled": false,
+        "maximumElasticWorkerCount": 1,
+        "isSpot": false,
+        "freeOfferExpirationTime": "2023-11-03T19:53:56.3866667",
+        "reserved": true,
+        "isXenon": false,
+        "hyperV": false,
+        "targetWorkerCount": 0,
+        "targetWorkerSizeId": 0,
+        "zoneRedundant": false
+      }
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/databases",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[concat(parameters('flexibleServers_dbserver_name'), '/app')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', parameters('flexibleServers_dbserver_name'))]"
+      ],
+      "properties": {
+        "charset": "utf8",
+        "collation": "utf8_general_ci"
+      }
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/databases",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[concat(parameters('flexibleServers_dbserver_name'), '/information_schema')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', parameters('flexibleServers_dbserver_name'))]"
+      ],
+      "properties": {
+        "charset": "utf8",
+        "collation": "utf8_general_ci"
+      }
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/databases",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[concat(parameters('flexibleServers_dbserver_name'), '/mysql')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', parameters('flexibleServers_dbserver_name'))]"
+      ],
+      "properties": {
+        "charset": "latin1",
+        "collation": "latin1_swedish_ci"
+      }
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/databases",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[concat(parameters('flexibleServers_dbserver_name'), '/performance_schema')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', parameters('flexibleServers_dbserver_name'))]"
+      ],
+      "properties": {
+        "charset": "utf8",
+        "collation": "utf8_general_ci"
+      }
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/databases",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[concat(parameters('flexibleServers_dbserver_name'), '/sys')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', parameters('flexibleServers_dbserver_name'))]"
+      ],
+      "properties": {
+        "charset": "utf8",
+        "collation": "utf8_general_ci"
+      }
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers/firewallRules",
+      "apiVersion": "2021-12-01-preview",
+      "name": "[concat(parameters('flexibleServers_dbserver_name'), '/AllowAllAzureServicesAndResourcesWithinAzureIps_2023-5-4_18-26-14')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DBforMySQL/flexibleServers', parameters('flexibleServers_dbserver_name'))]"
+      ],
+      "properties": {
+        "startIpAddress": "0.0.0.0",
+        "endIpAddress": "0.0.0.0"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2022-09-01",
+      "name": "[parameters('sites_name')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', parameters('serverfarms_ASP_name'))]"
+      ],
+      "kind": "app,linux",
+      "properties": {
+        "enabled": true,
+        "hostNameSslStates": [
+          {
+            "name": "[concat(parameters('sites_name'), '.azurewebsites.net')]",
+            "sslState": "Disabled",
+            "hostType": "Standard"
+          },
+          {
+            "name": "[concat(parameters('sites_name'), '.scm.azurewebsites.net')]",
+            "sslState": "Disabled",
+            "hostType": "Repository"
+          }
+        ],
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('serverfarms_ASP_name'))]",
+        "reserved": true,
+        "isXenon": false,
+        "hyperV": false,
+        "vnetRouteAllEnabled": false,
+        "vnetImagePullEnabled": false,
+        "vnetContentShareEnabled": false,
+        "siteConfig": {
+          "numberOfWorkers": 1,
+          "linuxFxVersion": "PYTHON|3.10",
+          "acrUseManagedIdentityCreds": false,
+          "alwaysOn": false,
+          "http20Enabled": false,
+          "functionAppScaleLimit": 0,
+          "minimumElasticInstanceCount": 0
+        },
+        "scmSiteAlsoStopped": false,
+        "clientAffinityEnabled": false,
+        "clientCertEnabled": false,
+        "clientCertMode": "Required",
+        "hostNamesDisabled": false,
+        "customDomainVerificationId": "DABE11E275645EA6592BB47B89A3CC8D2CC5AC9081DD34F92882315804FE48DD",
+        "containerSize": 0,
+        "dailyMemoryTimeQuota": 0,
+        "httpsOnly": true,
+        "redundancyMode": "None",
+        "storageAccountRequired": false,
+        "keyVaultReferenceIdentity": "SystemAssigned"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/ftp')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "allow": true
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/scm')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "allow": true
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/config",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/web')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "numberOfWorkers": 1,
+        "defaultDocuments": [
+          "Default.htm",
+          "Default.html",
+          "Default.asp",
+          "index.htm",
+          "index.html",
+          "iisstart.htm",
+          "default.aspx",
+          "index.php",
+          "hostingstart.html"
+        ],
+        "netFrameworkVersion": "v4.0",
+        "linuxFxVersion": "PYTHON|3.10",
+        "requestTracingEnabled": false,
+        "remoteDebuggingEnabled": false,
+        "remoteDebuggingVersion": "VS2019",
+        "httpLoggingEnabled": true,
+        "acrUseManagedIdentityCreds": false,
+        "logsDirectorySizeLimit": 35,
+        "detailedErrorLoggingEnabled": false,
+        "publishingUsername": "$mgwrent",
+        "scmType": "GitHubAction",
+        "use32BitWorkerProcess": true,
+        "webSocketsEnabled": false,
+        "alwaysOn": false,
+        "managedPipelineMode": "Integrated",
+        "virtualApplications": [
+          {
+            "virtualPath": "/",
+            "physicalPath": "site\\wwwroot",
+            "preloadEnabled": false
+          }
+        ],
+        "loadBalancing": "LeastRequests",
+        "experiments": {
+          "rampUpRules": []
+        },
+        "autoHealEnabled": false,
+        "vnetRouteAllEnabled": false,
+        "vnetPrivatePortsCount": 0,
+        "localMySqlEnabled": false,
+        "ipSecurityRestrictions": [
+          {
+            "ipAddress": "Any",
+            "action": "Allow",
+            "priority": 2147483647,
+            "name": "Allow all",
+            "description": "Allow all access"
+          }
+        ],
+        "scmIpSecurityRestrictions": [
+          {
+            "ipAddress": "Any",
+            "action": "Allow",
+            "priority": 2147483647,
+            "name": "Allow all",
+            "description": "Allow all access"
+          }
+        ],
+        "scmIpSecurityRestrictionsUseMain": false,
+        "http20Enabled": false,
+        "minTlsVersion": "1.2",
+        "scmMinTlsVersion": "1.2",
+        "ftpsState": "FtpsOnly",
+        "preWarmedInstanceCount": 0,
+        "elasticWebAppScaleLimit": 0,
+        "functionsRuntimeScaleMonitoringEnabled": false,
+        "minimumElasticInstanceCount": 0,
+        "azureStorageAccounts": {}
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/0d325f9d-ffea-4779-839c-1daeedad4b75')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"fcdf2004a122f707dff4d29b3c67946683b4b5c7\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"fix wrong requiremtns file\"}",
+        "start_time": "2023-05-04T17:31:34.1459297Z",
+        "end_time": "2023-05-04T17:32:59.3439963Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/67387b24-e2b7-4816-9897-b68062ac4e60')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"e6e6d41570be8a2bd0952e121cc1fc8f3cf235ed\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"Update mysql connection string settings\"}",
+        "start_time": "2023-05-04T16:59:33.2771732Z",
+        "end_time": "2023-05-04T17:01:47.6468745Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/683aebfa-d84d-4418-9312-f4d580ffeb2a')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"e0cb375ece2434f249ce8874420b46ea807ec409\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"Added first iac deployment params +\\nmodified connection settings for mysql\"}",
+        "start_time": "2023-05-04T16:41:22.8907164Z",
+        "end_time": "2023-05-04T16:43:10.6253428Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/6856d20d-e9d8-4c32-8b0e-f2ca8dcd3dff')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"f16931741ce945d0d87e6ddec2f4d1bdbb0843eb\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"Fix wrong module name\"}",
+        "start_time": "2023-05-04T17:13:12.6107933Z",
+        "end_time": "2023-05-04T17:14:42.8125391Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/6db0ab7d-eef9-41dc-b378-cdd686648e8b')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"b22b98e278c3a4755dbb3f500ab3e2afb0403d76\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"fix missing commas in custom config\"}",
+        "start_time": "2023-05-03T20:35:36.7146667Z",
+        "end_time": "2023-05-03T20:37:25.6598761Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/a48a11a4-bd0a-411e-b923-31dd4bfdb0df')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"fe8fdad2bbdc486c690e2db90b1b0e906789fdf9\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"Remove legacy config import\"}",
+        "start_time": "2023-05-03T20:40:18.4901154Z",
+        "end_time": "2023-05-03T20:41:55.7978261Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/a8dc948e-897c-4357-8c41-a118fe79e6c7')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"70b59e97aa4c20e0d46c3b8e241e403b00afe31b\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"Update secure connection handling\"}",
+        "start_time": "2023-05-05T08:25:49.7699355Z",
+        "end_time": "2023-05-05T08:27:06.5025042Z",
+        "active": true
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/b950a4c6-2a3d-47e3-9642-99d48e96054a')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"3681d5a2f5624b708a33e55890b634596daf774e\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"fix wrong ref to config class\"}",
+        "start_time": "2023-05-03T20:51:03.1430829Z",
+        "end_time": "2023-05-03T20:52:29.8508385Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/b985625b-8d7c-43aa-88bb-60ec6e59422a')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"ae01089e41eee69dac363b12596251630fef6c8e\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"disable the 500 error handler for debugging\"}",
+        "start_time": "2023-05-04T20:29:25.1500331Z",
+        "end_time": "2023-05-04T20:31:25.4333565Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/ee93c5f8-67ee-442d-829f-c75cc2571872')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "status": 4,
+        "author_email": "N/A",
+        "author": "N/A",
+        "deployer": "GITHUB_ZIP_DEPLOY",
+        "message": "{\"type\":\"deployment\",\"sha\":\"42d911acba30f4c2374ba98ea35cd77379a3b30a\",\"repoName\":\"peacemaker360/rental\",\"actor\":\"peacemaker360\",\"slotName\":\"Production\",\"commitMessage\":\"Add missin import in init for \\\"os\\\"\"}",
+        "start_time": "2023-05-03T20:46:47.2375157Z",
+        "end_time": "2023-05-03T20:48:14.4030477Z",
+        "active": false
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/hostNameBindings",
+      "apiVersion": "2022-09-01",
+      "name": "[concat(parameters('sites_name'), '/', parameters('sites_name'), '.azurewebsites.net')]",
+      "location": "Switzerland North",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ],
+      "properties": {
+        "siteName": "mgwrent",
+        "hostNameType": "Verified"
+      }
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-03T20_23_12_5509651')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-03T21_23_12_5622737')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-03T22_23_12_6026870')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-03T23_23_12_6171549')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T00_23_12_6352691')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T01_23_12_6770694')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T02_23_12_6800531')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T03_23_12_7870379')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T04_23_12_7822975')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T05_23_12_7688577')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T06_23_12_7625843')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T07_23_12_7965975')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T08_23_12_7916666')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T09_23_12_8176836')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T10_23_12_8444578')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T11_23_12_8502668')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T12_23_12_9211511')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T13_23_12_9189514')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T14_23_12_9325945')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T15_23_12_9530104')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T16_23_12_9699676')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T17_23_12_9667519')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T18_23_13_0696710')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T19_23_13_0215939')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T20_23_13_0373628')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T21_23_13_0587782')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T22_23_13_1083273')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-04T23_23_13_1607388')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T00_23_13_1364227')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T01_23_13_1772905')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T02_23_13_2138076')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T03_23_13_2545297')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T04_23_13_2492478')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T05_23_13_2989605')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T06_23_13_2803619')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T07_23_13_3084468')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/snapshots",
+      "apiVersion": "2015-08-01",
+      "name": "[concat(parameters('sites_name'), '/2023-05-05T08_23_13_4613109')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('sites_name'))]"
+      ]
+    }
+  ]
+}
