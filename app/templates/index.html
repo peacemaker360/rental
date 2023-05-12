@@ -9,11 +9,13 @@
     <p class="lead">Dies ist eine einfache Webanwendung für die Verwaltung der Vermietung von Musikinstrumenten.</p>
     <hr class="my-4">
     <p>Mit der Navigation oben können die verschiedenen Bereiche und Funktionen verwendet werden.</p>
+    {% if current_user.is_authenticated %}
     <hr class="my-4">
     <p>Die app sieht leer aus? Dann kann mit dem Button unten beispiele generiert werden.</p>
     <form method="post" action="{{ url_for('generate_data') }}">
         <button type="submit">Generate Sample Data</button>
     </form>
+    {% endif %}
 
 </div>
 <div class="row">

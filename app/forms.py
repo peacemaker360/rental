@@ -1,10 +1,53 @@
 from datetime import date
 from flask import url_for
 from flask_wtf import FlaskForm
-from wtforms import StringField, FloatField, DateField, SubmitField
+from wtforms import BooleanField, StringField, PasswordField, FloatField, DateField, SubmitField
 from wtforms.validators import ValidationError, DataRequired, Email, EqualTo, Length, Optional
 from wtforms_sqlalchemy.fields import QuerySelectField
+
+from app.models.User import User
 from .models import Instrument, Customer, Rental
+
+# Forms for User handling
+# Quelle: Unterricht (microblog)
+
+class LoginForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    remember_me = BooleanField('Remember Me')
+    submit = SubmitField('Sign In')
+
+class RegistrationForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    email = StringField('Email', validators=[DataRequired(), Email()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    password2 = PasswordField(
+        'Repeat Password', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Register')
+
+    def validate_username(self, username):
+        user = User.query.filter_by(username=username.data).first()
+        if user is not None:
+            raise ValidationError('Please use a different username.')
+
+    def validate_email(self, email):
+        user = User.query.filter_by(email=email.data).first()
+        if user is not None:
+            raise ValidationError('Please use a different email address.')
+
+# Forms for App logic
+
+class ResetPasswordRequestForm(FlaskForm):
+    email = StringField('Email', validators=[DataRequired(), Email()])
+    submit = SubmitField('Request Password Reset')
+
+
+class ResetPasswordForm(FlaskForm):
+    email = StringField('Email', validators=[DataRequired(), Email()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    password2 = PasswordField(
+        'Repeat Password', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Request Password Reset')
 
 class InstrumentForm(FlaskForm):
     name = StringField('Name', validators=[Optional()], default=None)

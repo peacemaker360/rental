@@ -20,7 +20,6 @@ DATABASE_URI = 'mysql+pymysql://{dbuser}:{dbpass}@{dbhost}/{dbname}'.format(
     dbname='rentalapp'
 )
 
-
 TIME_ZONE = 'UTC'
 
 STATICFILES_DIRS = (str(BASE_DIR.joinpath('static')),)

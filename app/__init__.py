@@ -2,6 +2,7 @@
 #from config import Config
 import os
 from flask import Flask, render_template, redirect, url_for
+from flask_login import LoginManager
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_bootstrap import Bootstrap
@@ -38,10 +39,14 @@ app.config.update(
 db = SQLAlchemy(app)
 migrate = Migrate(app,db)
 
+
+login = LoginManager(app)
+login.login_view = 'login'
+
 bootstrap = Bootstrap(app)
 
 # Create sql schema
 #db.create_all()
 
 # import all outsourced python files, so that init remains as clean as possible
-from app import models, errors, routes, sampledata #, views, api
+from app import models, errors, routes, auth, sampledata #, views, api
