@@ -1,10 +1,12 @@
+import os
 from random import choice
 from sqlalchemy import and_, or_
 from app import app, db
 from .forms import InstrumentForm, CustomerForm, RentalForm
-from flask import flash, jsonify, redirect, render_template, url_for, request
+from flask import flash, jsonify, redirect, render_template, send_from_directory, url_for, request
+from flask_login import login_user, logout_user, current_user, login_required
 from datetime import date, datetime
-from .models import Instrument, Customer, Rental, RentalHistory
+from app.models import Instrument, Customer, Rental, RentalHistory
 
 
 #################
@@ -12,7 +14,6 @@ from .models import Instrument, Customer, Rental, RentalHistory
 #################
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/index', methods=['GET', 'POST'])
-#@login_required
 def index():
     return render_template('index.html', title='Home')
 
@@ -29,8 +30,8 @@ def favicon():
 #################
 ## Instruments Routes 
 #################
-
 @app.route('/instruments')
+@login_required
 def instruments():
     search = request.args.get('search', '').strip()
     if search:
@@ -45,8 +46,8 @@ def instruments():
         flash('No instrument records found.', 'info')
     return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search)
 
-
 @app.route('/instruments/add', methods=['GET', 'POST'])
+@login_required
 def new_instrument():
     form = InstrumentForm()
     if form.validate_on_submit():
@@ -60,15 +61,15 @@ def new_instrument():
         return redirect(url_for('instruments'))
     return render_template('instrument_form.html', form=form, action='Add')
 
-
 @app.route('/instruments/<int:id>')
+@login_required
 def view_instrument(id):
     instrument = Instrument.query.get_or_404(id)
     instrumentHistory = RentalHistory.getBy_instrumentId(id)
     return render_template('instrument.html', instrument=instrument, history=instrumentHistory)
 
-
 @app.route('/instruments/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
 def edit_instrument(id):
     instrument = Instrument.query.get_or_404(id)
     form = InstrumentForm(obj=instrument)
@@ -87,8 +88,8 @@ def edit_instrument(id):
         return redirect(url_for('instruments'))
     return render_template('instrument_form.html', form=form, action='Edit')
 
-
 @app.route('/instruments/<int:id>/delete', methods=['POST'])
+@login_required
 def delete_instrument(id):
     instrument = Instrument.query.get_or_404(id)
     db.session.delete(instrument)
@@ -100,8 +101,8 @@ def delete_instrument(id):
 #################
 ## Customer Routes 
 #################
-
 @app.route('/customers')
+@login_required
 def customers():
     search = request.args.get('search', '').strip()
     if search:
@@ -116,8 +117,8 @@ def customers():
         flash('No customer records found.', 'info')
     return render_template('customers.html', customers=customers, title="Mitglieder", search=search)
 
-
 @app.route('/customers/new', methods=['GET', 'POST'])
+@login_required
 def new_customer():
     form = CustomerForm()
     if form.validate_on_submit():
@@ -131,14 +132,14 @@ def new_customer():
         return redirect(url_for('customers'))
     return render_template('customer_form.html', form=form, action='New')
 
-
 @app.route('/customers/<int:id>')
+@login_required
 def view_customer(id):
     customer = Customer.query.get_or_404(id)
     return render_template('customer.html', customer=customer)
 
-
 @app.route('/customers/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
 def edit_customer(id):
     customer = Customer.query.get_or_404(id)
     form = CustomerForm(obj=customer)
@@ -156,8 +157,8 @@ def edit_customer(id):
         return redirect(url_for('customers'))
     return render_template('customer_form.html', form=form, action='Edit')
 
-
 @app.route('/customers/<int:id>/delete', methods=['POST'])
+@login_required
 def delete_customer(id):
     customer = Customer.query.get_or_404(id)
     db.session.delete(customer)
@@ -169,8 +170,8 @@ def delete_customer(id):
 #################
 ## Rentals Routes 
 #################
-
 @app.route('/rentals')
+@login_required
 def rentals():
     search = request.args.get('search', '').strip()
     if search:
@@ -185,8 +186,8 @@ def rentals():
         flash('No rental records found.', 'info')
     return render_template('rentals.html', rentals=rentals, title="Verleihe", search=search)
 
-
 @app.route('/rentals/new', methods=['GET', 'POST'])
+@login_required
 def new_rental():
     form = RentalForm()
     form.instrument.query = db.session.query(Instrument)
@@ -218,14 +219,14 @@ def new_rental():
         return redirect(url_for('rentals'))
     return render_template('rental_form.html', form=form, action='New')
 
-
 @app.route('/rentals/<int:id>')
+@login_required
 def view_rental(id):
     rental = Rental.query.get_or_404(id)
     return render_template('rental.html', rental=rental)
 
-
 @app.route('/rentals/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
 def edit_rental(id):
     rental = Rental.query.get_or_404(id)
     form = RentalForm(obj=rental)
@@ -257,8 +258,8 @@ def edit_rental(id):
         return redirect(url_for('rentals'))
     return render_template('rental_form.html', form=form, action='Edit')
 
-
 @app.route('/rentals/<int:id>/delete', methods=['POST'])
+@login_required
 def delete_rental(id):
     rental = Rental.query.get_or_404(id)
     db.session.delete(rental)
@@ -268,10 +269,10 @@ def delete_rental(id):
 
 
 #################
-## Rentals Routes 
+## Histroy Routes 
 #################
-
 @app.route('/history')
+@login_required
 def rentals_history():
     search = request.args.get('search', '').strip()
     if search:

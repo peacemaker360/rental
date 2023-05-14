@@ -1,7 +1,6 @@
 from datetime import date, datetime
 from sqlalchemy import or_, event
 from app import db
-#from models import User
 from sqlalchemy.orm import Session
 
 class Instrument(db.Model):

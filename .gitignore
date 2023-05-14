@@ -4,3 +4,5 @@ logs
 Lib
 Scripts
 Include
+app.db
+migrations/
