@@ -1,4 +1,5 @@
 # app/models.py
+# Quelle: aus Unterricht (microblog)
 
 from datetime import datetime, timedelta
 from app import app, db, login
