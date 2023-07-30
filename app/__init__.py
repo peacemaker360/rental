@@ -1,8 +1,8 @@
 # app/__init__.py
 #from config import Config
 import os
-from flask import Flask, render_template, redirect, url_for
-from flask_login import LoginManager
+from flask import Flask, jsonify, render_template, redirect, request, url_for
+from flask_login import LoginManager, current_user
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_bootstrap import Bootstrap
@@ -48,5 +48,10 @@ bootstrap = Bootstrap(app)
 # Create sql schema
 #db.create_all()
 
+@app.before_request
+def api_auth():
+    if request.path.startswith('/api') and not current_user.is_authenticated:
+        return jsonify({'error': 'Unauthorized', 'message': 'Please log in to access this resource.'}), 401
+
 # import all outsourced python files, so that init remains as clean as possible
-from app import models, errors, routes, auth, sampledata #, views, api
+from app import models, errors, routes, auth, api, sampledata #, views, api
