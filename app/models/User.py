@@ -1,5 +1,5 @@
-# app/models.py
-# Quelle: aus Unterricht (microblog)
+# app/models/User.py
+# Quelle: aus Unterricht (microblog) übernommen
 
 from datetime import datetime, timedelta
 from app import app, db, login

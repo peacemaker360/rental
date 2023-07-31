@@ -30,6 +30,9 @@ def not_found_error(error):
         response = jsonify( {'error': 'Not Found'} )
         response.status_code = 404
         return response
+    # Customise all 404 route errors on the api
+    if request.path.startswith('/api'):
+        return jsonify({'error': 'Not Found', 'message': 'The requested resource was not found on the server.'}), 404
     else:
         return render_template('errorpages/404.html'), 404
 

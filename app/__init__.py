@@ -1,8 +1,8 @@
 # app/__init__.py
 #from config import Config
 import os
-from flask import Flask, render_template, redirect, url_for
-from flask_login import LoginManager
+from flask import Flask, jsonify, render_template, redirect, request, url_for
+from flask_login import LoginManager, current_user
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_bootstrap import Bootstrap
@@ -26,27 +26,31 @@ app.config.update(
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 
-app.config.update(
-    # Admins to notify via email
-    #ADMINS = ["admin@lab2.ifalabs.org"]
-    
+app.config.update(    
     # Pagination settings
     POSTS_PER_PAGE = 5,
     USERS_PER_PAGE = 10,
 )
 
-
+# Initiate the db and migrate objects from sqlalchemy
 db = SQLAlchemy(app)
 migrate = Migrate(app,db)
 
-
+# Initiate the login manger
 login = LoginManager(app)
 login.login_view = 'login'
 
+# Load the Bootstrap framwork from the module
 bootstrap = Bootstrap(app)
 
 # Create sql schema
 #db.create_all()
 
+# This endpoint ensures all request to /api are protected with login and if not a 401 error is returned
+@app.before_request
+def api_auth():
+    if request.path.startswith('/api') and not current_user.is_authenticated:
+        return jsonify({'error': 'Unauthorized', 'message': 'Please log in to access this resource.'}), 401
+
 # import all outsourced python files, so that init remains as clean as possible
-from app import models, errors, routes, auth, sampledata #, views, api
+from app import models, errors, routes, auth, api, sampledata #, views, api
