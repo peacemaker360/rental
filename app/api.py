@@ -9,7 +9,6 @@ from app.models import Customer, Instrument, Rental
 # Erstellt mit hilfe des modules flask_restful
 # Quelle: https://flask-restful.readthedocs.io/en/latest/quickstart.html
 
-
 api = Api(app)
 
 #################
