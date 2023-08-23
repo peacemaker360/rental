@@ -1,3 +1,4 @@
+from flask import request, jsonify
 from flask_restful import Api, Resource, abort, fields, marshal_with, marshal
 from flask_login import login_required
 from app import app, db
@@ -97,7 +98,70 @@ class RentalResource(Resource):
         if not rental:
             abort(404, message="Rental not found")
         return rental
+    
+class BulkUserCustomerAPI(Resource):
 
+    def post(self):
+        data = request.json
+        skipped_users = []
+
+        customer_data = data['data']
+        phone_data = {item['id']: item['attributes'] for item in data['included'] if item['type'] == 'phone_numbers'}
+
+        for item in customer_data:
+            attributes = item['attributes']
+            # Extract relevant details
+            first_name = attributes['first_name']
+            last_name = attributes['last_name']
+            email = attributes['email']
+            if not email:  # Validate email existence
+                skipped_users.append(customer_data)
+                continue  # Skip processing this user   
+            phone = None
+            if 'phone_numbers' in item['relationships']:
+                phone_id = item['relationships']['phone_numbers']['data'][0]['id']
+                phone = phone_data[phone_id]['number']
+
+            # Get foreign object ID
+            foreign_id = item['id']
+
+            # Check if customer already exists in the database
+            customer = Customer.query.filter_by(email=email).first()
+            if customer:
+                # Update customer details if they have changed
+                customer.name = f"{first_name} {last_name}"
+                customer.firstname = first_name
+                customer.lastname = last_name
+                customer.phone = phone
+                customer.connected = True  # mark as connected
+            else:
+                # Add new customer
+                new_customer = Customer(
+                    name=f"{first_name} {last_name}",
+                    firstname=first_name,
+                    lastname=last_name,
+                    email=email,
+                    phone=phone,
+                    foreign_id=foreign_id,
+                    connected=True
+                )
+                db.session.add(new_customer)
+
+        # Mark customers not in the JSON input as disconnected
+        all_emails_in_input = [item['attributes']['email'] for item in customer_data]
+        customers_to_disconnect = Customer.query.filter(~Customer.email.in_(all_emails_in_input)).all()
+        for customer in customers_to_disconnect:
+            customer.connected = False
+
+        db.session.commit()
+
+        if skipped_users:
+            return jsonify({
+                "message": "Import completed with some users skipped.",
+                "skipped_users": skipped_users
+            }), 200
+
+        return jsonify({"message": "Import successful"}), 200
 
 
 #################
@@ -112,3 +176,7 @@ api.add_resource(RentalListResource, '/api/rentals/')
 api.add_resource(CustomerResource, '/api/customers/<int:customer_id>')
 api.add_resource(InstrumentResource, '/api/instruments/<int:instrument_id>')
 api.add_resource(RentalResource, '/api/rentals/<int:rental_id>')
+
+
+# Add this resource to your API
+api.add_resource(BulkUserCustomerAPI, '/api/bulkusercustomer')

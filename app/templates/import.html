@@ -29,6 +29,7 @@
             <li>Copy the JSON data from the API response.</li>
             <li>Paste the copied JSON data into the textarea below and click "Import".</li>
         </ol>
+        
         <form action="{{ url_for('import_users') }}" method="post" class="form-horizontal">
             <div class="form-group">
                 <label for="json_data" class="col-sm-2 control-label">Paste JSON data:</label>
@@ -42,9 +43,12 @@
                     <button type="submit" class="btn btn-primary" disabled id="importButton">Import</button>
                 </div>
             </div>
+            <!-- <label for="excludeGroups">Exclude Group IDs (comma separated):</label>
+            <input type="text" id="excludeGroups" placeholder="e.g. 1,2,3"> -->
             <h3>Import preview:</h3>
             <div id="preview"></div>
         </form>
+
     </div>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
@@ -56,7 +60,17 @@
 
             try {
                 const parsedData = JSON.parse(jsonData);
-                const users = parsedData.data;
+                var users = parsedData.data;
+
+
+                const excludeGroups = document.getElementById('excludeGroups').value.split(',').map(id => parseInt(id.trim()));
+                if (excludeGroups) {
+                    //alert("Groups to exclude: " + excludeGroups)
+                    //users = users.filter(user => !excludeGroups.includes(user.attributes.primary_group_id));
+                    //document.getElementById("json_data").value = JSON.stringify(users.filter(user => !excludeGroups.includes(user.attributes.primary_group_id)));
+
+                }
+
 
                 if (!Array.isArray(users) || users.length <= 1) {
                     throw new Error('Data should contain more than one user record');

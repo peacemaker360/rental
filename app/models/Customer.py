@@ -11,7 +11,10 @@ class Customer(db.Model):
     email = db.Column(db.String(120), index=True, unique=True)
     phone = db.Column(db.String(20), nullable=False)
     rental = db.relationship('Rental', backref='customer', lazy=True)
+    foreign_id = db.Column(db.String(50), unique=True)
+    connected = db.Column(db.Boolean, default=True)
     created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
     def __repr__(self):
         return str(self.id)

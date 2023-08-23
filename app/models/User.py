@@ -23,6 +23,8 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(128))
     is_active = db.Column(db.Boolean, default=False)
     role = db.Column(db.Integer, default=1)
+    created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
     # API Token unterstüstzung
     # Der aktuelle API-Token in der Datenbank

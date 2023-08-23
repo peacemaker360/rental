@@ -13,6 +13,7 @@ class Rental(db.Model):
     end_date = db.Column(db.Date, nullable=True)
     description = db.Column(db.Text, nullable=True)
     created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
     def search_rentals(keyword):
         rentals = Rental.query.join(Customer).join(Instrument).filter(

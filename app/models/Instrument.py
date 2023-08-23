@@ -12,9 +12,10 @@ class Instrument(db.Model):
     serial = db.Column(db.String(50), nullable=False)
     description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
-    created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
     is_available = db.Column(db.Boolean, default=True)
     rental = db.relationship('Rental', backref='instrument', lazy=True)
+    created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
     def __repr__(self):
         return str(self.id)
