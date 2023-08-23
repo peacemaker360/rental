@@ -2,6 +2,10 @@ from flask import render_template, request, jsonify
 from werkzeug.http import HTTP_STATUS_CODES
 from app import app,db
 
+#################################
+# Error handling routes
+# Quelle: aus Unterricht (microblog) mit anpassungen übernommen
+#################################
 def error_response(status_code, message=None):
     payload = {'error': HTTP_STATUS_CODES.get(status_code, 'Unknown error')}
     if message:

@@ -1,7 +1,7 @@
 from flask_restful import Api, Resource, abort, fields, marshal_with, marshal
 from flask_login import login_required
 from app import app, db
-from app.models import Customer, Instrument, Rental
+from app.models import Customer, Instrument, Rental, User
 
 #################
 ## API
@@ -48,6 +48,13 @@ rental_fields = {
     'customer': fields.Nested(customer_fields),  # Nested Customer fields
     'instrument': fields.Nested(instrument_fields),  # Nested Instrument fields
     #'self': fields.Url('rentalresource', absolute=True)  # Generate URL for specific rental
+}
+
+# Fields for Rental
+user_fields = {
+    'id': fields.Integer,
+    'username': fields.String,
+    'email': fields.String
 }
 
 #################
@@ -97,6 +104,13 @@ class RentalResource(Resource):
         if not rental:
             abort(404, message="Rental not found")
         return rental
+    
+
+class UserListResource(Resource):
+    @login_required
+    def get(self):
+        users = User.query.all()
+        return marshal(users, user_fields)  # Using marshal directly since it's a list
 
 
 
@@ -108,6 +122,7 @@ class RentalResource(Resource):
 api.add_resource(CustomerListResource, '/api/customers/')
 api.add_resource(InstrumentListResource, '/api/instruments/')
 api.add_resource(RentalListResource, '/api/rentals/')
+api.add_resource(UserListResource, '/api/users/')
 
 api.add_resource(CustomerResource, '/api/customers/<int:customer_id>')
 api.add_resource(InstrumentResource, '/api/instruments/<int:instrument_id>')

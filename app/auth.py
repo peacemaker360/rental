@@ -6,7 +6,10 @@ from app import app, db
 from app.forms import LoginForm, RegistrationForm, ResetPasswordForm, ResetPasswordRequestForm
 from app.models.User import User
 
+#################################
+# User auth routes
 # Quelle: aus Unterricht (microblog)
+#################################
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -82,6 +85,7 @@ def reset_password(token):
 # Custom Routes
 #################################
 
+# Endpoint 'resetpassword': Admins sollen user passwörter zurücksetzen können
 @app.route('/resetpassword', methods=['GET','POST'])
 @login_required
 def resetpassword():
@@ -104,6 +108,7 @@ def resetpassword():
         flash('You need admin level access to perform this acction.', 'danger')
         return redirect(url_for('login'))
 
+# Endpoint 'user_info': Damit kann ein user prüfen, ob er angemeldet ist oder nicht
 @app.route('/user_info', methods=['GET','POST'])
 #@login_required
 def user_info():
