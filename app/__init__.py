@@ -53,4 +53,5 @@ def api_auth():
         return jsonify({'error': 'Unauthorized', 'message': 'Please log in to access this resource.'}), 401
 
 # import all outsourced python files, so that init remains as clean as possible
-from app import models, errors, routes, auth, api, sampledata #, views, api
+from app import models, errors, routes, auth, api, sampledata #, views
+
