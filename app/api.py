@@ -1,7 +1,7 @@
 from flask_restful import Api, Resource, abort, fields, marshal_with, marshal
 from flask_login import login_required
 from app import app, db
-from app.models import Customer, Instrument, Rental, User
+from app.models import Customer, Instrument, Rental, RentalHistory
 
 #################
 ## API
@@ -50,11 +50,11 @@ rental_fields = {
     #'self': fields.Url('rentalresource', absolute=True)  # Generate URL for specific rental
 }
 
-# Fields for Rental
-user_fields = {
+# Fields for RentalHistory
+rentalHistory_fields = {
     'id': fields.Integer,
-    'username': fields.String,
-    'email': fields.String
+    'rental': fields.Nested(rental_fields),  # Nested Rental fields
+    'timestamp': fields.String
 }
 
 #################
@@ -106,11 +106,11 @@ class RentalResource(Resource):
         return rental
     
 
-class UserListResource(Resource):
+class RentalHistoryListResource(Resource):
     @login_required
     def get(self):
-        users = User.query.all()
-        return marshal(users, user_fields)  # Using marshal directly since it's a list
+        rentalHistory = RentalHistory.query.all()
+        return marshal(rentalHistory, rentalHistory_fields)  # Using marshal directly since it's a list
 
 
 
@@ -122,7 +122,7 @@ class UserListResource(Resource):
 api.add_resource(CustomerListResource, '/api/customers/')
 api.add_resource(InstrumentListResource, '/api/instruments/')
 api.add_resource(RentalListResource, '/api/rentals/')
-api.add_resource(UserListResource, '/api/users/')
+api.add_resource(RentalHistoryListResource, '/api/history/')
 
 api.add_resource(CustomerResource, '/api/customers/<int:customer_id>')
 api.add_resource(InstrumentResource, '/api/instruments/<int:instrument_id>')
