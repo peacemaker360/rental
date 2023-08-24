@@ -8,8 +8,11 @@ from wtforms_sqlalchemy.fields import QuerySelectField
 from app.models.User import User
 from .models import Instrument, Customer, Rental
 
+#################################
 # Forms for User handling
-# Quelle: Unterricht (microblog)
+# Quelle: aus Unterricht (microblog) mit anpassungen übernommen
+# Help: diese formulare werden für die app user dialoge gebraucht
+#################################
 
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
@@ -35,12 +38,9 @@ class RegistrationForm(FlaskForm):
         if user is not None:
             raise ValidationError('Please use a different email address.')
 
-# Forms for App logic
-
 class ResetPasswordRequestForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
     submit = SubmitField('Request Password Reset')
-
 
 class ResetPasswordForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
@@ -48,6 +48,11 @@ class ResetPasswordForm(FlaskForm):
     password2 = PasswordField(
         'Repeat Password', validators=[DataRequired(), EqualTo('password')])
     submit = SubmitField('Request Password Reset')
+
+#################################
+# Forms for custom app 
+# Quelle: aus Unterricht (microblog) mit anpassungen übernommen
+#################################
 
 class InstrumentForm(FlaskForm):
     name = StringField('Name', validators=[Optional()], default=None)

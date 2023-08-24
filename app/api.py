@@ -5,14 +5,16 @@ from app.models import Customer, Instrument, Rental, RentalHistory
 
 #################
 ## API
-#################
 # Erstellt mit hilfe des modules flask_restful
 # Quelle: https://flask-restful.readthedocs.io/en/latest/quickstart.html
+# Help: flask restful ist ein effizientes modul um REST API für klassen zu erstellen
+#################
 
 api = Api(app)
 
 #################
 ## Fields overloading
+# Help: wird genutzt, damit z.b. nicht alle felder eines objekts/klasse in der API gelistet wird
 #################
 
 # Fields for Customer

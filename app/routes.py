@@ -20,8 +20,8 @@ def index():
 
 #################
 ## Files
-#################
 # Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/app.py
+#################
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'),

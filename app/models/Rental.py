@@ -1,3 +1,6 @@
+# app/models/Rental.py
+# Quelle: eigene Entwicklung, in anlehnung an Unterrichst bsp.
+
 from datetime import date, datetime
 from sqlalchemy import or_, event
 from app import db

@@ -7,6 +7,7 @@ from flask_login import login_user, logout_user, current_user, login_required
 
 ##############################################################
 # SAMPLE DATA
+# Help: this endpoint is used to initially generate demo data, if the application is empty
 ##############################################################
 
 @app.route('/generate_data', methods=['GET', 'POST'])
