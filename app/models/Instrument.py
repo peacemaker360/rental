@@ -2,7 +2,7 @@
 # Quelle: eigene Entwicklung, in anlehnung an Unterrichst bsp.
 
 from datetime import date, datetime
-from sqlalchemy import or_, event
+from sqlalchemy import or_
 from app import db
 
 from .Rental import Rental
@@ -42,11 +42,19 @@ class Instrument(db.Model):
         else:
             return False
     
-    def search_instruments(keyword):
-        instruments = Instrument.query.filter(or_(
+    def search_instruments(keyword, onlyAvailable=False):
+        # Start with a base query for the search string
+        query = Instrument.query.filter(or_(
             Instrument.name.ilike(f'%{keyword}%'),
             Instrument.brand.ilike(f'%{keyword}%'),
             Instrument.type.ilike(f'%{keyword}%'),
             Instrument.serial.ilike(f'%{keyword}%')
-        )).all()
+        ))
+
+        # If onlyAvailable is True, add an additional filter condition
+        if onlyAvailable:
+            query = query.filter(Instrument.is_available == True)
+
+        # Execute the query and return the results
+        instruments = query.all()
         return instruments

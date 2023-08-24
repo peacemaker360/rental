@@ -34,14 +34,24 @@ def favicon():
 @login_required
 def instruments():
     search = request.args.get('search', '').strip()
+    filterAvailable = request.args.get('is_available', '').strip().lower()
+    
+    
     if search:
         if len(search) < 3:
             flash('Please provide more than 3 search characters', 'info')
             return redirect(url_for('instruments'))
         else:
-            instruments = Instrument.search_instruments(search)
+            instruments = Instrument.search_instruments(search, filterAvailable)
     else:
-        instruments = Instrument.query.all()
+        # If filterAvailable is 'true' or 'false', modify the query
+        if filterAvailable == 'true':
+            instruments = Instrument.query.filter_by(is_available=True).all()
+        elif filterAvailable == 'false':
+            instruments = Instrument.query.filter_by(is_available=False).all()
+        else:
+            # Default behavior if 'is_available' parameter is not specified or has invalid value
+            instruments = Instrument.query.all()
     if instruments is None or len(instruments) == 0:
         flash('No instrument records found.', 'info')
     return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search)
