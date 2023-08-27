@@ -2,7 +2,7 @@
 # Quelle: eigene Entwicklung, in anlehnung an Unterrichst bsp.
 
 from datetime import date, datetime
-from sqlalchemy import or_, event
+from sqlalchemy import or_
 from app import db
 
 

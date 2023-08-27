@@ -29,9 +29,9 @@ class Instrument(db.Model):
         self.serial = serial
         self.description = description
         self.price = price
-        self.is_available = self.is_available()
+        self.is_available = self.check_availability()
     
-    def is_available(self):
+    def check_availability(self):
         rental = Rental.query.filter_by(instrument_id=self.id).order_by(Rental.end_date.desc()).first()
         if rental is None:
             return True
