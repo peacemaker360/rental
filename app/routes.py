@@ -35,26 +35,37 @@ def favicon():
 def instruments():
     search = request.args.get('search', '').strip()
     filterAvailable = request.args.get('is_available', '').strip().lower()
-    
-    
+
+    total_instruments = Instrument.query.count()
+    available_instruments = sum(1 for inst in Instrument.query.all() if inst.is_available)
+    unavailable_instruments = total_instruments - available_instruments
+    stats = {
+        'total': total_instruments,
+        'available': available_instruments,
+        'unavailable': unavailable_instruments
+    }
+       
     if search:
         if len(search) < 3:
             flash('Please provide more than 3 search characters', 'info')
             return redirect(url_for('instruments'))
         else:
-            instruments = Instrument.search_instruments(search, filterAvailable)
+            instruments = Instrument.search_instruments(search)
     else:
-        # If filterAvailable is 'true' or 'false', modify the query
-        if filterAvailable == 'true':
-            instruments = Instrument.query.filter_by(is_available=True).all()
-        elif filterAvailable == 'false':
-            instruments = Instrument.query.filter_by(is_available=False).all()
-        else:
-            # Default behavior if 'is_available' parameter is not specified or has invalid value
-            instruments = Instrument.query.all()
+        # Default behavior if 'is_available' parameter is not specified or has invalid value
+        instruments = Instrument.query.all()
+     # If filterAvailable is 'true' or 'false', modify the query
+    if filterAvailable == 'true':
+        instruments = list(filter(lambda i: i.is_available, instruments))
+    elif filterAvailable == 'false':
+        instruments = list(filter(lambda i: not i.is_available, instruments))
+    #Debugging is_available
+    for instrument in instruments:
+        print(instrument.is_available) 
+
     if instruments is None or len(instruments) == 0:
         flash('No instrument records found.', 'info')
-    return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search)
+    return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search, filterAvailable=filterAvailable, stats=stats)
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
 @login_required
@@ -211,7 +222,7 @@ def new_rental():
                 return redirect(url_for('rentals'))
         rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id, start_date=form.start_date.data, end_date=form.end_date.data)
         #instrument = Instrument.query.get_or_404(form.instrument.data.id)
-        if form.instrument.data.is_available() is False:
+        if form.instrument.data.is_available is False:
            flash("Rental cannot be placed. Instrument '{}' already in use!".format(form.instrument.data.name), 'danger')
            return redirect(url_for('rentals'))
         try:

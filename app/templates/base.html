@@ -4,6 +4,7 @@
 {{super()}}
 <!-- Import custom bootstrap template from https://bootswatch.com/3/ library -->
 <link rel="stylesheet" href="{{url_for('.static', filename='bootstrap.css')}}">
+<link rel="stylesheet" href="{{url_for('.static', filename='custom.css')}}">
 {% endblock %}
 
 {% block title %}
@@ -29,11 +30,16 @@
         </div>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="nav navbar-nav">
-                <li {% if request.path==url_for('instruments') %} class="dropdown active" {% else %} class="dropdown" {% endif %}>
+                <li {% if request.path==url_for('instruments') %} class="dropdown active" {% else %} class="dropdown" {%
+                    endif %}>
                     <!-- <a href="{{ url_for('instruments') }}">Instrumente</a> -->
-                    <a href="{{ url_for('instruments') }}" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Instrumente
+                    <a href="{{ url_for('instruments') }}">Instrumente
                         <span class="caret"></span></a>
+                    <!-- <a href="{{ url_for('instruments') }}" class="dropdown-toggle" data-toggle="dropdown" role="button"
+                        aria-haspopup="true" aria-expanded="false">Instrumente
+                        <span class="caret"></span></a> -->
                     <ul class="dropdown-menu">
+                        <li><a href="{{ url_for('instruments' )}}">Alle</a></li>
                         <li><a href="{{ url_for('instruments', is_available=true) }}">Im Lager</a></li>
                         <li><a href="{{ url_for('instruments', is_available=false) }}">Verliehen</a></li>
                     </ul>

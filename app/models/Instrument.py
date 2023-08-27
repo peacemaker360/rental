@@ -3,6 +3,7 @@
 
 from datetime import date, datetime
 from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
 from app import db
 
 from .Rental import Rental
@@ -16,7 +17,6 @@ class Instrument(db.Model):
     description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
     created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
-    is_available = db.Column(db.Boolean, default=True)
     rental = db.relationship('Rental', backref='instrument', lazy=True)
 
     def __repr__(self):
@@ -29,18 +29,23 @@ class Instrument(db.Model):
         self.serial = serial
         self.description = description
         self.price = price
-        self.is_available = self.check_availability()
+        #self.is_available = self.check_availability()
     
-    def check_availability(self):
+    @property
+    def is_available(self):
+        # Load the related rentals.
+        # With `joinedload`, it will fetch the related rentals in the same query.
         rental = Rental.query.filter_by(instrument_id=self.id).order_by(Rental.end_date.desc()).first()
+
+        # Check if there are any active rentals associated with this instrument.
         if rental is None:
-            return True
+             return True
         elif rental.end_date is None:
-            return False
+             return False
         elif rental.end_date < date.today():
-            return True
+             return True
         else:
-            return False
+             return False
     
     def search_instruments(keyword, onlyAvailable=False):
         # Start with a base query for the search string
@@ -50,11 +55,7 @@ class Instrument(db.Model):
             Instrument.type.ilike(f'%{keyword}%'),
             Instrument.serial.ilike(f'%{keyword}%')
         ))
-
-        # If onlyAvailable is True, add an additional filter condition
-        if onlyAvailable:
-            query = query.filter(Instrument.is_available == True)
-
         # Execute the query and return the results
         instruments = query.all()
+        
         return instruments
