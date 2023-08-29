@@ -1,4 +1,4 @@
-from flask_restful import Api, Resource, abort, fields, marshal_with, marshal, parser
+from flask_restful import Api, Resource, abort, fields, marshal_with, marshal, reqparse
 from flask_login import login_required
 from app import app, db
 from app.models import Customer, Instrument, Rental, RentalHistory
@@ -60,6 +60,19 @@ rentalHistory_fields = {
 }
 
 #################
+## Params parser
+# Help: wird genutzt, bei post/put inputs korrekt geparsed werden
+#################
+# Define the parser for the Customer model
+parser = reqparse.RequestParser()
+parser.add_argument('name', type=str)  # Not required anymore
+parser.add_argument('firstname', type=str, required=True, help='First name cannot be blank')
+parser.add_argument('lastname', type=str, required=True, help='Last name cannot be blank')
+parser.add_argument('email', type=str, required=True, help='Email cannot be blank')
+parser.add_argument('phone', type=str, required=True, help='Phone cannot be blank')
+
+
+#################
 ## Definitions
 #################
 class CustomerListResource(Resource):
@@ -75,7 +88,7 @@ class CustomerListResource(Resource):
         
         # Create a new customer instance
         customer = Customer(
-            name=args['name'],
+            name=args.get('name') or f"{args['firstname']} {args['lastname']}",
             firstname=args['firstname'],
             lastname=args['lastname'],
             email=args['email'],
