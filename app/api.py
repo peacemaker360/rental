@@ -1,4 +1,4 @@
-from flask_restful import Api, Resource, abort, fields, marshal_with, marshal
+from flask_restful import Api, Resource, abort, fields, marshal_with, marshal, parser
 from flask_login import login_required
 from app import app, db
 from app.models import Customer, Instrument, Rental, RentalHistory
@@ -67,6 +67,32 @@ class CustomerListResource(Resource):
     def get(self):
         customers = Customer.query.all()
         return marshal(customers, customer_fields)  # Using marshal directly since it's a list
+    
+    @login_required
+    @marshal_with(customer_fields)
+    def post(self):
+        args = parser.parse_args()
+        
+        # Create a new customer instance
+        customer = Customer(
+            name=args['name'],
+            firstname=args['firstname'],
+            lastname=args['lastname'],
+            email=args['email'],
+            phone=args['phone']
+        )
+        
+        # Try add the new customer to the database
+        try:
+            db.session.add(customer)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(e)
+            abort(500, message="An error occurred while processing your request.")
+        
+        # Return the newly created customer
+        return customer, 201
 
 class InstrumentListResource(Resource):
     @login_required
@@ -88,6 +114,21 @@ class CustomerResource(Resource):
         if not customer:
             abort(404, message="Customer not found")
         return customer
+    
+    @login_required
+    def delete(self, customer_id):
+        # Retrieve the customer by ID
+        customer = Customer.query.get(customer_id)
+        
+        # Check if the customer exists
+        if not customer:
+            abort(404, message="Customer not found")
+        
+        # Delete the customer from the database
+        db.session.delete(customer)
+        db.session.commit()
+        
+        return {'message': 'Customer deleted successfully'}, 200
 
 class InstrumentResource(Resource):
     @login_required
@@ -97,6 +138,21 @@ class InstrumentResource(Resource):
         if not instrument:
             abort(404, message="Instrument not found")
         return instrument
+    
+    @login_required
+    def delete(self, instrument_id):
+        # Retrieve the instrument by ID
+        instrument = Instrument.query.get(instrument_id)
+        
+        # Check if the instrument exists
+        if not instrument:
+            abort(404, message="Instrument not found")
+        
+        # Delete the instrument from the database
+        db.session.delete(instrument)
+        db.session.commit()
+        
+        return {'message': 'Instrument deleted successfully'}, 200
     
 class RentalResource(Resource):
     @login_required
