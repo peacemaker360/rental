@@ -30,8 +30,7 @@
         </div>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="nav navbar-nav">
-                <li {% if request.path==url_for('instruments') %} class="dropdown active" {% else %} class="dropdown" {%
-                    endif %}>
+                <li {% if request.path==url_for('instruments') %} class="dropdown active" {% else %} class="dropdown" {%endif %}>
                     <!-- <a href="{{ url_for('instruments') }}">Instrumente</a> -->
                     <a href="{{ url_for('instruments') }}">Instrumente
                         <span class="caret"></span></a>

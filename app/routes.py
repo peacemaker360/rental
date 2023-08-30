@@ -205,13 +205,24 @@ def rentals():
     return render_template('rentals.html', rentals=rentals, title="Verleihe", search=search)
 
 @app.route('/rentals/new', methods=['GET', 'POST'])
+# Below routes allow pre-selcation of elements based on URL.
+@app.route('/rentals/new/instrument/<int:instrument_id>', methods=['GET', 'POST'])
+@app.route('/rentals/new/customer/<int:customer_id>', methods=['GET', 'POST'])
+@app.route('/rentals/new/instrument/<int:instrument_id>/customer/<int:customer_id>', methods=['GET', 'POST'])
+@app.route('/rentals/new/customer/<int:customer_id>/instrument/<int:instrument_id>', methods=['GET', 'POST'])
 @login_required
-def new_rental():
+def new_rental(instrument_id=None,customer_id=None, ):
     form = RentalForm()
     form.instrument.query = db.session.query(Instrument)
     form.customer.query = db.session.query(Customer)
     form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
     form.instrument.choices = [(i.id, i.name) for i in Instrument.query.order_by('name')]
+
+    # Pre-select choices based on URL arguments, if present
+    if customer_id:
+        form.customer.data = Customer.query.get(customer_id)
+    if instrument_id:
+        form.instrument.data = Instrument.query.get(instrument_id)
 
     if form.validate_on_submit():
         if request.method == 'POST':

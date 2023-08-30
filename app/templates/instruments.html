@@ -57,7 +57,15 @@
             <td>{{ instrument.type }}</td>
             <td>{{ instrument.serial }}</td>
             <td>{{ instrument.price }}</td>
-            <td>{{ instrument.is_available }}</td>
+            <td>
+                {% if instrument.is_available %}
+                <span class="glyphicon glyphicon-ok text-success"></span>&nbsp;
+                {% else %}
+                <span class="glyphicon glyphicon-remove text-danger"></span>&nbsp;
+                {% endif %}
+                <a href="{{ url_for('new_rental', instrument_id=instrument.id) }}"
+                    class="btn btn-default btn-sm {{ '' if instrument.is_available else 'disabled' }}">Rent</a>
+            </td>
             <td>
                 <div class="btn-group" role="group" aria-label="...">
                     <form method="post" action="{{ url_for('delete_instrument', id=instrument.id) }}"
