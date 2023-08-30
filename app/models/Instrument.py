@@ -47,7 +47,7 @@ class Instrument(db.Model):
         else:
              return False
     
-    def search_instruments(keyword, onlyAvailable=False):
+    def search_instruments(keyword):
         # Start with a base query for the search string
         query = Instrument.query.filter(or_(
             Instrument.name.ilike(f'%{keyword}%'),

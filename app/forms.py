@@ -1,5 +1,4 @@
 from datetime import date
-from flask import url_for
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, StringField, PasswordField, FloatField, DateField, SubmitField
 from wtforms.validators import ValidationError, DataRequired, Email, EqualTo, Length, Optional
@@ -56,20 +55,20 @@ class ResetPasswordForm(FlaskForm):
 
 class InstrumentForm(FlaskForm):
     name = StringField('Name', validators=[Optional()], default=None)
-    brand = StringField('Brand', validators=[DataRequired()])
-    type = StringField('Type', validators=[DataRequired()])
-    serial = StringField('Serial', validators=[DataRequired()])
-    description = StringField('Description')
-    price = FloatField('Price', validators=[DataRequired()])
+    brand = StringField('Marke*', validators=[DataRequired()])
+    type = StringField('Typ*', validators=[DataRequired()])
+    serial = StringField('Serial*', validators=[DataRequired()])
+    description = StringField('Beschreibung')
+    price = FloatField('Wert*', validators=[DataRequired()])
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel')
 
 class CustomerForm(FlaskForm):
-    firstname = StringField('Vorname', validators=[DataRequired()])
-    lastname = StringField('nachname', validators=[DataRequired()])
+    firstname = StringField('Vorname*', validators=[DataRequired()])
+    lastname = StringField('Nachname*', validators=[DataRequired()])
     name = StringField('Name', validators=[Optional()], default=None)
-    email = StringField('Email', validators=[DataRequired(), Email()])
-    phone = StringField('Phone', validators=[DataRequired()])
+    email = StringField('Email*', validators=[DataRequired(), Email()])
+    phone = StringField('Phone*', validators=[DataRequired(),])
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel')
 
@@ -86,8 +85,8 @@ class RentalForm(FlaskForm):
                                 validators = [DataRequired()], 
                                 blank_text=u'Select...'
                                 )
-    start_date = DateField('Start Date', format='%Y-%m-%d', validators=[DataRequired()], default=date.today())
-    end_date = DateField('Return (End) Date', format='%Y-%m-%d', validators=[Optional()], default=None )
-    description = StringField('Notes')
+    start_date = DateField('Start Datum*', format='%Y-%m-%d', validators=[DataRequired()], default=date.today())
+    end_date = DateField('Rückgabe (End) Datum*', format='%Y-%m-%d', validators=[Optional()], default=None )
+    description = StringField('Notitz')
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel')

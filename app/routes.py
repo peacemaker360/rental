@@ -52,17 +52,14 @@ def instruments():
         else:
             instruments = Instrument.search_instruments(search)
     else:
-        # Default behavior if 'is_available' parameter is not specified or has invalid value
         instruments = Instrument.query.all()
-     # If filterAvailable is 'true' or 'false', modify the query
+    # If filterAvailable is 'true' or 'false', return a filtered list
     if filterAvailable == 'true':
         instruments = list(filter(lambda i: i.is_available, instruments))
     elif filterAvailable == 'false':
         instruments = list(filter(lambda i: not i.is_available, instruments))
-    #Debugging is_available
-    for instrument in instruments:
-        print(instrument.is_available) 
 
+    # Return a help message, if the retruned instruments list is null or zero.
     if instruments is None or len(instruments) == 0:
         flash('No instrument records found.', 'info')
     return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search, filterAvailable=filterAvailable, stats=stats)
