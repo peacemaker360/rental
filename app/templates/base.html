@@ -30,7 +30,8 @@
         </div>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="nav navbar-nav">
-                <li {% if request.path==url_for('instruments') %} class="dropdown active" {% else %} class="dropdown" {%endif %}>
+                <li {% if request.path==url_for('instruments') %} class="dropdown active" {% else %} class="dropdown"
+                    {%endif %}>
                     <!-- <a href="{{ url_for('instruments') }}">Instrumente</a> -->
                     <a href="{{ url_for('instruments') }}">Instrumente
                         <span class="caret"></span></a>
@@ -65,8 +66,10 @@
                     <ul class="dropdown-menu">
                         <li><a href="{{ url_for('logout') }}">Logout</a></li>
                         {% if current_user.role == 0 %}
+                        <li class="divider"></li>
                         <li><a href="#">Admin Menu</a></li>
                         <li><a href="{{ url_for('resetpassword') }}">Reset user passwords</a></li>
+                        <li><a href="{{ url_for('select_user') }}">Manage users</a></li>
                         {% endif %}
                     </ul>
                 </li>
