@@ -48,6 +48,21 @@ class ResetPasswordForm(FlaskForm):
         'Repeat Password', validators=[DataRequired(), EqualTo('password')])
     submit = SubmitField('Request Password Reset')
 
+class UserSelectForm(FlaskForm):
+    user = QuerySelectField(allow_blank = False, 
+                                  get_label = 'username', 
+                                  validators = [DataRequired()], 
+                                  blank_text=u'Select user...'
+                                  )
+    submit = SubmitField('Select')
+
+class UserConfigForm(FlaskForm):
+    #username = StringField('Username', validators=[DataRequired()])
+    email = StringField('Email', validators=[Optional(), Email()])
+    enabled = BooleanField('Account enabled', default=False)
+    admin = BooleanField('Is admin', default=False)
+    submit = SubmitField('Update')
+
 #################################
 # Forms for custom app 
 # Quelle: aus Unterricht (microblog) mit anpassungen übernommen
