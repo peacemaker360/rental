@@ -15,7 +15,7 @@
     <p>Mit der Navigation oben können die verschiedenen Bereiche und Funktionen verwendet werden.</p>
     {% if current_user.is_authenticated %}
     <hr class="my-4">
-    <p>Die app sieht leer aus? Dann kann mit dem Button unten beispiele generiert werden.</p>
+    <p>Die app sieht leer aus? Dann kann mit dem Button unten Beispiele generiert werden.</p>
     <form method="post" action="{{ url_for('generate_data') }}">
         <button type="submit">Generate Sample Data</button>
     </form>
@@ -30,12 +30,12 @@
     </div>
     <div class="col-md-4">
         <h2>Mitglieder</h2>
-        <p>Über den Mitglieder Bereich werden die die Vereinsmitglieder, welche Instrumente brauchen, verwaltet.</p>
+        <p>Über den Mitgliederbereich werden die Vereinsmitglieder, welche Instrumente benötigen, verwaltet.</p>
         <p><a class="btn btn-default" href="{{ url_for('customers') }}" role="button">View details »</a></p>
     </div>
     <div class="col-md-4">
         <h2>Verleihe</h2>
-        <p>Hier findest du die Übersicht mit allen Verleihen</p>
+        <p>Hier ist die Übersicht aller Verleihe. Erstelle neue oder bearbeiten Sie diese.</p>
         <p><a class="btn btn-default" href="{{ url_for('rentals') }}" role="button">View details »</a></p>
     </div>
 </div>
