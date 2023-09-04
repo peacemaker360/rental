@@ -1,5 +1,5 @@
 # app/__init__.py
-#from config import Config
+#Quelle: Eigenentwicklung
 import os
 from flask import Flask, jsonify, render_template, redirect, request, url_for
 from flask_login import LoginManager, current_user
@@ -8,9 +8,12 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bootstrap import Bootstrap
 from datetime import datetime
 
+# Initiate the app with flask, and set the "static" resoruces folder
 app = Flask(__name__, static_folder='static')
 #app.config.from_object(Config)
 
+# Loads the environment from the config folder depending on if running in azure (prod) or locally (dev)
+# Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/app.py
 if 'WEBSITE_HOSTNAME' not in os.environ:
     # local development, where we'll use environment variables
     print("Loading config.development and environment variables from .env file.")
@@ -26,10 +29,13 @@ app.config.update(
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 
+# Set default config values
 app.config.update(    
     # Pagination settings
-    POSTS_PER_PAGE = 5,
+    ITEMS_PER_PAGE = 5,
     USERS_PER_PAGE = 10,
+    # Search settings
+    SEARCH_REQ_MIN = 3,
 )
 
 # Initiate the db and migrate objects from sqlalchemy

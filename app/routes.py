@@ -11,6 +11,7 @@ from app.models import Instrument, Customer, Rental, RentalHistory
 
 #################
 ## MAIN Routes 
+# Quelle: Übernommen aus den Beispielen
 #################
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/index', methods=['GET', 'POST'])
@@ -28,14 +29,18 @@ def favicon():
                                'favicon.png', mimetype='image/png')
 
 #################
-## Instruments Routes 
+## Instruments Routes
+# Quelle: Eigenentwicklung
 #################
 @app.route('/instruments')
 @login_required
 def instruments():
+    # Get serach string from url parameters
     search = request.args.get('search', '').strip()
+    # Get available filter from url parameters
     filterAvailable = request.args.get('is_available', '').strip().lower()
 
+    # Define a "stats" object which can be passed to the frontend to show some numberts
     total_instruments = Instrument.query.count()
     available_instruments = sum(1 for inst in Instrument.query.all() if inst.is_available)
     unavailable_instruments = total_instruments - available_instruments
@@ -44,10 +49,11 @@ def instruments():
         'available': available_instruments,
         'unavailable': unavailable_instruments
     }
-       
+    
+    # Hanlde the minimum search query length & trigger the search if ok
     if search:
-        if len(search) < 3:
-            flash('Please provide more than 3 search characters', 'info')
+        if len(search) < app.config.get('SEARCH_REQ_MIN'):
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('instruments'))
         else:
             instruments = Instrument.search_instruments(search)
@@ -118,14 +124,15 @@ def delete_instrument(id):
 
 #################
 ## Customer Routes 
+# Quelle: Eigenentwicklung
 #################
 @app.route('/customers')
 @login_required
 def customers():
     search = request.args.get('search', '').strip()
     if search:
-        if len(search) < 3:
-            flash('Please provide more than 3 search characters', 'info')
+        if len(search) < app.config.get('SEARCH_REQ_MIN'):
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('customers'))
         else:
             customers = Customer.search_customers(search)
@@ -187,14 +194,15 @@ def delete_customer(id):
 
 #################
 ## Rentals Routes 
+# Quelle: Eigenentwicklung
 #################
 @app.route('/rentals')
 @login_required
 def rentals():
     search = request.args.get('search', '').strip()
     if search:
-        if len(search) < 3:
-            flash('Please provide more than 3 search characters', 'info')
+        if len(search) < app.config.get('SEARCH_REQ_MIN'):
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('rentals'))
         else:
             rentals = Rental.search_rentals(search)
@@ -213,6 +221,7 @@ def rentals():
 @login_required
 def new_rental(instrument_id=None,customer_id=None, ):
     form = RentalForm()
+    # initialize data for the dropdowns
     form.instrument.query = db.session.query(Instrument)
     form.customer.query = db.session.query(Customer)
     form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
@@ -230,6 +239,7 @@ def new_rental(instrument_id=None,customer_id=None, ):
     if form.validate_on_submit():
         rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id, start_date=form.start_date.data, end_date=form.end_date.data)
         #instrument = Instrument.query.get_or_404(form.instrument.data.id)
+        # Check for availability of the instrument before saving. show info to user.
         if form.instrument.data.is_available is False:
            flash("Rental cannot be placed. Instrument '{}' already in use!".format(form.instrument.data.name), 'danger')
            return redirect(url_for('rentals'))
@@ -298,15 +308,16 @@ def delete_rental(id):
 
 
 #################
-## Histroy Routes 
+## Histroy Routes
+# Quelle: Eigenentwicklung 
 #################
 @app.route('/history')
 @login_required
 def rentals_history():
     search = request.args.get('search', '').strip()
     if search:
-        if len(search) < 3:
-            flash('Please provide more than 3 search characters', 'info')
+        if len(search) < app.config.get('SEARCH_REQ_MIN'):
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('rentals_history'))
         else:
             history = RentalHistory.search_rentalshistory(search)

@@ -3,10 +3,11 @@ from app import app, db
 from .models import Instrument, Customer, Rental
 from datetime import date
 from random import choice
-from flask_login import login_user, logout_user, current_user, login_required
+from flask_login import login_required
 
 ##############################################################
 # SAMPLE DATA
+# Quelle: Eigenentwicklung
 # Help: this endpoint is used to initially generate demo data, if the application is empty
 ##############################################################
 

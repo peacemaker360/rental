@@ -8,7 +8,7 @@ from app.models.User import User
 
 #################################
 # User auth routes
-# Quelle: aus Unterricht (microblog)
+# Quelle: Übernommen aus den Beispielen
 #################################
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -82,7 +82,8 @@ def reset_password(token):
 #                            title='Reset Password', form=form)
 
 #################################
-# Custom Routes
+# Custom Auth / User Routes
+# Quelle: Eigenentwicklung
 #################################
 
 # Endpoint 'resetpassword': Admins sollen user passwörter zurücksetzen können
@@ -109,6 +110,7 @@ def resetpassword():
         return redirect(url_for('login'))
     
 # Endpoint 'usercfg': Admins sollen user enablen/disablen können
+# Erst ein user object auswählen
 @app.route('/usercfg', methods=['GET','POST'])
 @login_required
 def select_user():
@@ -126,6 +128,7 @@ def select_user():
 
     return render_template('user.html', title='User select', form=form)
 
+# Dann die eigenschaftern konfigurieren
 @app.route('/usercfg/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_user(id):

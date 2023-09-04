@@ -6,10 +6,12 @@ from app.models import Customer, Instrument, Rental, RentalHistory
 #################
 ## API
 # Erstellt mit hilfe des modules flask_restful
-# Quelle: https://flask-restful.readthedocs.io/en/latest/quickstart.html
+# Quelle: Eigenentwicklung
+# Docs: https://flask-restful.readthedocs.io/en/latest/quickstart.html
 # Help: flask restful ist ein effizientes modul um REST API für klassen zu erstellen
 #################
 
+# Initiate the api from flask_restful
 api = Api(app)
 
 #################
@@ -49,7 +51,7 @@ rental_fields = {
     'description': fields.String,
     'customer': fields.Nested(customer_fields),  # Nested Customer fields
     'instrument': fields.Nested(instrument_fields),  # Nested Instrument fields
-    #'self': fields.Url('rentalresource', absolute=True)  # Generate URL for specific rental
+    #'self': fields.Url('rentalresource', absolute=True)  # Generate URL for specific rental # => does not work ATM
 }
 
 # Fields for RentalHistory

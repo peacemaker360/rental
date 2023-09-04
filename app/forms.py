@@ -9,7 +9,7 @@ from .models import Instrument, Customer, Rental
 
 #################################
 # Forms for User handling
-# Quelle: aus Unterricht (microblog) mit anpassungen übernommen
+# Quelle: Übernommen aus den Beispielen
 # Help: diese formulare werden für die app user dialoge gebraucht
 #################################
 
@@ -64,8 +64,9 @@ class UserConfigForm(FlaskForm):
     submit = SubmitField('Update')
 
 #################################
-# Forms for custom app 
-# Quelle: aus Unterricht (microblog) mit anpassungen übernommen
+# Forms for rental app 
+# Quelle: Eigenentwicklung
+# Help: dieser forms werden für Instrument(Instrument), Mitgleider(Customer) und Verleihe(Rental) verwendet
 #################################
 
 class InstrumentForm(FlaskForm):

@@ -4,7 +4,7 @@ from app import app,db
 
 #################################
 # Error handling routes
-# Quelle: aus Unterricht (microblog) mit anpassungen übernommen
+# Quelle: Übernommen aus den Beispielen
 #################################
 def error_response(status_code, message=None):
     payload = {'error': HTTP_STATUS_CODES.get(status_code, 'Unknown error')}
