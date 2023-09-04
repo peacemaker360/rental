@@ -3,12 +3,16 @@ from app import app, db
 from .models import Instrument, Customer, Rental
 from datetime import date
 from random import choice
+from flask_login import login_required
 
 ##############################################################
 # SAMPLE DATA
+# Quelle: Eigenentwicklung
+# Help: this endpoint is used to initially generate demo data, if the application is empty
 ##############################################################
 
 @app.route('/generate_data', methods=['GET', 'POST'])
+@login_required
 def generate_data():
     # Check if function might have been alrady triggerd.
     customers = Customer.query.filter_by(email="member0@example.com").first()

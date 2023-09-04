@@ -1,0 +1,9 @@
+/* # Quelle: Eigenentwicklung */
+.dropdown .dropdown-menu {
+    transition-delay: 0s;
+}
+
+.dropdown:hover .dropdown-menu {
+    display: block;
+    transition-delay: 0.5s;
+}
