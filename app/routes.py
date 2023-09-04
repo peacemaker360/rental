@@ -68,10 +68,10 @@ def instruments():
 @login_required
 def new_instrument():
     form = InstrumentForm()
+    if request.method == 'POST':
+        if form.cancel.data:
+            return redirect(url_for('instruments'))
     if form.validate_on_submit():
-        if request.method == 'POST':
-            if form.cancel.data:
-                return redirect(url_for('instruments'))
         instrument = Instrument(name=form.name.data, brand=form.brand.data, type=form.type.data, serial=form.serial.data, description=form.description.data, price=form.price.data)
         db.session.add(instrument)
         db.session.commit()
@@ -139,10 +139,10 @@ def customers():
 @login_required
 def new_customer():
     form = CustomerForm()
+    if request.method == 'POST':
+        if form.cancel.data:
+            return redirect(url_for('customers'))
     if form.validate_on_submit():
-        if request.method == 'POST':
-            if form.cancel.data:
-                return redirect(url_for('customers'))
         customer = Customer(name=form.name.data, firstname=form.firstname.data, lastname=form.lastname.data, email=form.email.data, phone=form.phone.data)
         db.session.add(customer)
         db.session.commit()
@@ -224,10 +224,10 @@ def new_rental(instrument_id=None,customer_id=None, ):
     if instrument_id:
         form.instrument.data = Instrument.query.get(instrument_id)
 
+    if request.method == 'POST':
+        if form.cancel.data:
+            return redirect(url_for('rentals'))
     if form.validate_on_submit():
-        if request.method == 'POST':
-            if form.cancel.data:
-                return redirect(url_for('rentals'))
         rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id, start_date=form.start_date.data, end_date=form.end_date.data)
         #instrument = Instrument.query.get_or_404(form.instrument.data.id)
         if form.instrument.data.is_available is False:

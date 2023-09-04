@@ -76,7 +76,7 @@ class InstrumentForm(FlaskForm):
     description = StringField('Beschreibung')
     price = FloatField('Wert*', validators=[DataRequired()])
     submit = SubmitField('Ok')
-    cancel = SubmitField('Cancel')
+    cancel = SubmitField('Cancel', render_kw={'onclick': 'this.form.noValidate = true;'})
 
 class CustomerForm(FlaskForm):
     firstname = StringField('Vorname*', validators=[DataRequired()])
@@ -85,7 +85,7 @@ class CustomerForm(FlaskForm):
     email = StringField('Email*', validators=[DataRequired(), Email()])
     phone = StringField('Phone*', validators=[DataRequired(),])
     submit = SubmitField('Ok')
-    cancel = SubmitField('Cancel')
+    cancel = SubmitField('Cancel', render_kw={'onclick': 'this.form.noValidate = true;'})
 
 class RentalForm(FlaskForm):
     #instrument = StringField('Instrument', validators=[DataRequired()])
@@ -104,4 +104,4 @@ class RentalForm(FlaskForm):
     end_date = DateField('Rückgabe (End) Datum*', format='%Y-%m-%d', validators=[Optional()], default=None )
     description = StringField('Notitz')
     submit = SubmitField('Ok')
-    cancel = SubmitField('Cancel')
+    cancel = SubmitField('Cancel', render_kw={'onclick': 'this.form.noValidate = true;'})
