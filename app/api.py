@@ -1,7 +1,8 @@
 from flask_restful import Api, Resource, abort, fields, marshal_with, marshal, reqparse
-from flask_login import login_required
-from app import app, db
+#from flask_login import login_required
+from app import app, db, basic_auth
 from app.models import Customer, Instrument, Rental, RentalHistory
+
 
 #################
 ## API
@@ -78,12 +79,14 @@ parser.add_argument('phone', type=str, required=True, help='Phone cannot be blan
 ## Definitions
 #################
 class CustomerListResource(Resource):
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     def get(self):
         customers = Customer.query.all()
         return marshal(customers, customer_fields)  # Using marshal directly since it's a list
     
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     @marshal_with(customer_fields)
     def post(self):
         args = parser.parse_args()
@@ -110,19 +113,22 @@ class CustomerListResource(Resource):
         return customer, 201
 
 class InstrumentListResource(Resource):
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     def get(self):
         instruments = Instrument.query.all()
         return marshal(instruments, instrument_fields) 
     
 class RentalListResource(Resource):
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     def get(self):
         rentals = Rental.query.all()
         return marshal(rentals, rental_fields) 
 
 class CustomerResource(Resource):
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     @marshal_with(customer_fields)
     def get(self, customer_id):
         customer = Customer.query.get(customer_id)
@@ -130,7 +136,8 @@ class CustomerResource(Resource):
             abort(404, message="Customer not found")
         return customer
     
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     def delete(self, customer_id):
         # Retrieve the customer by ID
         customer = Customer.query.get(customer_id)
@@ -146,7 +153,8 @@ class CustomerResource(Resource):
         return {'message': 'Customer deleted successfully'}, 200
 
 class InstrumentResource(Resource):
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     @marshal_with(instrument_fields)
     def get(self, instrument_id):
         instrument = Instrument.query.get(instrument_id)
@@ -154,7 +162,8 @@ class InstrumentResource(Resource):
             abort(404, message="Instrument not found")
         return instrument
     
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     def delete(self, instrument_id):
         # Retrieve the instrument by ID
         instrument = Instrument.query.get(instrument_id)
@@ -170,7 +179,8 @@ class InstrumentResource(Resource):
         return {'message': 'Instrument deleted successfully'}, 200
     
 class RentalResource(Resource):
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     @marshal_with(rental_fields)
     def get(self, rental_id):
         rental = Rental.query.get(rental_id)
@@ -180,7 +190,8 @@ class RentalResource(Resource):
     
 
 class RentalHistoryListResource(Resource):
-    @login_required
+    #@login_required
+    @basic_auth.login_required
     def get(self):
         rentalHistory = RentalHistory.query.all()
         return marshal(rentalHistory, rentalHistory_fields)  # Using marshal directly since it's a list

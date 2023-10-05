@@ -2,7 +2,7 @@
 # Quelle: Übernommen aus den Beispielen
 
 from datetime import datetime, timedelta
-from app import app, db, login
+from app import app, db, login, basic_auth
 from flask import url_for
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -14,6 +14,15 @@ import os
 @login.user_loader
 def load_user(id):
     return User.query.get(int(id))
+
+@basic_auth.verify_password
+def verify_password(username, password):
+    #result = User.do_basicauth(username, password)
+    #return result
+    user = User.query.filter_by(username=username).first()
+    if user and user.check_password(password):
+        return user
+    return None
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -35,6 +44,12 @@ class User(UserMixin, db.Model):
 
     def check_password(self,password):
         return check_password_hash(self.password_hash,password)
+    
+    def do_basicauth(username,password):
+        user = User.query.filter_by(username=username).first()
+        if user and user.check_password(password):
+            return user
+        return None
 
     #Reset password via mail logic
     def get_reset_password_token(self, expires_in=600):

@@ -3,6 +3,7 @@
 import os
 from flask import Flask, jsonify, render_template, redirect, request, url_for
 from flask_login import LoginManager, current_user
+from flask_httpauth import HTTPBasicAuth
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_bootstrap import Bootstrap
@@ -46,6 +47,11 @@ migrate = Migrate(app,db)
 login = LoginManager(app)
 login.login_view = 'login'
 
+basic_auth = HTTPBasicAuth()
+@basic_auth.error_handler
+def basic_auth_error(status):
+    return errors.error_response(status)
+
 # Load the Bootstrap framwork from the module
 bootstrap = Bootstrap(app)
 
@@ -53,10 +59,10 @@ bootstrap = Bootstrap(app)
 #db.create_all()
 
 # This endpoint ensures all request to /api are protected with login and if not a 401 error is returned
-@app.before_request
-def api_auth():
-    if request.path.startswith('/api') and not current_user.is_authenticated:
-        return jsonify({'error': 'Unauthorized', 'message': 'Please log in to access this resource.'}), 401
+# @app.before_request
+# def api_auth():
+#     if request.path.startswith('/api') and not current_user.is_authenticated:
+#         return jsonify({'error': 'Unauthorized', 'message': 'Please log in to access this resource.'}), 401
 
 # import all outsourced python files, so that init remains as clean as possible
 from app import models, errors, routes, auth, api, sampledata #, views
