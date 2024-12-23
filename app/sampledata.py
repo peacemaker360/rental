@@ -1,9 +1,11 @@
-from flask import flash, redirect, url_for
-from app import app, db
-from .models import Instrument, Customer, Rental
 from datetime import date
 from random import choice
+from flask import current_app as app
+from flask import flash, redirect, url_for
 from flask_login import login_required
+
+from app import db
+from app.models import Instrument, Customer, Rental
 
 ##############################################################
 # SAMPLE DATA

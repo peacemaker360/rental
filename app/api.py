@@ -1,10 +1,12 @@
+from flask import current_app as app
 from flask_restful import Api, Resource, abort, fields, marshal_with, marshal, reqparse
 from flask_login import login_required
-from app import app, db
+
+from app import db
 from app.models import Customer, Instrument, Rental, RentalHistory
 
 #################
-## API
+# API
 # Erstellt mit hilfe des modules flask_restful
 # Quelle: Eigenentwicklung
 # Docs: https://flask-restful.readthedocs.io/en/latest/quickstart.html
@@ -15,7 +17,7 @@ from app.models import Customer, Instrument, Rental, RentalHistory
 api = Api(app)
 
 #################
-## Fields overloading
+# Fields overloading
 # Help: wird genutzt, damit z.b. nicht alle felder eines objekts/klasse in der API gelistet wird
 #################
 
@@ -27,7 +29,8 @@ customer_fields = {
     'lastname': fields.String,
     'email': fields.String,
     'phone': fields.String,
-    'created': fields.DateTime(dt_format='rfc822')  # Using RFC 822 format for datetime
+    # Using RFC 822 format for datetime
+    'created': fields.DateTime(dt_format='rfc822')
 }
 
 # Fields for Instrument
@@ -51,7 +54,7 @@ rental_fields = {
     'description': fields.String,
     'customer': fields.Nested(customer_fields),  # Nested Customer fields
     'instrument': fields.Nested(instrument_fields),  # Nested Instrument fields
-    #'self': fields.Url('rentalresource', absolute=True)  # Generate URL for specific rental # => does not work ATM
+    # 'self': fields.Url('rentalresource', absolute=True)  # Generate URL for specific rental # => does not work ATM
 }
 
 # Fields for RentalHistory
@@ -62,32 +65,37 @@ rentalHistory_fields = {
 }
 
 #################
-## Params parser
+# Params parser
 # Help: wird genutzt, bei post/put inputs korrekt geparsed werden
 #################
 # Define the parser for the Customer model
 parser = reqparse.RequestParser()
 parser.add_argument('name', type=str)  # Not required anymore
-parser.add_argument('firstname', type=str, required=True, help='First name cannot be blank')
-parser.add_argument('lastname', type=str, required=True, help='Last name cannot be blank')
-parser.add_argument('email', type=str, required=True, help='Email cannot be blank')
-parser.add_argument('phone', type=str, required=True, help='Phone cannot be blank')
+parser.add_argument('firstname', type=str, required=True,
+                    help='First name cannot be blank')
+parser.add_argument('lastname', type=str, required=True,
+                    help='Last name cannot be blank')
+parser.add_argument('email', type=str, required=True,
+                    help='Email cannot be blank')
+parser.add_argument('phone', type=str, required=True,
+                    help='Phone cannot be blank')
 
 
 #################
-## Definitions
+# Definitions
 #################
 class CustomerListResource(Resource):
     @login_required
     def get(self):
         customers = Customer.query.all()
-        return marshal(customers, customer_fields)  # Using marshal directly since it's a list
-    
+        # Using marshal directly since it's a list
+        return marshal(customers, customer_fields)
+
     @login_required
     @marshal_with(customer_fields)
     def post(self):
         args = parser.parse_args()
-        
+
         # Create a new customer instance
         customer = Customer(
             name=args.get('name') or f"{args['firstname']} {args['lastname']}",
@@ -96,7 +104,7 @@ class CustomerListResource(Resource):
             email=args['email'],
             phone=args['phone']
         )
-        
+
         # Try add the new customer to the database
         try:
             db.session.add(customer)
@@ -105,21 +113,24 @@ class CustomerListResource(Resource):
             db.session.rollback()
             print(e)
             abort(500, message="An error occurred while processing your request.")
-        
+
         # Return the newly created customer
         return customer, 201
+
 
 class InstrumentListResource(Resource):
     @login_required
     def get(self):
         instruments = Instrument.query.all()
-        return marshal(instruments, instrument_fields) 
-    
+        return marshal(instruments, instrument_fields)
+
+
 class RentalListResource(Resource):
     @login_required
     def get(self):
         rentals = Rental.query.all()
-        return marshal(rentals, rental_fields) 
+        return marshal(rentals, rental_fields)
+
 
 class CustomerResource(Resource):
     @login_required
@@ -129,21 +140,22 @@ class CustomerResource(Resource):
         if not customer:
             abort(404, message="Customer not found")
         return customer
-    
+
     @login_required
     def delete(self, customer_id):
         # Retrieve the customer by ID
         customer = Customer.query.get(customer_id)
-        
+
         # Check if the customer exists
         if not customer:
             abort(404, message="Customer not found")
-        
+
         # Delete the customer from the database
         db.session.delete(customer)
         db.session.commit()
-        
+
         return {'message': 'Customer deleted successfully'}, 200
+
 
 class InstrumentResource(Resource):
     @login_required
@@ -153,22 +165,23 @@ class InstrumentResource(Resource):
         if not instrument:
             abort(404, message="Instrument not found")
         return instrument
-    
+
     @login_required
     def delete(self, instrument_id):
         # Retrieve the instrument by ID
         instrument = Instrument.query.get(instrument_id)
-        
+
         # Check if the instrument exists
         if not instrument:
             abort(404, message="Instrument not found")
-        
+
         # Delete the instrument from the database
         db.session.delete(instrument)
         db.session.commit()
-        
+
         return {'message': 'Instrument deleted successfully'}, 200
-    
+
+
 class RentalResource(Resource):
     @login_required
     @marshal_with(rental_fields)
@@ -177,21 +190,20 @@ class RentalResource(Resource):
         if not rental:
             abort(404, message="Rental not found")
         return rental
-    
+
 
 class RentalHistoryListResource(Resource):
     @login_required
     def get(self):
         rentalHistory = RentalHistory.query.all()
-        return marshal(rentalHistory, rentalHistory_fields)  # Using marshal directly since it's a list
-
+        # Using marshal directly since it's a list
+        return marshal(rentalHistory, rentalHistory_fields)
 
 
 #################
-## API Resources (routes)
+# API Resources (routes)
 #################
 # Associate resources with routes
-
 api.add_resource(CustomerListResource, '/api/customers/')
 api.add_resource(InstrumentListResource, '/api/instruments/')
 api.add_resource(RentalListResource, '/api/rentals/')

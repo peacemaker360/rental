@@ -3,8 +3,10 @@
 
 from datetime import date, datetime
 from sqlalchemy import or_, event
-from app import db
 from sqlalchemy.orm import Session
+
+from app import db
+
 
 class RentalHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -42,7 +42,7 @@
                     <ul class="dropdown-menu">
                         <li><a href="{{ url_for('instruments' )}}">Alle</a></li>
                         <li><a href="{{ url_for('instruments', is_available=true) }}">Im Lager</a></li>
-                        <li><a href="{{ url_for('instruments', is_available=false) }}">Verliehen</a></li>
+                        <li><a href="{{ url_for('instruments', is_available=false) }}">In Gebrauch</a></li>
                     </ul>
                 </li>
                 <li {% if request.path==url_for('customers') %} class="active" {% endif %}>
