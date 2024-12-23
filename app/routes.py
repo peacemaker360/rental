@@ -1,16 +1,19 @@
 import os
+from datetime import date, datetime
 from random import choice
 from sqlalchemy import and_, or_
-from app import app, db
 from .forms import InstrumentForm, CustomerForm, RentalForm
+from flask import current_app as app
 from flask import flash, jsonify, redirect, render_template, send_from_directory, url_for, request
 from flask_login import login_user, logout_user, current_user, login_required
-from datetime import date, datetime
+
+from app import db
 from app.models import Instrument, Customer, Rental, RentalHistory
 
 
 #################
-## MAIN Routes 
+# MAIN Routes
+# Quelle: Übernommen aus den Beispielen
 #################
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/index', methods=['GET', 'POST'])
@@ -19,47 +22,77 @@ def index():
 
 
 #################
-## Files
-#################
+# Files
 # Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/app.py
+#################
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'),
                                'favicon.png', mimetype='image/png')
 
 #################
-## Instruments Routes 
+# Instruments Routes
+# Quelle: Eigenentwicklung
 #################
+
+
 @app.route('/instruments')
 @login_required
 def instruments():
+    # Get serach string from url parameters
     search = request.args.get('search', '').strip()
+    # Get available filter from url parameters
+    filterAvailable = request.args.get('is_available', '').strip().lower()
+
+    # Define a "stats" object which can be passed to the frontend to show some numberts
+    total_instruments = Instrument.query.count()
+    available_instruments = sum(
+        1 for inst in Instrument.query.all() if inst.is_available)
+    unavailable_instruments = total_instruments - available_instruments
+    stats = {
+        'total': total_instruments,
+        'available': available_instruments,
+        'unavailable': unavailable_instruments
+    }
+
+    # Hanlde the minimum search query length & trigger the search if ok
     if search:
-        if len(search) < 3:
-            flash('Please provide more than 3 search characters', 'info')
+        if len(search) < app.config.get('SEARCH_REQ_MIN'):
+            flash("Please provide more than {0} search characters".format(
+                app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('instruments'))
         else:
             instruments = Instrument.search_instruments(search)
     else:
         instruments = Instrument.query.all()
+    # If filterAvailable is 'true' or 'false', return a filtered list
+    if filterAvailable == 'true':
+        instruments = list(filter(lambda i: i.is_available, instruments))
+    elif filterAvailable == 'false':
+        instruments = list(filter(lambda i: not i.is_available, instruments))
+
+    # Return a help message, if the retruned instruments list is null or zero.
     if instruments is None or len(instruments) == 0:
         flash('No instrument records found.', 'info')
-    return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search)
+    return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search, filterAvailable=filterAvailable, stats=stats)
+
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
 @login_required
 def new_instrument():
     form = InstrumentForm()
+    if request.method == 'POST':
+        if form.cancel.data:
+            return redirect(url_for('instruments'))
     if form.validate_on_submit():
-        if request.method == 'POST':
-            if form.cancel.data:
-                return redirect(url_for('instruments'))
-        instrument = Instrument(name=form.name.data, brand=form.brand.data, type=form.type.data, serial=form.serial.data, description=form.description.data, price=form.price.data)
+        instrument = Instrument(name=form.name.data, brand=form.brand.data, type=form.type.data,
+                                serial=form.serial.data, description=form.description.data, price=form.price.data)
         db.session.add(instrument)
         db.session.commit()
         flash('Instrument created successfully!', 'success')
         return redirect(url_for('instruments'))
     return render_template('instrument_form.html', form=form, action='Add')
+
 
 @app.route('/instruments/<int:id>')
 @login_required
@@ -67,6 +100,7 @@ def view_instrument(id):
     instrument = Instrument.query.get_or_404(id)
     instrumentHistory = RentalHistory.getBy_instrumentId(id)
     return render_template('instrument.html', instrument=instrument, history=instrumentHistory)
+
 
 @app.route('/instruments/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -88,6 +122,7 @@ def edit_instrument(id):
         return redirect(url_for('instruments'))
     return render_template('instrument_form.html', form=form, action='Edit')
 
+
 @app.route('/instruments/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_instrument(id):
@@ -99,15 +134,17 @@ def delete_instrument(id):
 
 
 #################
-## Customer Routes 
+# Customer Routes
+# Quelle: Eigenentwicklung
 #################
 @app.route('/customers')
 @login_required
 def customers():
     search = request.args.get('search', '').strip()
     if search:
-        if len(search) < 3:
-            flash('Please provide more than 3 search characters', 'info')
+        if len(search) < app.config.get('SEARCH_REQ_MIN'):
+            flash("Please provide more than {0} search characters".format(
+                app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('customers'))
         else:
             customers = Customer.search_customers(search)
@@ -117,26 +154,30 @@ def customers():
         flash('No customer records found.', 'info')
     return render_template('customers.html', customers=customers, title="Mitglieder", search=search)
 
+
 @app.route('/customers/new', methods=['GET', 'POST'])
 @login_required
 def new_customer():
     form = CustomerForm()
+    if request.method == 'POST':
+        if form.cancel.data:
+            return redirect(url_for('customers'))
     if form.validate_on_submit():
-        if request.method == 'POST':
-            if form.cancel.data:
-                return redirect(url_for('customers'))
-        customer = Customer(name=form.name.data, firstname=form.firstname.data, lastname=form.lastname.data, email=form.email.data, phone=form.phone.data)
+        customer = Customer(name=form.name.data, firstname=form.firstname.data,
+                            lastname=form.lastname.data, email=form.email.data, phone=form.phone.data)
         db.session.add(customer)
         db.session.commit()
         flash('Customer created successfully!', 'success')
         return redirect(url_for('customers'))
     return render_template('customer_form.html', form=form, action='New')
 
+
 @app.route('/customers/<int:id>')
 @login_required
 def view_customer(id):
     customer = Customer.query.get_or_404(id)
     return render_template('customer.html', customer=customer)
+
 
 @app.route('/customers/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -157,6 +198,7 @@ def edit_customer(id):
         return redirect(url_for('customers'))
     return render_template('customer_form.html', form=form, action='Edit')
 
+
 @app.route('/customers/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_customer(id):
@@ -168,15 +210,17 @@ def delete_customer(id):
 
 
 #################
-## Rentals Routes 
+# Rentals Routes
+# Quelle: Eigenentwicklung
 #################
 @app.route('/rentals')
 @login_required
 def rentals():
     search = request.args.get('search', '').strip()
     if search:
-        if len(search) < 3:
-            flash('Please provide more than 3 search characters', 'info')
+        if len(search) < app.config.get('SEARCH_REQ_MIN'):
+            flash("Please provide more than {0} search characters".format(
+                app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('rentals'))
         else:
             rentals = Rental.search_rentals(search)
@@ -186,24 +230,42 @@ def rentals():
         flash('No rental records found.', 'info')
     return render_template('rentals.html', rentals=rentals, title="Verleihe", search=search)
 
+
 @app.route('/rentals/new', methods=['GET', 'POST'])
+# Below routes allow pre-selcation of elements based on URL.
+@app.route('/rentals/new/instrument/<int:instrument_id>', methods=['GET', 'POST'])
+@app.route('/rentals/new/customer/<int:customer_id>', methods=['GET', 'POST'])
+@app.route('/rentals/new/instrument/<int:instrument_id>/customer/<int:customer_id>', methods=['GET', 'POST'])
+@app.route('/rentals/new/customer/<int:customer_id>/instrument/<int:instrument_id>', methods=['GET', 'POST'])
 @login_required
-def new_rental():
+def new_rental(instrument_id=None, customer_id=None, ):
     form = RentalForm()
+    # initialize data for the dropdowns
     form.instrument.query = db.session.query(Instrument)
     form.customer.query = db.session.query(Customer)
-    form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
-    form.instrument.choices = [(i.id, i.name) for i in Instrument.query.order_by('name')]
+    form.customer.choices = [(c.id, c.name)
+                             for c in Customer.query.order_by('name')]
+    form.instrument.choices = [(i.id, i.name)
+                               for i in Instrument.query.order_by('name')]
 
+    # Pre-select choices based on URL arguments, if present
+    if customer_id:
+        form.customer.data = Customer.query.get(customer_id)
+    if instrument_id:
+        form.instrument.data = Instrument.query.get(instrument_id)
+
+    if request.method == 'POST':
+        if form.cancel.data:
+            return redirect(url_for('rentals'))
     if form.validate_on_submit():
-        if request.method == 'POST':
-            if form.cancel.data:
-                return redirect(url_for('rentals'))
-        rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id, start_date=form.start_date.data, end_date=form.end_date.data)
-        #instrument = Instrument.query.get_or_404(form.instrument.data.id)
-        if form.instrument.data.is_available() is False:
-           flash("Rental cannot be placed. Instrument '{}' already in use!".format(form.instrument.data.name), 'danger')
-           return redirect(url_for('rentals'))
+        rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id,
+                        start_date=form.start_date.data, end_date=form.end_date.data)
+        # instrument = Instrument.query.get_or_404(form.instrument.data.id)
+        # Check for availability of the instrument before saving. show info to user.
+        if form.instrument.data.is_available is False:
+            flash("Rental cannot be placed. Instrument '{}' already in use!".format(
+                form.instrument.data.name), 'danger')
+            return redirect(url_for('rentals'))
         try:
             db.session.add(rental)
             db.session.commit()
@@ -219,11 +281,13 @@ def new_rental():
         return redirect(url_for('rentals'))
     return render_template('rental_form.html', form=form, action='New')
 
+
 @app.route('/rentals/<int:id>')
 @login_required
 def view_rental(id):
     rental = Rental.query.get_or_404(id)
     return render_template('rental.html', rental=rental)
+
 
 @app.route('/rentals/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
@@ -233,8 +297,10 @@ def edit_rental(id):
     form.instrument.query = db.session.query(Instrument)
     form.customer.query = db.session.query(Customer)
     if request.method == 'GET':
-        form.customer.choices = [(c.id, c.name) for c in Customer.query.order_by('name')]
-        form.instrument.choices = [(i.id, i.name) for i in Instrument.query.order_by('name')]
+        form.customer.choices = [(c.id, c.name)
+                                 for c in Customer.query.order_by('name')]
+        form.instrument.choices = [(i.id, i.name)
+                                   for i in Instrument.query.order_by('name')]
     if form.validate_on_submit():
         if request.method == 'POST':
             if form.cancel.data:
@@ -258,6 +324,7 @@ def edit_rental(id):
         return redirect(url_for('rentals'))
     return render_template('rental_form.html', form=form, action='Edit')
 
+
 @app.route('/rentals/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_rental(id):
@@ -269,20 +336,23 @@ def delete_rental(id):
 
 
 #################
-## Histroy Routes 
+# Histroy Routes
+# Quelle: Eigenentwicklung
 #################
 @app.route('/history')
 @login_required
 def rentals_history():
     search = request.args.get('search', '').strip()
     if search:
-        if len(search) < 3:
-            flash('Please provide more than 3 search characters', 'info')
+        if len(search) < app.config.get('SEARCH_REQ_MIN'):
+            flash("Please provide more than {0} search characters".format(
+                app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('rentals_history'))
         else:
             history = RentalHistory.search_rentalshistory(search)
     else:
-        history = RentalHistory.query.order_by(RentalHistory.timestamp.desc()).all()
+        history = RentalHistory.query.order_by(
+            RentalHistory.timestamp.desc()).all()
     if history is None or len(history) == 0:
         flash('No history records found.', 'info')
     return render_template('history.html', history=history, title="History", search=search)

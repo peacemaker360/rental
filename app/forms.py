@@ -1,5 +1,4 @@
 from datetime import date
-from flask import url_for
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, StringField, PasswordField, FloatField, DateField, SubmitField
 from wtforms.validators import ValidationError, DataRequired, Email, EqualTo, Length, Optional
@@ -8,8 +7,11 @@ from wtforms_sqlalchemy.fields import QuerySelectField
 from app.models.User import User
 from .models import Instrument, Customer, Rental
 
+#################################
 # Forms for User handling
-# Quelle: Unterricht (microblog)
+# Quelle: Übernommen aus den Beispielen
+# Help: diese formulare werden für die app user dialoge gebraucht
+#################################
 
 class LoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
@@ -35,12 +37,9 @@ class RegistrationForm(FlaskForm):
         if user is not None:
             raise ValidationError('Please use a different email address.')
 
-# Forms for App logic
-
 class ResetPasswordRequestForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
     submit = SubmitField('Request Password Reset')
-
 
 class ResetPasswordForm(FlaskForm):
     email = StringField('Email', validators=[DataRequired(), Email()])
@@ -49,24 +48,45 @@ class ResetPasswordForm(FlaskForm):
         'Repeat Password', validators=[DataRequired(), EqualTo('password')])
     submit = SubmitField('Request Password Reset')
 
+class UserSelectForm(FlaskForm):
+    user = QuerySelectField(allow_blank = False, 
+                                  get_label = 'username', 
+                                  validators = [DataRequired()], 
+                                  blank_text=u'Select user...'
+                                  )
+    submit = SubmitField('Select')
+
+class UserConfigForm(FlaskForm):
+    #username = StringField('Username', validators=[DataRequired()])
+    email = StringField('Email', validators=[Optional(), Email()])
+    enabled = BooleanField('Account enabled', default=False)
+    admin = BooleanField('Is admin', default=False)
+    submit = SubmitField('Update')
+
+#################################
+# Forms for rental app 
+# Quelle: Eigenentwicklung
+# Help: dieser forms werden für Instrument(Instrument), Mitgleider(Customer) und Verleihe(Rental) verwendet
+#################################
+
 class InstrumentForm(FlaskForm):
     name = StringField('Name', validators=[Optional()], default=None)
-    brand = StringField('Brand', validators=[DataRequired()])
-    type = StringField('Type', validators=[DataRequired()])
-    serial = StringField('Serial', validators=[DataRequired()])
-    description = StringField('Description')
-    price = FloatField('Price', validators=[DataRequired()])
+    brand = StringField('Marke*', validators=[DataRequired()])
+    type = StringField('Typ*', validators=[DataRequired()])
+    serial = StringField('Serial*', validators=[DataRequired()])
+    description = StringField('Beschreibung')
+    price = FloatField('Wert*', validators=[DataRequired()])
     submit = SubmitField('Ok')
-    cancel = SubmitField('Cancel')
+    cancel = SubmitField('Cancel', render_kw={'onclick': 'this.form.noValidate = true;'})
 
 class CustomerForm(FlaskForm):
-    firstname = StringField('Vorname', validators=[DataRequired()])
-    lastname = StringField('nachname', validators=[DataRequired()])
+    firstname = StringField('Vorname*', validators=[DataRequired()])
+    lastname = StringField('Nachname*', validators=[DataRequired()])
     name = StringField('Name', validators=[Optional()], default=None)
-    email = StringField('Email', validators=[DataRequired(), Email()])
-    phone = StringField('Phone', validators=[DataRequired()])
+    email = StringField('Email*', validators=[DataRequired(), Email()])
+    phone = StringField('Phone*', validators=[DataRequired(),])
     submit = SubmitField('Ok')
-    cancel = SubmitField('Cancel')
+    cancel = SubmitField('Cancel', render_kw={'onclick': 'this.form.noValidate = true;'})
 
 class RentalForm(FlaskForm):
     #instrument = StringField('Instrument', validators=[DataRequired()])
@@ -81,8 +101,8 @@ class RentalForm(FlaskForm):
                                 validators = [DataRequired()], 
                                 blank_text=u'Select...'
                                 )
-    start_date = DateField('Start Date', format='%Y-%m-%d', validators=[DataRequired()], default=date.today())
-    end_date = DateField('Return (End) Date', format='%Y-%m-%d', validators=[Optional()], default=None )
-    description = StringField('Notes')
+    start_date = DateField('Start Datum*', format='%Y-%m-%d', validators=[DataRequired()], default=date.today())
+    end_date = DateField('Rückgabe (End) Datum*', format='%Y-%m-%d', validators=[Optional()], default=None )
+    description = StringField('Notitz')
     submit = SubmitField('Ok')
-    cancel = SubmitField('Cancel')
+    cancel = SubmitField('Cancel', render_kw={'onclick': 'this.form.noValidate = true;'})

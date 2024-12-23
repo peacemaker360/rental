@@ -1,3 +1,4 @@
+<!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
 
 {% block app_content %}
@@ -8,8 +9,18 @@
     </div>
 </div>
 <div class="row">
-    <div class="col-md-8">
-        <a href="{{ url_for('new_instrument') }}" class="btn btn-primary mb-3">New Instrument</a>
+    <div class="col-md-2">
+        <a href="{{ url_for('new_instrument') }}" class="btn btn-primary mb-3">Erfassen</a>
+    </div>
+    <div class="col-md-6">
+        <ul class="nav nav-pills" role="tablist">
+            <li role="presentation"><a href="{{ url_for('instruments', is_available=true) }}">Verfügbar
+                    <span class="badge">{{ stats.available }}</span></a></li>
+            <li role="presentation"><a href="{{ url_for('instruments', is_available=false) }}">Ausgeliehen
+                    <span class="badge">{{ stats.unavailable }}</span></a></li>
+            <li role="presentation"><a href="{{ url_for('instruments') }}">Alle
+                    <span class="badge">{{ stats.total }}</span></a></li>
+        </ul>
     </div>
     <div class="col-md-4 text-right">
         <form class="form-inline float-right" method="GET" action="{{ url_for('instruments') }}">
@@ -47,7 +58,15 @@
             <td>{{ instrument.type }}</td>
             <td>{{ instrument.serial }}</td>
             <td>{{ instrument.price }}</td>
-            <td>{{ instrument.is_available() }}</td>
+            <td>
+                {% if instrument.is_available %}
+                <span class="glyphicon glyphicon-ok text-success"></span>&nbsp;
+                {% else %}
+                <span class="glyphicon glyphicon-remove text-danger"></span>&nbsp;
+                {% endif %}
+                <a href="{{ url_for('new_rental', instrument_id=instrument.id) }}"
+                    class="btn btn-default btn-sm {{ '' if instrument.is_available else 'disabled' }}">Rent</a>
+            </td>
             <td>
                 <div class="btn-group" role="group" aria-label="...">
                     <form method="post" action="{{ url_for('delete_instrument', id=instrument.id) }}"

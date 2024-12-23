@@ -1,5 +1,6 @@
 import os
 
+# Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/azureproject/__init__.py
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv('SECRET_KEY')
 

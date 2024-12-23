@@ -1,5 +1,8 @@
+# app/models/Customer.py
+# Quelle: Eigenentwicklung, in anlehnung an Unterrichst bsp.
+
 from datetime import date, datetime
-from sqlalchemy import or_, event
+from sqlalchemy import or_
 from app import db
 
 
@@ -10,8 +13,9 @@ class Customer(db.Model):
     lastname = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(120), index=True, unique=True)
     phone = db.Column(db.String(20), nullable=False)
-    rental = db.relationship('Rental', backref='customer', lazy=True)
     created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    
+    rental = db.relationship('Rental', backref='customer', lazy=True)
 
     def __repr__(self):
         return str(self.id)

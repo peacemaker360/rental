@@ -1,8 +1,9 @@
 
 **/__pycache__
+migrations/*.ini
+_temp/
 logs
 Lib
 Scripts
 Include
 app.db
-migrations/
