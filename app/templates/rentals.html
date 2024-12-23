@@ -1,3 +1,4 @@
+<!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
 
 {% block app_content %}
@@ -9,7 +10,7 @@
 </div>
 <div class="row">
     <div class="col-md-8">
-        <a href="{{ url_for('new_rental') }}" class="btn btn-primary mb-3">New Rental</a>
+        <a href="{{ url_for('new_rental') }}" class="btn btn-primary mb-3">Erfassen</a>
     </div>
     <div class="col-md-4 text-right">
         <form class="form-inline float-right" method="GET" action="{{ url_for('rentals') }}">

@@ -1,56 +1,72 @@
 # app/__init__.py
-#from config import Config
+# Quelle: Eigenentwicklung
 import os
-from flask import Flask, jsonify, render_template, redirect, request, url_for
-from flask_login import LoginManager, current_user
-from flask_migrate import Migrate
+from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_login import LoginManager
 from flask_bootstrap import Bootstrap
-from datetime import datetime
 
-app = Flask(__name__, static_folder='static')
-#app.config.from_object(Config)
+# Initialize extensions
+db = SQLAlchemy()
+migrate = Migrate(db)
+login = LoginManager()
+bootstrap = Bootstrap()
 
-if 'WEBSITE_HOSTNAME' not in os.environ:
-    # local development, where we'll use environment variables
-    print("Loading config.development and environment variables from .env file.")
-    app.config.from_object('config.development')
-else:
-    # production
-    print("Loading config.production.")
-    app.config.from_object('config.production')
 
-# Quelle: https://github.com/Azure-Samples/msdocs-flask-postgresql-sample-app/blob/main/app.py
-app.config.update(
-    SQLALCHEMY_DATABASE_URI=app.config.get('DATABASE_URI'),
-    SQLALCHEMY_TRACK_MODIFICATIONS=False,
-)
+def create_app():
+    app = Flask(__name__, static_folder='static')
 
-app.config.update(    
-    # Pagination settings
-    POSTS_PER_PAGE = 5,
-    USERS_PER_PAGE = 10,
-)
+    # Determine the configuration based on the environment
+    if 'WEBSITE_HOSTNAME' not in os.environ:
+        # Local development
+        # Default to 'development' if ENV is not set
+        env = os.getenv('ENV', 'development')
+        if env == 'local':
+            print("Loading config.local and environment variables from .env file.")
+            app.config.from_object('config.local')
+        else:
+            print("Loading config.development and environment variables from .env file.")
+            app.config.from_object('config.development')
+    else:
+        # Production
+        print("Loading config.production.")
+        app.config.from_object('config.production')
 
-# Initiate the db and migrate objects from sqlalchemy
-db = SQLAlchemy(app)
-migrate = Migrate(app,db)
+    # Update SQLAlchemy settings
+    app.config.update(
+        SQLALCHEMY_DATABASE_URI=app.config.get('DATABASE_URI'),
+        SQLALCHEMY_TRACK_MODIFICATIONS=True,
+        # Pagination settings
+        ITEMS_PER_PAGE=5,
+        USERS_PER_PAGE=10,
+        # Search settings
+        SEARCH_REQ_MIN=3,
+    )
 
-# Initiate the login manger
-login = LoginManager(app)
-login.login_view = 'login'
+    # Initialize extensions with the app
+    db.init_app(app)
+    login.init_app(app)
+    bootstrap.init_app(app)
 
-# Load the Bootstrap framwork from the module
-bootstrap = Bootstrap(app)
+    # Configure login settings
+    # Replace with your actual login view endpoint
+    login.login_view = 'auth.login'
+    # Bootstrap class for flash messages
+    login.login_message_category = 'info'
+    with app.app_context():
+        # Import parts of our application
+        from . import models, routes, errors, auth, api, sampledata
 
-# Create sql schema
-#db.create_all()
+        # Create database tables if they don't exist
+        db.create_all()
+    return app
 
-# This endpoint ensures all request to /api are protected with login and if not a 401 error is returned
-@app.before_request
-def api_auth():
-    if request.path.startswith('/api') and not current_user.is_authenticated:
-        return jsonify({'error': 'Unauthorized', 'message': 'Please log in to access this resource.'}), 401
+
+# @app.before_request
+# def api_auth():
+#     if request.path.startswith('/api') and not current_user.is_authenticated:
+#         return jsonify({'error': 'Unauthorized', 'message': 'Please log in to access this resource.'}), 401
+
 
 # import all outsourced python files, so that init remains as clean as possible
-from app import models, errors, routes, auth, api, sampledata #, views, api

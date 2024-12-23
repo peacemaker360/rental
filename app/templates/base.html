@@ -1,9 +1,11 @@
+<!-- Quelle: Eigenentwicklung -->
 {% extends 'bootstrap/base.html' %}
 
 {% block styles %}
 {{super()}}
 <!-- Import custom bootstrap template from https://bootswatch.com/3/ library -->
 <link rel="stylesheet" href="{{url_for('.static', filename='bootstrap.css')}}">
+<link rel="stylesheet" href="{{url_for('.static', filename='custom.css')}}">
 {% endblock %}
 
 {% block title %}
@@ -29,14 +31,25 @@
         </div>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="nav navbar-nav">
-                <li {% if request.path==url_for('instruments') %} class="active" {% endif %}>
-                    <a href="{{ url_for('instruments') }}">Instruments</a>
+                <li {% if request.path==url_for('instruments') %} class="dropdown active" {% else %} class="dropdown"
+                    {%endif %}>
+                    <!-- <a href="{{ url_for('instruments') }}">Instrumente</a> -->
+                    <a href="{{ url_for('instruments') }}">Instrumente
+                        <span class="caret"></span></a>
+                    <!-- <a href="{{ url_for('instruments') }}" class="dropdown-toggle" data-toggle="dropdown" role="button"
+                        aria-haspopup="true" aria-expanded="false">Instrumente
+                        <span class="caret"></span></a> -->
+                    <ul class="dropdown-menu">
+                        <li><a href="{{ url_for('instruments' )}}">Alle</a></li>
+                        <li><a href="{{ url_for('instruments', is_available=true) }}">Im Lager</a></li>
+                        <li><a href="{{ url_for('instruments', is_available=false) }}">In Gebrauch</a></li>
+                    </ul>
                 </li>
                 <li {% if request.path==url_for('customers') %} class="active" {% endif %}>
-                    <a href="{{ url_for('customers') }}">Customers</a>
+                    <a href="{{ url_for('customers') }}">Mitglieder</a>
                 </li>
                 <li {% if request.path==url_for('rentals') %} class="active" {% endif %}>
-                    <a href="{{ url_for('rentals') }}">Rentals</a>
+                    <a href="{{ url_for('rentals') }}">Verleihe</a>
                 </li>
                 <li class="dropdown">
                     <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true"
@@ -54,8 +67,10 @@
                     <ul class="dropdown-menu">
                         <li><a href="{{ url_for('logout') }}">Logout</a></li>
                         {% if current_user.role == 0 %}
-                        <li><a href="#">Super admin menu</a></li>
+                        <li class="divider"></li>
+                        <li><a href="#">Admin Menu</a></li>
                         <li><a href="{{ url_for('resetpassword') }}">Reset user passwords</a></li>
+                        <li><a href="{{ url_for('select_user') }}">Manage users</a></li>
                         {% endif %}
                     </ul>
                 </li>

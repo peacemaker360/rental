@@ -1,3 +1,4 @@
+<!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
 
 {% block app_content %}
@@ -12,7 +13,7 @@
         <p><strong>Serial:</strong> {{ instrument.serial }}</p>
         <p><strong>Wert:</strong> {{ instrument.price }}</p>
         <p><strong>Notitz:</strong> {{ instrument.description }}</p>
-        <p><strong>Verfügbar:</strong> {{ instrument.is_available() }}</p>
+        <p><strong>Verfügbar:</strong> {{ instrument.is_available }}</p>
         <p><strong>Erstellt:</strong> {{ instrument.created }}</p>
     </div>
     <div class="panel-heading">
