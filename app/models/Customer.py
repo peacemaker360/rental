@@ -1,7 +1,5 @@
 # app/models/Customer.py
-# Quelle: Eigenentwicklung, in anlehnung an Unterrichst bsp.
-
-from datetime import date, datetime
+from datetime import datetime, timezone
 from sqlalchemy import or_
 from app import db
 
@@ -13,20 +11,23 @@ class Customer(db.Model):
     lastname = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(120), index=True, unique=True)
     phone = db.Column(db.String(20), nullable=False)
-    created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
-    
+    created = db.Column(
+        db.DateTime(timezone=True),
+        index=True,
+        default=lambda: datetime.now(timezone.utc)
+    )
     rental = db.relationship('Rental', backref='customer', lazy=True)
 
     def __repr__(self):
-        return str(self.id)
-    
-    def __init__(self, name=None, firstname=None, lastname=None, email=None, phone=None):
-        self.name = name or f"{firstname} {lastname}"
+        return f'<Customer {self.firstname} {self.lastname}>'
+    def __init__(self, firstname=None, lastname=None, email=None, phone=None):
         self.firstname = firstname
         self.lastname = lastname
+        self.name = f"{firstname} {lastname}"
         self.email = email
         self.phone = phone
     
+    @staticmethod
     def search_customers(keyword):
         customers = Customer.query.filter(or_(
             Customer.name.ilike(f'%{keyword}%'),
