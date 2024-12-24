@@ -9,7 +9,7 @@ from flask_bootstrap import Bootstrap
 
 # Initialize extensions
 db = SQLAlchemy()
-migrate = Migrate(db)
+migrate = Migrate()
 login = LoginManager()
 bootstrap = Bootstrap()
 
@@ -48,6 +48,7 @@ def create_app():
     db.init_app(app)
     login.init_app(app)
     bootstrap.init_app(app)
+    migrate.init_app(app, db)
 
     # Configure login settings
     # Replace with your actual login view endpoint
