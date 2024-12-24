@@ -163,8 +163,13 @@ def new_customer():
         if form.cancel.data:
             return redirect(url_for('customers'))
     if form.validate_on_submit():
-        customer = Customer(name=form.name.data, firstname=form.firstname.data,
-                            lastname=form.lastname.data, email=form.email.data, phone=form.phone.data)
+        customer = Customer(
+            firstname=form.firstname.data,
+            lastname=form.lastname.data,
+            email=form.email.data,
+            phone=form.phone.data
+        )
+        
         db.session.add(customer)
         db.session.commit()
         flash('Customer created successfully!', 'success')
@@ -188,7 +193,6 @@ def edit_customer(id):
         if request.method == 'POST':
             if form.cancel.data:
                 return redirect(url_for('customers'))
-        customer.name = form.name.data
         customer.firstname = form.firstname.data
         customer.lastname = form.lastname.data
         customer.email = form.email.data

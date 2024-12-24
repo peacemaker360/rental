@@ -1,11 +1,11 @@
 # app/models/User.py
 # Quelle: Übernommen aus den Beispielen
 
-import base64
-import jwt
 import os
-from datetime import datetime, timedelta
+import jwt
+import base64
 from time import time
+from datetime import datetime, timedelta, timezone
 from flask import url_for
 from flask import current_app as app
 from flask_login import UserMixin
@@ -26,8 +26,15 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(128))
     is_active = db.Column(db.Boolean, default=False)
     role = db.Column(db.Integer, default=1)
-    created = db.Column(db.DateTime, index=True, default=datetime.utcnow)
-    updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
+    created = db.Column(
+        db.DateTime(timezone=True),
+        index=True,
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated = db.Column(
+        db.DateTime(timezone=True),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
 
     # API Token unterstüstzung
     # Der aktuelle API-Token in der Datenbank
