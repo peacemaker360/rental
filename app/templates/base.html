@@ -67,6 +67,7 @@
                     <ul class="dropdown-menu">
                         <li><a href="{{ url_for('logout') }}">Logout</a></li>
                         {% if current_user.role == 0 %}
+                        <li><a href="{{ url_for('import_users') }}">Import users</a></li>
                         <li class="divider"></li>
                         <li><a href="#">Admin Menu</a></li>
                         <li><a href="{{ url_for('resetpassword') }}">Reset user passwords</a></li>
@@ -96,6 +97,9 @@
         <div class="alert alert-{{ category }}" role="alert">
             {% endif %}
             {{ message }}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
         </div>
         {% endfor %}
         {% endif %}

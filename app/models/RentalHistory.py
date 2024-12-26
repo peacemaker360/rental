@@ -33,7 +33,7 @@ class RentalHistory(db.Model):
         self.instrument_id = rental.instrument_id
         self.instrument_name = rental.instrument.name
         self.customer_id = rental.customer_id
-        self.customer_name = rental.customer.name
+        self.customer_name = rental.customer.display_name
         self.start_date = rental.start_date
         self.end_date = rental.end_date
         self.rental_note = rental.description

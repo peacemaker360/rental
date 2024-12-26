@@ -1,119 +1,133 @@
-<!-- templates/import_users.html -->
-<!-- Quelle: Eigenentwicklung -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Import Users</title>
-    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        #preview {
-            border: 1px solid #ccc;
-            padding: 10px;
-            margin-bottom: 10px;
-        }
-        .user {
-            margin-bottom: 10px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Import Users</h1>
-        <p>
-            To import users from the external system, please follow these steps:
-        </p>
-        <ol>
-            <li>Log in to the external system if you haven't already.</li>
-            <li>Visit the API endpoint that provides user data (e.g., "<a>https://db.windband.ch/api/people?page%5Bsize%5D=100</a>").</li>
-            <li>Copy the JSON data from the API response.</li>
-            <li>Paste the copied JSON data into the textarea below and click "Import".</li>
-        </ol>
-        
-        <form action="{{ url_for('import_users') }}" method="post" class="form-horizontal">
-            <div class="form-group">
-                <label for="json_data" class="col-sm-2 control-label">Paste JSON data:</label>
-                <div class="col-sm-10">
-                    <textarea id="json_data" name="json_data" rows="10" class="form-control" oninput="parseJson()"></textarea>
-                </div>
-            </div>
-            <div class="form-group">
-                <div class="col-sm-10">
-                    <button type="button" class="btn btn-default" onclick="verify()">Verify</button>
-                    <button type="submit" class="btn btn-primary" disabled id="importButton">Import</button>
-                </div>
-            </div>
-            <!-- <label for="excludeGroups">Exclude Group IDs (comma separated):</label>
-            <input type="text" id="excludeGroups" placeholder="e.g. 1,2,3"> -->
-            <h3>Import preview:</h3>
-            <div id="preview"></div>
-        </form>
+<!-- templates/import.html -->
+{% extends "base.html" %}
+{% import 'bootstrap/wtf.html' as wtf %}
 
+{% block app_content %}
+<h1>Import Users</h1>
+
+<p>
+    To import users from the external system, please follow these steps:
+</p>
+<ol>
+    <li>Log in to the external system if you haven't already.</li>
+    <li>Visit the API endpoint that provides user data (e.g.,
+        "<a href="https://db.windband.ch/api/people?page%5Bsize%5D=100"
+            target="_blank">https://db.windband.ch/api/people?page%5Bsize%5D=100</a>").</li>
+    <li>Copy the JSON data from the API response.</li>
+    <li>Paste the copied JSON data into the textarea below and click "Verify" to preview, then "Import" to proceed.</li>
+    <li>Optionally, you can exclude specific groups by providing a comma-separated list of group IDs in the "Exclude
+        Groups"
+        field. (e.g. 34212 is inactive members)</li>
+</ol>
+
+<form action="{{ url_for('import_users') }}" method="post" class="form-horizontal">
+    {{ form.hidden_tag() }} <!-- Flask-WTF CSRF token and hidden fields -->
+
+    <div class="form-group">
+        {{ form.json_data.label(class="col-sm-2 control-label") }}
+        <div class="col-sm-10">
+            {{ form.json_data() }}
+        </div>
     </div>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
-    <script>
-        function verify() {
-            const jsonData = document.getElementById("json_data").value;
-            const preview = document.getElementById("preview");
-            const importButton = document.getElementById("importButton");
 
-            try {
-                const parsedData = JSON.parse(jsonData);
-                var users = parsedData.data;
+    <div class="form-group">
+        {{ form.exclude_groups.label(class="col-sm-2 control-label") }}
+        <div class="col-sm-10">
+            {{ form.exclude_groups(value="34212") }}
+        </div>
+    </div>
 
+    <div class="form-group">
+        <div class="col-sm-10 col-sm-offset-2">
+            {{ form.submit_verify(class="btn btn-default") }}
+            {{ form.submit_import(class="btn btn-primary", disabled=True, id="importButton") }}
+        </div>
+    </div>
 
-                const excludeGroups = document.getElementById('excludeGroups').value.split(',').map(id => parseInt(id.trim()));
-                if (excludeGroups) {
-                    //alert("Groups to exclude: " + excludeGroups)
-                    //users = users.filter(user => !excludeGroups.includes(user.attributes.primary_group_id));
-                    //document.getElementById("json_data").value = JSON.stringify(users.filter(user => !excludeGroups.includes(user.attributes.primary_group_id)));
+    <h3>Import Preview:</h3>
+    <div id="preview" class="well"></div>
+</form>
+{% endblock %}
 
+{% block scripts %}
+{{ super() }}
+<script>
+    function verify() {
+        const jsonData = document.getElementById("json_data").value;
+        const preview = document.getElementById("preview");
+        const importButton = document.getElementById("importButton");
+
+        try {
+            const parsedData = JSON.parse(jsonData);
+            var users = parsedData.data;
+
+            const excludeGroupsElement = document.getElementById('exclude_groups');
+            let excludeGroups = [];
+            if (excludeGroupsElement && excludeGroupsElement.value.trim() !== "") {
+                excludeGroups = excludeGroupsElement.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+                if (excludeGroups.length > 0) {
+                    // alert("Groups to exclude: " + excludeGroups.join(', '));
+                    users = users.filter(user => !excludeGroups.includes(user.attributes.primary_group_id));
+                    // Optionally update the textarea with the filtered users
+                    document.getElementById("json_data").value = JSON.stringify({ data: users }, null, 2);
                 }
-
-
-                if (!Array.isArray(users) || users.length <= 1) {
-                    throw new Error('Data should contain more than one user record');
-                }
-
-                importButton.disabled = false;
-            } catch (error) {
-                preview.innerHTML = `<p style='color: red;'>${error.message}</p>`;
-                importButton.disabled = true;
             }
+
+            if (!Array.isArray(users) || users.length < 1) {
+                throw new Error('Data should contain at least one user record');
+            }
+
+            importButton.disabled = false;
+            preview.innerHTML = `<p style="color: green;">Verification successful. You can proceed to import.</p>`;
+        } catch (error) {
+            preview.innerHTML = `<p style='color: red;'>${error.message}</p>`;
+            importButton.disabled = true;
         }
-        function parseJson() {
-            const jsonData = document.getElementById("json_data").value;
-            const preview = document.getElementById("preview");
-            const importButton = document.getElementById("importButton");
+    }
 
-            try {
-                const parsedData = JSON.parse(jsonData);
-                const users = parsedData.data;
-                let usersHtml = `<p><strong>User count:</strong> ${users.length}</p>`;
+    function parseJson() {
+        const jsonData = document.getElementById("json_data").value;
+        const preview = document.getElementById("preview");
+        const importButton = document.getElementById("importButton");
 
-                for (const user of users) {
-                    const id = user.id;
-                    const email = user.attributes.email;
-                    const firstName = user.attributes.first_name;
-                    const lastName = user.attributes.last_name;
+        try {
+            const parsedData = JSON.parse(jsonData);
+            const users = parsedData.data;
+            let usersHtml = `<p><strong>User count:</strong> ${users.length}</p>`;
 
-                    usersHtml += `
+            for (const user of users) {
+                const id = user.id;
+                const email = user.attributes.email;
+                const firstName = user.attributes.first_name;
+                const lastName = user.attributes.last_name;
+                const primary_group_id = user.attributes.primary_group_id;
+
+                usersHtml += `
                         <div class="user">
                             <strong>Id:</strong> ${id}<br>
+                            <strong>Group:</strong> ${primary_group_id}<br>
                             <strong>Name:</strong> ${firstName} ${lastName}<br>
                             <strong>Email:</strong> ${email}
+                            <p>------------------------------------</p>
                         </div>
                     `;
-                }
-
-                preview.innerHTML = usersHtml;
-            } catch (error) {
-                preview.innerHTML = "<p style='color: red;'>Invalid JSON data</p>";
-                importButton.disabled = true;
             }
+
+            preview.innerHTML = usersHtml;
+            importButton.disabled = false;
+        } catch (error) {
+            preview.innerHTML = "<p style='color: red;'>Invalid JSON data</p>";
+            importButton.disabled = true;
         }
-    </script>
-</body>
-</html>
+    }
+
+    // Attach event listeners to the verify and import buttons
+    document.querySelector('form').addEventListener('click', function (event) {
+        if (event.target.name === 'submit_verify') {
+            event.preventDefault();
+            verify();
+        }
+        // The 'Import' button will naturally submit the form
+    });
+</script>
+{% endblock %}

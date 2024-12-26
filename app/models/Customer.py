@@ -11,7 +11,7 @@ class Customer(db.Model):
     firstname = db.Column(db.String(50), nullable=False)
     lastname = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(120), index=True, unique=True)
-    phone = db.Column(db.String(20), nullable=False)
+    phone = db.Column(db.String(20), nullable=True)
     created = db.Column(
         db.DateTime(timezone=True),
         index=True,

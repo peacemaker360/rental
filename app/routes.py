@@ -1,14 +1,21 @@
 import os
+import json
 from datetime import date, datetime
 from random import choice
 from sqlalchemy import and_, or_
-from .forms import InstrumentForm, CustomerForm, RentalForm
+from sqlalchemy.exc import SQLAlchemyError
 from flask import current_app as app
 from flask import flash, jsonify, redirect, render_template, send_from_directory, url_for, request
 from flask_login import login_user, logout_user, current_user, login_required
 
 from app import db
 from app.models import Instrument, Customer, Rental, RentalHistory
+from .forms import InstrumentForm, CustomerForm, RentalForm, ImportForm
+
+import logging
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 #################
@@ -169,7 +176,7 @@ def new_customer():
             email=form.email.data,
             phone=form.phone.data
         )
-        
+
         db.session.add(customer)
         db.session.commit()
         flash('Customer created successfully!', 'success')
@@ -247,8 +254,8 @@ def new_rental(instrument_id=None, customer_id=None, ):
     # initialize data for the dropdowns
     form.instrument.query = db.session.query(Instrument)
     form.customer.query = db.session.query(Customer)
-    form.customer.choices = [(c.id, c.name)
-                             for c in Customer.query.order_by('name')]
+    form.customer.choices = [(c.id, c.display_name)
+                             for c in Customer.query.order_by('email')]
     form.instrument.choices = [(i.id, i.name)
                                for i in Instrument.query.order_by('name')]
 
@@ -360,3 +367,150 @@ def rentals_history():
     if history is None or len(history) == 0:
         flash('No history records found.', 'info')
     return render_template('history.html', history=history, title="History", search=search)
+
+#################
+# User import Routes
+# Quelle: Eigenentwicklung
+#################
+
+
+# routes.py
+
+
+@app.route('/import_users', methods=['GET', 'POST'])
+@login_required
+def import_users():
+    form = ImportForm()
+    if form.validate_on_submit():
+        # Determine which button was pressed
+        if form.submit_verify.data:
+            json_data = form.json_data.data
+            exclude_groups_str = form.exclude_groups.data
+            exclude_group_ids = []
+
+            if exclude_groups_str:
+                try:
+                    exclude_group_ids = [int(id.strip()) for id in exclude_groups_str.split(
+                        ',') if id.strip().isdigit()]
+                except ValueError:
+                    flash(
+                        'Exclude Group IDs must be integers separated by commas.', 'danger')
+                    return redirect(url_for('import_users'))
+
+            try:
+                parsed_data = json.loads(json_data)
+                users = parsed_data.get('data', [])
+
+                if not isinstance(users, list) or len(users) < 1:
+                    flash(
+                        'Invalid JSON format: "data" should be a non-empty list.', 'danger')
+                    return redirect(url_for('import_users'))
+
+                # Exclude users belonging to specified groups
+                if exclude_group_ids:
+                    users = [user for user in users if user.get('attributes', {}).get(
+                        'primary_group_id') not in exclude_group_ids]
+                    flash(f'Excluded users from groups: {
+                          ", ".join(map(str, exclude_group_ids))}', 'info')
+
+                # Store filtered users in session or another method if needed for preview
+                # For simplicity, we'll just flash the count
+                user_count = len(users)
+                flash(f'Verification successful. {
+                      user_count} user(s) ready for import.', 'success')
+                return redirect(url_for('import_users'))
+
+            except json.JSONDecodeError:
+                flash('Invalid JSON data.', 'danger')
+            except Exception as e:
+                flash(f'An error occurred during verification: {
+                      str(e)}', 'danger')
+
+        elif form.submit_import.data:
+            json_data = form.json_data.data
+            exclude_groups_str = form.exclude_groups.data
+            exclude_group_ids = []
+
+            if exclude_groups_str:
+                try:
+                    exclude_group_ids = [int(id.strip()) for id in exclude_groups_str.split(
+                        ',') if id.strip().isdigit()]
+                except ValueError:
+                    flash(
+                        'Exclude Group IDs must be integers separated by commas.', 'danger')
+                    return redirect(url_for('import_users'))
+
+            try:
+                parsed_data = json.loads(json_data)
+                users = parsed_data.get('data', [])
+
+                if not isinstance(users, list) or len(users) < 1:
+                    flash(
+                        'Invalid JSON format: "data" should be a non-empty list.', 'danger')
+                    return redirect(url_for('import_users'))
+
+                # Exclude users belonging to specified groups
+                if exclude_group_ids:
+                    users = [user for user in users if user.get('attributes', {}).get(
+                        'primary_group_id') not in exclude_group_ids]
+                    flash(f'Excluded users from group IDs: {
+                          ", ".join(map(str, exclude_group_ids))}', 'info')
+
+                imported = 0
+                updated = 0
+                skipped_users = []
+
+                for user_data in users:
+                    attributes = user_data.get('attributes', {})
+                    email = attributes.get('email')
+                    first_name = attributes.get('first_name')
+                    last_name = attributes.get('last_name')
+
+                    if not email:
+                        skipped_users.append({
+                            'first_name': first_name,
+                            'last_name': last_name,
+                            'email': email,
+                            'reason': 'Missing email'
+                        })
+                        continue
+
+                    existing_user = Customer.query.filter_by(
+                        email=email).first()
+                    if existing_user:
+                        # Update existing user
+                        existing_user.firstnaem = first_name
+                        existing_user.lastname = last_name
+                        # Update other fields as necessary
+                        updated += 1
+                    else:
+                        # Create new user
+                        new_user = Customer(
+                            email=email,
+                            firstname=first_name,
+                            lastname=last_name
+                            # Add other fields as necessary
+                        )
+                        db.session.add(new_user)
+                        imported += 1
+
+                db.session.commit()
+                flash(f'Import completed: {imported} user(s) imported, {
+                      updated} user(s) updated.', 'success')
+
+                if skipped_users:
+                    skipped_message = "Skipped the following users due to errors:\n\n"
+                    for user in skipped_users:
+                        skipped_message += f"Name: {user.get('first_name', '')} {user.get('last_name', '')}, Email: {
+                            user.get('email', 'N/A')}, Reason: {user.get('reason')}"
+                    flash(skipped_message, 'warning')
+
+            except json.JSONDecodeError:
+                flash('Invalid JSON data.', 'danger')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'An error occurred during import: {str(e)}', 'danger')
+
+            return redirect(url_for('import_users'))
+
+    return render_template('import.html', form=form)

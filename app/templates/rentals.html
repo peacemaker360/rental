@@ -17,7 +17,8 @@
             <div class="input-group">
                 <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">
                 <div class="input-group-btn">
-                    <button class="btn btn-default" type="submit" title="Search by instrument name, customer name, date">
+                    <button class="btn btn-default" type="submit"
+                        title="Search by instrument name, customer name, date">
                         <i class="glyphicon glyphicon-search"></i>
                     </button>
                 </div>
@@ -41,13 +42,14 @@
     <tbody>
         {% for rental in rentals %}
         <tr>
-            <td>{{ rental.customer.name }}</td>
+            <td>{{ rental.customer.display_name }}</td>
             <td>{{ rental.instrument.name }}</td>
             <td>{{ rental.start_date }}</td>
             <td>{{ rental.end_date }}</td>
             <td>
                 <div class="btn-group" role="group" aria-label="...">
                     <form method="post" action="{{ url_for('delete_rental', id=rental.id) }}" class="d-inline-block">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <a href="{{ url_for('view_rental', id=rental.id) }}" class="btn btn-primary btn-sm">View</a>
                         <a href="{{ url_for('edit_rental', id=rental.id) }}" class="btn btn-default btn-sm">Edit</a>
                         <button type="submit" class="btn btn-danger btn-sm"

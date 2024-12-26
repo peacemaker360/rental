@@ -6,12 +6,14 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from flask_bootstrap import Bootstrap
+from flask_wtf import CSRFProtect
 
 # Initialize extensions
 db = SQLAlchemy()
 migrate = Migrate()
 login = LoginManager()
 bootstrap = Bootstrap()
+csrf = CSRFProtect()
 
 
 def create_app():
@@ -49,6 +51,7 @@ def create_app():
     login.init_app(app)
     bootstrap.init_app(app)
     migrate.init_app(app, db)
+    csrf.init_app(app)  # Initialize CSRF protection
 
     # Configure login settings
     # Replace with your actual login view endpoint

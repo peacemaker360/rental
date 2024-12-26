@@ -1,6 +1,6 @@
 from datetime import date
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, StringField, PasswordField, FloatField, DateField, SubmitField
+from wtforms import BooleanField, StringField, PasswordField, FloatField, DateField, SubmitField, TextAreaField
 from wtforms.validators import ValidationError, DataRequired, Email, EqualTo, Length, Optional
 from wtforms_sqlalchemy.fields import QuerySelectField
 
@@ -92,10 +92,10 @@ class CustomerForm(FlaskForm):
     firstname = StringField('Vorname*', validators=[DataRequired()])
     lastname = StringField('Nachname*', validators=[DataRequired()])
     email = StringField('Email*', validators=[DataRequired(), Email()])
-    phone = StringField('Phone*', validators=[DataRequired(),])
+    phone = StringField('Phone',)
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel', render_kw={
-                         'onclick': 'this.form.noValidate = true;'})
+                         'formnovalidate': True})
 
 
 class RentalForm(FlaskForm):
@@ -107,7 +107,7 @@ class RentalForm(FlaskForm):
                                   )
     # customer = StringField('Customer', validators=[DataRequired()])
     customer = QuerySelectField(allow_blank=True,
-                                get_label='name',
+                                get_label='display_name',
                                 validators=[DataRequired()],
                                 blank_text=u'Select...'
                                 )
@@ -119,3 +119,25 @@ class RentalForm(FlaskForm):
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel', render_kw={
                          'onclick': 'this.form.noValidate = true;'})
+
+#################################
+# Forms for importing data
+#################################
+
+
+class ImportForm(FlaskForm):
+    json_data = TextAreaField(
+        'Paste JSON data:',
+        validators=[DataRequired()],
+        render_kw={"rows": 10, "class": "form-control",
+                   "oninput": "parseJson()"}
+    )
+    exclude_groups = StringField(
+        'Exclude Group IDs:',
+        validators=[Optional()],
+        render_kw={"placeholder": "e.g. 1,2,3", "class": "form-control"}
+    )
+    submit_verify = SubmitField(
+        'Verify', render_kw={"class": "btn btn-default"})
+    submit_import = SubmitField(
+        'Import', render_kw={"class": "btn btn-primary", "disabled": True})
