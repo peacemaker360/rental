@@ -45,8 +45,8 @@
             <th>Marke</th>
             <th>Typ</th>
             <th>Serial</th>
-            <th>Wert</th>
             <th>Verfügbar</th>
+            <th>Aktion</th>
             <th>Optionen</th>
         </tr>
     </thead>
@@ -57,15 +57,25 @@
             <td>{{ instrument.brand }}</td>
             <td>{{ instrument.type }}</td>
             <td>{{ instrument.serial }}</td>
-            <td>{{ instrument.price }}</td>
             <td>
                 {% if instrument.is_available %}
                 <span class="glyphicon glyphicon-ok text-success"></span>&nbsp;
                 {% else %}
                 <span class="glyphicon glyphicon-remove text-danger"></span>&nbsp;
                 {% endif %}
+            </td>
+            <td>
+                {% if instrument.is_available %}
                 <a href="{{ url_for('new_rental', instrument_id=instrument.id) }}"
-                    class="btn btn-default btn-sm {{ '' if instrument.is_available else 'disabled' }}">Rent</a>
+                    class="btn btn-primary btn-sm {{ '' if instrument.is_available else 'disabled' }}">Rent</a>
+                {% else %}
+                {% set rental = instrument.rental[0] %}
+                <form method="post" action="{{ url_for('delete_rental', id=rental.id) }}" class="d-inline-block">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-default btn-sm"
+                        onclick="return confirm('Are you sure you want to return this rental?')">Return</button>
+                </form>
+                {% endif %}
             </td>
             <td>
                 <div class="btn-group" role="group" aria-label="...">
