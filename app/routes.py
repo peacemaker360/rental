@@ -126,7 +126,12 @@ def edit_instrument(id):
         instrument.price = form.price.data
         db.session.commit()
         flash('Instrument updated successfully!', 'success')
-        return redirect(url_for('instruments'))
+
+        # Get the source page from the query parameter
+        source_page = request.args.get('source', 'instruments')
+
+        # Redirect to the source page
+        return redirect(url_for(source_page))
     return render_template('instrument_form.html', form=form, action='Edit')
 
 
@@ -137,7 +142,11 @@ def delete_instrument(id):
     db.session.delete(instrument)
     db.session.commit()
     flash('Instrument deleted successfully!', 'success')
-    return redirect(url_for('instruments'))
+    # Get the source page from the query parameter
+    source_page = request.args.get('source', 'instruments')
+
+    # Redirect to the source page
+    return redirect(url_for(source_page))
 
 
 #################
@@ -206,7 +215,11 @@ def edit_customer(id):
         customer.phone = form.phone.data
         db.session.commit()
         flash('Customer updated successfully!', 'success')
-        return redirect(url_for('customers'))
+        # Get the source page from the query parameter
+        source_page = request.args.get('source', 'customers')
+
+        # Redirect to the source page
+        return redirect(url_for(source_page))
     return render_template('customer_form.html', form=form, action='Edit')
 
 
@@ -217,7 +230,11 @@ def delete_customer(id):
     db.session.delete(customer)
     db.session.commit()
     flash('Customer deleted successfully!', 'success')
-    return redirect(url_for('customers'))
+    # Get the source page from the query parameter
+    source_page = request.args.get('source', 'customers')
+
+    # Redirect to the source page
+    return redirect(url_for(source_page))
 
 
 #################
@@ -289,7 +306,11 @@ def new_rental(instrument_id=None, customer_id=None, ):
         db.session.add(history)
         db.session.commit()
         flash('Rental created successfully!', 'success')
-        return redirect(url_for('rentals'))
+        # Get the source page from the query parameter
+        source_page = request.args.get('source', 'rentals')
+
+        # Redirect to the source page
+        return redirect(url_for(source_page))
     return render_template('rental_form.html', form=form, action='New')
 
 
@@ -308,8 +329,8 @@ def edit_rental(id):
     form.instrument.query = db.session.query(Instrument)
     form.customer.query = db.session.query(Customer)
     if request.method == 'GET':
-        form.customer.choices = [(c.id, c.name)
-                                 for c in Customer.query.order_by('name')]
+        form.customer.choices = [(c.id, c.display_name)
+                                 for c in Customer.query.order_by('email')]
         form.instrument.choices = [(i.id, i.name)
                                    for i in Instrument.query.order_by('name')]
     if form.validate_on_submit():
@@ -332,7 +353,11 @@ def edit_rental(id):
         db.session.add(history)
         db.session.commit()
         flash('Rental updated successfully!', 'success')
-        return redirect(url_for('rentals'))
+        # Get the source page from the query parameter
+        source_page = request.args.get('source', 'rentals')
+
+        # Redirect to the source page
+        return redirect(url_for(source_page))
     return render_template('rental_form.html', form=form, action='Edit')
 
 
@@ -343,7 +368,11 @@ def delete_rental(id):
     db.session.delete(rental)
     db.session.commit()
     flash('Rental deleted successfully!', 'success')
-    return redirect(url_for('rentals'))
+    # Get the source page from the query parameter
+    source_page = request.args.get('source', 'rentals')
+
+    # Redirect to the source page
+    return redirect(url_for(source_page))
 
 
 #################

@@ -66,11 +66,12 @@
             </td>
             <td>
                 {% if instrument.is_available %}
-                <a href="{{ url_for('new_rental', instrument_id=instrument.id) }}"
+                <a href="{{ url_for('new_rental', instrument_id=instrument.id, source='instruments') }}"
                     class="btn btn-primary btn-sm {{ '' if instrument.is_available else 'disabled' }}">Rent</a>
                 {% else %}
-                {% set rental = instrument.rental[0] %}
-                <form method="post" action="{{ url_for('delete_rental', id=rental.id) }}" class="d-inline-block">
+                {% set rental = instrument.rental | selectattr('instrument_id', 'equalto', instrument.id) | first %}
+                <form method="post" action="{{ url_for('delete_rental', id=rental.id, source='instruments') }}"
+                    class="d-inline-block">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-default btn-sm"
                         onclick="return confirm('Are you sure you want to return this rental?')">Return</button>

@@ -26,6 +26,7 @@
                 <th>Name</th>
                 <th>Start</th>
                 <th>Ende</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -37,6 +38,14 @@
                 <td>{{ rental.instrument.name }}</td>
                 <td>{{ rental.start_date }}</td>
                 <td>{{ rental.end_date }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('delete_rental', id=rental.id, source='customers') }}"
+                        class="d-inline-block">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-default btn-sm"
+                            onclick="return confirm('Are you sure you want to return this rental?')">Return</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
