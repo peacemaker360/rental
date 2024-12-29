@@ -5,14 +5,14 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
-from flask_bootstrap import Bootstrap
+# from flask_bootstrap5 import Bootstrap
 from flask_wtf import CSRFProtect
 
 # Initialize extensions
 db = SQLAlchemy()
 migrate = Migrate()
 login = LoginManager()
-bootstrap = Bootstrap()
+# bootstrap = Bootstrap()
 csrf = CSRFProtect()
 
 
@@ -49,13 +49,13 @@ def create_app():
     # Initialize extensions with the app
     db.init_app(app)
     login.init_app(app)
-    bootstrap.init_app(app)
+    # bootstrap.init_app(app)
     migrate.init_app(app, db)
     csrf.init_app(app)  # Initialize CSRF protection
 
     # Configure login settings
     # Replace with your actual login view endpoint
-    login.login_view = 'auth.login'
+    login.login_view = 'login'
     # Bootstrap class for flash messages
     login.login_message_category = 'info'
     with app.app_context():

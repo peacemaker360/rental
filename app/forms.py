@@ -85,7 +85,7 @@ class InstrumentForm(FlaskForm):
     price = FloatField('Wert*', validators=[DataRequired()])
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel', render_kw={
-                         'onclick': 'this.form.noValidate = true;'})
+                         'formnovalidate': True})
 
 
 class CustomerForm(FlaskForm):
@@ -118,7 +118,7 @@ class RentalForm(FlaskForm):
     description = StringField('Notitz')
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel', render_kw={
-                         'onclick': 'this.form.noValidate = true;'})
+                         'formnovalidate': True})
 
 #################################
 # Forms for importing data
@@ -138,6 +138,6 @@ class ImportForm(FlaskForm):
         render_kw={"placeholder": "e.g. 1,2,3", "class": "form-control"}
     )
     submit_verify = SubmitField(
-        'Verify', render_kw={"class": "btn btn-default"})
+        'Verify', render_kw={"class": "btn btn-secondary"})
     submit_import = SubmitField(
         'Import', render_kw={"class": "btn btn-primary", "disabled": True})

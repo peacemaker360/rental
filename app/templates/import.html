@@ -1,6 +1,6 @@
 <!-- templates/import.html -->
 {% extends "base.html" %}
-{% import 'bootstrap/wtf.html' as wtf %}
+{% import 'macros.html' as macros %}
 
 {% block app_content %}
 <h1>Import Users</h1>
@@ -39,7 +39,7 @@
 
     <div class="form-group">
         <div class="col-sm-10 col-sm-offset-2">
-            {{ form.submit_verify(class="btn btn-default") }}
+            {{ form.submit_verify(class="btn btn-secondary") }}
             {{ form.submit_import(class="btn btn-primary", disabled=True, id="importButton") }}
         </div>
     </div>

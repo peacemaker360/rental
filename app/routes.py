@@ -89,7 +89,7 @@ def instruments():
 def new_instrument():
     form = InstrumentForm()
     if request.method == 'POST':
-        if form.cancel.data:
+        if request.form.get('submit') == 'Cancel':
             return redirect(url_for('instruments'))
     if form.validate_on_submit():
         instrument = Instrument(name=form.name.data, brand=form.brand.data, type=form.type.data,
@@ -116,7 +116,7 @@ def edit_instrument(id):
     form = InstrumentForm(obj=instrument)
     if form.validate_on_submit():
         if request.method == 'POST':
-            if form.cancel.data:
+            if request.form.get('submit') == 'Cancel':
                 return redirect(url_for('instruments'))
         instrument.name = form.name.data
         instrument.brand = form.brand.data
@@ -139,6 +139,10 @@ def edit_instrument(id):
 @login_required
 def delete_instrument(id):
     instrument = Instrument.query.get_or_404(id)
+    active_rentals = Rental.query.filter_by(instrument_id=instrument.id).all()
+    if active_rentals:
+        flash('Cannot delete instrument with active rentals.', 'danger')
+        return redirect(url_for('instruments'))
     db.session.delete(instrument)
     db.session.commit()
     flash('Instrument deleted successfully!', 'success')
@@ -207,7 +211,7 @@ def edit_customer(id):
     form = CustomerForm(obj=customer)
     if form.validate_on_submit():
         if request.method == 'POST':
-            if form.cancel.data:
+            if request.form.get('submit') == 'Cancel':
                 return redirect(url_for('customers'))
         customer.firstname = form.firstname.data
         customer.lastname = form.lastname.data
@@ -227,6 +231,10 @@ def edit_customer(id):
 @login_required
 def delete_customer(id):
     customer = Customer.query.get_or_404(id)
+    active_rentals = Rental.query.filter_by(customer_id=customer.id).all()
+    if active_rentals:
+        flash('Cannot delete customer with active rentals.', 'danger')
+        return redirect(url_for('customers'))
     db.session.delete(customer)
     db.session.commit()
     flash('Customer deleted successfully!', 'success')
@@ -283,7 +291,7 @@ def new_rental(instrument_id=None, customer_id=None, ):
         form.instrument.data = Instrument.query.get(instrument_id)
 
     if request.method == 'POST':
-        if form.cancel.data:
+        if request.form.get('submit') == 'Cancel':
             return redirect(url_for('rentals'))
     if form.validate_on_submit():
         rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id,
@@ -335,7 +343,7 @@ def edit_rental(id):
                                    for i in Instrument.query.order_by('name')]
     if form.validate_on_submit():
         if request.method == 'POST':
-            if form.cancel.data:
+            if request.form.get('submit') == 'Cancel':
                 return redirect(url_for('rentals'))
         rental.customer_id = form.customer.data.id
         rental.instrument_id = form.instrument.data.id
@@ -409,6 +417,9 @@ def rentals_history():
 @app.route('/import_users', methods=['GET', 'POST'])
 @login_required
 def import_users():
+    if current_user.role > 1:
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('index'))
     form = ImportForm()
     if form.validate_on_submit():
         # Determine which button was pressed
@@ -541,5 +552,4 @@ def import_users():
                 flash(f'An error occurred during import: {str(e)}', 'danger')
 
             return redirect(url_for('import_users'))
-
     return render_template('import.html', form=form)

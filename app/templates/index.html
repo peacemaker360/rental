@@ -1,43 +1,66 @@
 <!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
-{% import 'bootstrap/wtf.html' as wtf %}
 
 {% block title %}Home{% endblock %}
 
 {% block app_content %}
-<div class="jumbotron">
-    {% if current_user.is_authenticated %}
-    <h1 class="display-4">Willkommen, {{current_user.username}}</h1>
-    {% else %}
-    <h1 class="display-4">Willkommen</h1>
-    {% endif %}
-    <h2 class="display-4">beim MG Walperswil Instumentenverwaltungs Tool</h2>
-    <hr class="my-4">
-    <p>Mit der Navigation oben können die verschiedenen Bereiche und Funktionen verwendet werden.</p>
-    {% if current_user.is_authenticated %}
-    <hr class="my-4">
-    <p>Die app sieht leer aus? Dann kann mit dem Button unten Beispiele generiert werden.</p>
-    <form method="post" action="{{ url_for('generate_data') }}">
-        <button type="submit">Generate Sample Data</button>
-    </form>
-    {% endif %}
+<div class="container">
+    <div class="p-5 mb-4 bg-body-tertiary rounded-3">
+        <div class="container-fluid py-5">
+            {% if current_user.is_authenticated %}
+            <h1 class="display-5 fw-bold">Willkommen, {{current_user.username}}</h1>
+            {% else %}
+            <h1 class="display-5 fw-bold">Willkommen</h1>
+            {% endif %}
+            <p class="col-md-8 fs-4">Mit der Navigation oben können die verschiedenen Bereiche und Funktionen verwendet
+                werden.</p>
+            {% if current_user.is_authenticated %}
+            <hr class="my-4">
+            <p>Die app sieht leer aus? Dann kann mit dem Button unten Beispiele generiert werden.</p>
+            <form method="post" action="{{ url_for('generate_data') }}">
+                <button class="btn btn-primary" type="submit">Generate Sample Data</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<div class="container px-4 py-5" id="hanging-icons">
+    <h2 class="pb-2 border-bottom">Instrumenten Verwaltung</h2>
+    <div class="row g-4 py-5 row-cols-1 row-cols-lg-3">
+        <div class="col d-flex align-items-start">
+            <div
+                class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3">
+                <i class="bi bi-music-note-list"></i>
+            </div>
+            <div>
+                <h3 class="fs-2 text-body-emphasis">Instrumente</h3>
+                <p>Explore and manage the instruments available for rental.</p>
+                <a href="{{ url_for('instruments') }}" class="btn btn-primary">View Instruments</a>
+            </div>
+        </div>
+        <div class="col d-flex align-items-start">
+            <div
+                class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3">
+                <i class="bi bi-person"></i>
+            </div>
+            <div>
+                <h3 class="fs-2 text-body-emphasis">Mitglieder</h3>
+                <p>Manage the members and their rental details efficiently.</p>
+                <a href="{{ url_for('customers') }}" class="btn btn-primary">View Members</a>
+            </div>
+        </div>
+        <div class="col d-flex align-items-start">
+            <div
+                class="icon-square text-body-emphasis bg-body-secondary d-inline-flex align-items-center justify-content-center fs-4 flex-shrink-0 me-3">
+                <i class="bi bi-link"></i>
+            </div>
+            <div>
+                <h3 class="fs-2 text-body-emphasis">Verleihe</h3>
+                <p>Track and manage all ongoing and completed rentals.</p>
+                <a href="{{ url_for('rentals') }}" class="btn btn-primary">View Rentals</a>
+            </div>
+        </div>
+    </div>
+</div>
 
-</div>
-<div class="row">
-    <div class="col-md-4">
-        <h2>Instrumente</h2>
-        <p>Im Instrumente Bereich werden das Inventar aller Instrumente verwaltet.</p>
-        <p><a class="btn btn-default" href="{{ url_for('instruments') }}" role="button">View details »</a></p>
-    </div>
-    <div class="col-md-4">
-        <h2>Mitglieder</h2>
-        <p>Über den Mitgliederbereich werden die Vereinsmitglieder, welche Instrumente benötigen, verwaltet.</p>
-        <p><a class="btn btn-default" href="{{ url_for('customers') }}" role="button">View details »</a></p>
-    </div>
-    <div class="col-md-4">
-        <h2>Verleihe</h2>
-        <p>Hier ist die Übersicht aller Verleihe. Erstelle neue oder bearbeiten Sie diese.</p>
-        <p><a class="btn btn-default" href="{{ url_for('rentals') }}" role="button">View details »</a></p>
-    </div>
-</div>
 {% endblock %}
