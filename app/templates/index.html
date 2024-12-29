@@ -20,6 +20,10 @@
             <form method="post" action="{{ url_for('generate_data') }}">
                 <button class="btn btn-primary" type="submit">Generate Sample Data</button>
             </form>
+            {% else %}
+            <hr class="my-4">
+            <p>Um die App zu verwenden, bitte einloggen oder registrieren.</p>
+            <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}" role="button">Login</a>
             {% endif %}
         </div>
     </div>
