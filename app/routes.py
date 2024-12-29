@@ -180,7 +180,7 @@ def customers():
 def new_customer():
     form = CustomerForm()
     if request.method == 'POST':
-        if form.cancel.data:
+        if request.form.get('submit') == 'Cancel':
             return redirect(url_for('customers'))
     if form.validate_on_submit():
         customer = Customer(
