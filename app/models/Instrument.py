@@ -54,7 +54,7 @@ class Instrument(db.Model):
             return True
         elif rental.end_date is None:  # Means, its open ended => not available
             return False
-        elif rental.end_date < date.today():  # Means, it is overdue => tecnically, its available
+        elif rental.end_date < date.today():  # Means, it is overdue => technically, its available
             return True
         else:
             return False
