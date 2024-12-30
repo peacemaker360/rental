@@ -505,6 +505,9 @@ def import_users():
                     email = attributes.get('email')
                     first_name = attributes.get('first_name')
                     last_name = attributes.get('last_name')
+                    groups = attributes.get('primary_group_id', [])
+                    if not isinstance(groups, list):
+                        groups = [groups]
 
                     if not email:
                         skipped_users.append({
@@ -519,17 +522,17 @@ def import_users():
                         email=email).first()
                     if existing_user:
                         # Update existing user
-                        existing_user.firstnaem = first_name
-                        existing_user.lastname = last_name
-                        # Update other fields as necessary
+                        existing_user.firstname = str(first_name)
+                        existing_user.lastname = str(last_name)
+                        existing_user.groups = json.dumps(groups)
                         updated += 1
                     else:
                         # Create new user
                         new_user = Customer(
                             email=email,
                             firstname=first_name,
-                            lastname=last_name
-                            # Add other fields as necessary
+                            lastname=last_name,
+                            groups=json.dumps(groups)
                         )
                         db.session.add(new_user)
                         imported += 1
