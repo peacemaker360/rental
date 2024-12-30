@@ -4,7 +4,7 @@
 {% block app_content %}
 <div class="card mb-3">
     <div class="card-header">
-        <h3 class="card-title">{{ instrument.name }}</h2>
+        <h3 class="card-title">{{ instrument.name }}</h3>
     </div>
     <div class="card-body">
         <p><strong>Anzeigename:</strong> {{ instrument.name }}</p>
@@ -12,9 +12,19 @@
         <p><strong>Typ:</strong> {{ instrument.type }}</p>
         <p><strong>Serial:</strong> {{ instrument.serial }}</p>
         <p><strong>Wert:</strong> {{ instrument.price }}</p>
-        <p><strong>Notitz:</strong> {{ instrument.description }}</p>
         <p><strong>Verfügbar:</strong> {{ instrument.is_available }}</p>
         <p><strong>Erstellt:</strong> {{ instrument.created }}</p>
+        <p><strong>Aktualisiert:</strong> {{ instrument.updated }}</p>
+    </div>
+    <div class="card-header">
+        <h4 class="card-title">Notitzen</h4>
+    </div>
+    <div class="card-body">
+        {% if instrument.description %}
+        <p>{{ instrument.description }}</p>
+        {% else %}
+        <p>Keine</p>
+        {% endif %}
     </div>
     <div class="card-header">
         <h4 class="card-title">History</h4>
@@ -24,25 +34,27 @@
         <table class="table table-hover">
             <thead>
                 <tr>
-                    <th>#</th>
-                    <th>Timestamp</th>
+                    <th>Rental Id</th>
                     <th>Mitglied</th>
                     <th>Start</th>
                     <th>Ende</th>
-                    <th>Notitz</th>
+                    <th>Timestamp</th>
                 </tr>
             </thead>
             <tbody>
                 {% for entry in history %}
-                <tr onclick="location.href='{{ url_for('view_rental', id=1) }}'">
+                {% if entry.rental_id %}
+                <tr onclick="location.href='{{ url_for('view_rental', id=entry.rental_id) }}'">
+                    {% else %}
+                <tr>
+                    {% endif %}
                     <th scope="row">
                         {{ entry.rental_id }}
                     </th>
-                    <td>{{ entry.timestamp }}</td>
                     <td>{{ entry.customer_name }}</td>
                     <td>{{ entry.start_date}}</td>
                     <td>{{ entry.end_date}}</td>
-                    <td>{{ entry.rental_note}}</td>
+                    <td>{{ entry.timestamp }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
