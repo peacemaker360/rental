@@ -1,14 +1,20 @@
-from flask import flash, redirect, url_for
-from app import app, db
-from .models import Instrument, Customer, Rental
 from datetime import date
 from random import choice
+from flask import current_app as app
+from flask import flash, redirect, url_for
+from flask_login import login_required
+
+from app import db
+from app.models import Instrument, Customer, Rental
 
 ##############################################################
 # SAMPLE DATA
+# Quelle: Eigenentwicklung
+# Help: this endpoint is used to initially generate demo data, if the application is empty
 ##############################################################
 
 @app.route('/generate_data', methods=['GET', 'POST'])
+@login_required
 def generate_data():
     # Check if function might have been alrady triggerd.
     customers = Customer.query.filter_by(email="member0@example.com").first()

@@ -1,20 +1,31 @@
+<!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
 
 {% block app_content %}
 
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <h2 class="panel-title">{{ rental.customer.name }} / {{ rental.instrument.name }}</h2>
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">{{ rental.customer.display_name }} / {{ rental.instrument.name }}</h3>
     </div>
-    <div class="panel-body">
+    <div class="card-body">
         <p><strong>Id nummer:</strong> {{ rental.id }}</p>
         <p><strong>Start Date:</strong> {{ rental.start_date }}</p>
         <p><strong>End Date:</strong> {{ rental.end_date }}</p>
         <p><strong>Note:</strong> {{ rental.description }}</p>
     </div>
-    <div class="panel-footer">
-        <a href="{{ url_for('edit_rental', id=rental.id) }}" class="btn btn-primary">Edit</a>
+    <div class="card-footer">
+        <div class="btn-group" role="group" aria-label="Rental Actions">
+            <a href="{{ url_for('edit_rental', id=rental.id) }}" class="btn btn-primary"
+                style="margin-right:5px;">Edit</a>
+            <form method="post" action="{{ url_for('delete_rental', id=rental.id) }}" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger"
+                    onclick="return confirm('Are you sure you want to return this rental?')">Return</button>
+            </form>
+        </div>
     </div>
+
+
 </div>
 
 {% endblock %}

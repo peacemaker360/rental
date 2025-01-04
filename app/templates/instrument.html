@@ -1,56 +1,71 @@
+<!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
 
 {% block app_content %}
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <h2 class="panel-title">{{ instrument.name }}</h2>
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">{{ instrument.name }}</h3>
     </div>
-    <div class="panel-body">
+    <div class="card-body">
         <p><strong>Anzeigename:</strong> {{ instrument.name }}</p>
         <p><strong>Marke:</strong> {{ instrument.brand }}</p>
         <p><strong>Typ:</strong> {{ instrument.type }}</p>
         <p><strong>Serial:</strong> {{ instrument.serial }}</p>
         <p><strong>Wert:</strong> {{ instrument.price }}</p>
-        <p><strong>Notitz:</strong> {{ instrument.description }}</p>
-        <p><strong>Verfügbar:</strong> {{ instrument.is_available() }}</p>
+        <p><strong>Verfügbar:</strong> {{ instrument.is_available }}</p>
         <p><strong>Erstellt:</strong> {{ instrument.created }}</p>
+        <p><strong>Aktualisiert:</strong> {{ instrument.updated }}</p>
     </div>
-    <div class="panel-heading">
-        <h4 class="panel-title">History</h4>
+    <div class="card-header">
+        <h4 class="card-title">Notitzen</h4>
+    </div>
+    <div class="card-body">
+        {% if instrument.description %}
+        <p>{{ instrument.description }}</p>
+        {% else %}
+        <p>Keine</p>
+        {% endif %}
+    </div>
+    <div class="card-header">
+        <h4 class="card-title">History</h4>
     </div>
     {% if history %}
-    <table class="table table-hover">
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>Timestamp</th>
-                <th>Mitglied</th>
-                <th>Start</th>
-                <th>Ende</th>
-                <th>Notitz</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for entry in history %}
-            <tr onclick="location.href='{{ url_for('view_rental', id=1) }}'">
-                <th scope="row">
-                    {{ entry.rental_id }}
-                </th>
-                <td>{{ entry.timestamp }}</td>
-                <td>{{ entry.customer_name }}</td>
-                <td>{{ entry.start_date}}</td>
-                <td>{{ entry.end_date}}</td>
-                <td>{{ entry.rental_note}}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <div class="panel-body">
-        <p>Keine Eintragungen.</p>
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Rental Id</th>
+                    <th>Mitglied</th>
+                    <th>Start</th>
+                    <th>Ende</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in history %}
+                {% if entry.rental_id %}
+                <tr onclick="location.href='{{ url_for('view_rental', id=entry.rental_id) }}'">
+                    {% else %}
+                <tr>
+                    {% endif %}
+                    <th scope="row">
+                        {{ entry.rental_id }}
+                    </th>
+                    <td>{{ entry.customer_name }}</td>
+                    <td>{{ entry.start_date}}</td>
+                    <td>{{ entry.end_date}}</td>
+                    <td>{{ entry.timestamp }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="card-title">
+            <p>Keine Eintragungen.</p>
+        </div>
     </div>
     {% endif %}
-    <div class="panel-footer">
+    <div class="card-footer">
         <a href="{{ url_for('edit_instrument', id=instrument.id) }}" class="btn btn-primary">Edit</a>
     </div>
 </div>

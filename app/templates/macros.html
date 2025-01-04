@@ -1,0 +1,70 @@
+<!-- templates/macros.html -->
+{% macro render_field(field) %}
+<div class="mb-3">
+    {{ field.label(class="form-label") }}
+    {{ field(class="form-control", placeholder=field.label.text) }}
+    {% if field.errors %}
+    <div class="text-danger">
+        {% for error in field.errors %}
+        <small>{{ error }}</small><br>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro render_checkbox(field) %}
+<div class="form-check mb-3">
+    {{ field(class="form-check-input") }}
+    {{ field.label(class="form-check-label") }}
+    {% if field.errors %}
+    <div class="text-danger">
+        {% for error in field.errors %}
+        <small>{{ error }}</small><br>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro render_submit(button, additional_classes="") %}
+<button type="submit" class="btn btn-primary {{ additional_classes }}">
+    {{ button.label.text }}
+</button>
+{% endmacro %}
+
+<!--add a macro for redndering a cancel button-->
+{% macro render_cancel(button, additional_classes="") %}
+<button type="submit" name="submit" value="Cancel" formnovalidate class="btn btn-secondary">
+    {{ button.label.text }}
+</button>
+{% endmacro %}
+
+<!--add a macro for rendering a delete button-->
+{% macro render_delete(url) %}
+<form method="POST" action="{{ url }}" class="d-inline">
+    {{ form.hidden_tag() }}
+    <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure?')">Delete</button>
+</form>
+{% endmacro %}
+
+<!--add a macro for rendering a quick form-->
+
+{% macro quick_form(form) %}
+<form method="POST" action="">
+    {{ form.hidden_tag() }}
+    {% for field in form %}
+    {% if field.type == 'CSRFTokenField' or field.type == 'SubmitField' %}
+    {# Skip CSRF and Submit fields #}
+    {% elif field.type == 'BooleanField' %}
+    {{ render_checkbox(field) }}
+    {% else %}
+    {{ render_field(field) }}
+    {% endif %}
+    {% endfor %}
+    {{ render_submit(form.submit) }}
+    {% if form.cancel %}
+    {{ render_cancel(form.cancel) }}
+    {% endif %}
+</form>
+{% endmacro %}
