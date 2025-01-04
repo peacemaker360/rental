@@ -12,51 +12,58 @@
         <p><strong>Nachname:</strong> {{ customer.lastname }}</p>
         <p><strong>Email:</strong> {{ customer.email }}</p>
         <p><strong>Phone:</strong> {{ customer.phone|default("None",true) }}</p>
-        <p><strong>Status:</strong> {{ customer.is_active }}</p>
+        <p><strong>Status:</strong> <span style="color: {{ 'green' if customer.is_active else 'red' }}">{{ "Aktiv" if customer.is_active else "Deaktiviert" }}</span></p>
         <p><strong>Erstellt:</strong> {{ customer.created }}</p>
         <p><strong>Aktualisiert:</strong> {{ customer.updated }}</p>
     </div>
-    {% if customer.rental %}
-    <div class="card-header">
-        <h4 class="card-title">Leihgabe</h4>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Name</th>
-                    <th>Start</th>
-                    <th>Ende</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for rental in customer.rental %}
-                <tr onclick="location.href='{{ url_for('view_rental', id=rental.id) }}'">
-                    <th scope="row">
-                        {{ rental.id }}
-                    </th>
-                    <td>{{ rental.instrument.name }}</td>
-                    <td>{{ rental.start_date }}</td>
-                    <td>{{ rental.end_date }}</td>
-                    <td>
-                        <form method="post" action="{{ url_for('delete_rental', id=rental.id, source='customers') }}"
-                            class="d-inline-block">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-secondary btn-sm"
-                                onclick="return confirm('Are you sure you want to return this rental?')">Return</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% endif %}
-    <div class="card-footer">
-        <a href="{{ url_for('edit_customer', id=customer.id) }}" class="btn btn-primary">Edit</a>
-    </div>
+    {% if current_user.role <= 1 %} <div class="card-header">
+        <h4 class="card-title">Admin Infos</h4>
+</div>
+<div class="card-body">
+    <p><strong>Groups:</strong> {{ customer.groups }}</p>
+</div>
+{% endif %}
+{% if customer.rental %}
+<div class="card-header">
+    <h4 class="card-title">Leihgabe</h4>
+</div>
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Name</th>
+                <th>Start</th>
+                <th>Ende</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rental in customer.rental %}
+            <tr onclick="location.href='{{ url_for('view_rental', id=rental.id) }}'">
+                <th scope="row">
+                    {{ rental.id }}
+                </th>
+                <td>{{ rental.instrument.name }}</td>
+                <td>{{ rental.start_date }}</td>
+                <td>{{ rental.end_date }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('delete_rental', id=rental.id, source='customers') }}"
+                        class="d-inline-block">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary btn-sm"
+                            onclick="return confirm('Are you sure you want to return this rental?')">Return</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+<div class="card-footer">
+    <a href="{{ url_for('edit_customer', id=customer.id) }}" class="btn btn-primary">Edit</a>
+</div>
 </div>
 
 {% endblock %}

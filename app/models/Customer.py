@@ -1,8 +1,10 @@
 # app/models/Customer.py
 from datetime import datetime, timezone
+import json
 from sqlalchemy import JSON, or_
 
 from app import db
+from app.config import ACTIVE_GROUPS
 
 
 class Customer(db.Model):
@@ -43,8 +45,15 @@ class Customer(db.Model):
 
     def update_active_status(self):
         # Check if self.groups contains a specific group ID (e.g., '3742')
-        if self.groups and '3742' in self.groups:
-            self.is_active = True
+        if self.groups:
+            try:
+                group_ids = json.loads(self.groups)
+            except ValueError:
+                group_ids = self.groups.split(',')
+            if any(group_id in ACTIVE_GROUPS for group_id in group_ids):
+                self.is_active = True
+            else:
+                self.is_active = False
         else:
             self.is_active = False
 

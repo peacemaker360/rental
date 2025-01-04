@@ -169,7 +169,7 @@ def customers():
         else:
             customers = Customer.search_customers(search)
     else:
-        customers = Customer.query.all()
+        customers = Customer.query.filter_by(is_active=True).all()
     if customers is None or len(customers) == 0:
         flash('No customer records found.', 'info')
     return render_template('customers.html', customers=customers, title="Mitglieder", search=search)
@@ -280,7 +280,7 @@ def new_rental(instrument_id=None, customer_id=None, ):
     form.instrument.query = db.session.query(Instrument)
     form.customer.query = db.session.query(Customer)
     form.customer.choices = [(c.id, c.display_name)
-                             for c in Customer.query.order_by('email')]
+                             for c in Customer.query.filter_by(is_active=True).order_by('email')]
     form.instrument.choices = [(i.id, i.name)
                                for i in Instrument.query.order_by('name')]
 
@@ -525,6 +525,7 @@ def import_users():
                         existing_user.firstname = str(first_name)
                         existing_user.lastname = str(last_name)
                         existing_user.groups = json.dumps(groups)
+                        existing_user.update_active_status()
                         updated += 1
                     else:
                         # Create new user
