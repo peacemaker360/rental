@@ -61,8 +61,7 @@ def instruments():
     # Hanlde the minimum search query length & trigger the search if ok
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
-            flash("Please provide more than {0} search characters".format(
-                app.config.get('SEARCH_REQ_MIN')), 'info')
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('instruments'))
         else:
             instruments = Instrument.search_instruments(search)
@@ -168,8 +167,7 @@ def customers():
     search = request.args.get('search', '').strip()
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
-            flash("Please provide more than {0} search characters".format(
-                app.config.get('SEARCH_REQ_MIN')), 'info')
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('customers'))
         else:
             customers = Customer.search_customers(search)
@@ -260,8 +258,7 @@ def rentals():
     search = request.args.get('search', '').strip()
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
-            flash("Please provide more than {0} search characters".format(
-                app.config.get('SEARCH_REQ_MIN')), 'info')
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('rentals'))
         else:
             rentals = Rental.search_rentals(search)
@@ -304,8 +301,7 @@ def new_rental(instrument_id=None, customer_id=None, ):
         # instrument = Instrument.query.get_or_404(form.instrument.data.id)
         # Check for availability of the instrument before saving. show info to user.
         if form.instrument.data.is_available is False:
-            flash("Rental cannot be placed. Instrument '{}' already in use!".format(
-                form.instrument.data.name), 'danger')
+            flash("Rental cannot be placed. Instrument '{}' already in use!".format(form.instrument.data.name), 'danger')
             return redirect(url_for('rentals'))
         try:
             db.session.add(rental)
@@ -398,8 +394,7 @@ def rentals_history():
     search = request.args.get('search', '').strip()
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
-            flash("Please provide more than {0} search characters".format(
-                app.config.get('SEARCH_REQ_MIN')), 'info')
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('rentals_history'))
         else:
             history = RentalHistory.search_rentalshistory(search)
@@ -438,8 +433,7 @@ def import_users():
                     exclude_group_ids = [int(id.strip()) for id in exclude_groups_str.split(
                         ',') if id.strip().isdigit()]
                 except ValueError:
-                    flash(
-                        'Exclude Group IDs must be integers separated by commas.', 'danger')
+                    flash('Exclude Group IDs must be integers separated by commas.', 'danger')
                     return redirect(url_for('import_users'))
 
             try:
@@ -447,8 +441,7 @@ def import_users():
                 users = parsed_data.get('data', [])
 
                 if not isinstance(users, list) or len(users) < 1:
-                    flash(
-                        'Invalid JSON format: "data" should be a non-empty list.', 'danger')
+                    flash('Invalid JSON format: "data" should be a non-empty list.', 'danger')
                     return redirect(url_for('import_users'))
 
                 # Exclude users belonging to specified groups
@@ -460,15 +453,13 @@ def import_users():
                 # Store filtered users in session or another method if needed for preview
                 # For simplicity, we'll just flash the count
                 user_count = len(users)
-                flash(f'Verification successful. {
-                      user_count} user(s) ready for import.', 'success')
+                flash(f'Verification successful. {user_count} user(s) ready for import.', 'success')
                 return redirect(url_for('import_users'))
 
             except json.JSONDecodeError:
                 flash('Invalid JSON data.', 'danger')
             except Exception as e:
-                flash(f'An error occurred during verification: {
-                      str(e)}', 'danger')
+                flash(f'An error occurred during verification: {str(e)}', 'danger')
 
         elif form.submit_import.data:
             json_data = form.json_data.data
@@ -480,8 +471,7 @@ def import_users():
                     exclude_group_ids = [int(id.strip()) for id in exclude_groups_str.split(
                         ',') if id.strip().isdigit()]
                 except ValueError:
-                    flash(
-                        'Exclude Group IDs must be integers separated by commas.', 'danger')
+                    flash('Exclude Group IDs must be integers separated by commas.', 'danger')
                     return redirect(url_for('import_users'))
 
             try:
@@ -489,8 +479,7 @@ def import_users():
                 users = parsed_data.get('data', [])
 
                 if not isinstance(users, list) or len(users) < 1:
-                    flash(
-                        'Invalid JSON format: "data" should be a non-empty list.', 'danger')
+                    flash('Invalid JSON format: "data" should be a non-empty list.', 'danger')
                     return redirect(url_for('import_users'))
 
                 # Exclude users belonging to specified groups
@@ -542,8 +531,7 @@ def import_users():
                         imported += 1
 
                 db.session.commit()
-                flash(f'Import completed: {imported} user(s) imported, {
-                      updated} user(s) updated.', 'success')
+                flash(f'Import completed: {imported} user(s) imported, {updated} user(s) updated.', 'success')
 
                 if skipped_users:
                     skipped_message = "Skipped the following users due to errors:\n\n"

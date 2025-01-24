@@ -1,17 +1,17 @@
-from datetime import date
 from random import choice
 from flask import current_app as app
 from flask import flash, redirect, url_for
 from flask_login import login_required
 
 from app import db
-from app.models import Instrument, Customer, Rental
+from app.models import Instrument, Customer
 
 ##############################################################
 # SAMPLE DATA
 # Quelle: Eigenentwicklung
 # Help: this endpoint is used to initially generate demo data, if the application is empty
 ##############################################################
+
 
 @app.route('/generate_data', methods=['GET', 'POST'])
 @login_required
@@ -40,7 +40,7 @@ def generate_data():
         lastname = 'Name'
         phone = '031 000 10 0{}'.format(i)
         email = 'member{}@example.com'.format(i)
-        customer = Customer(firstname=firstname,lastname=lastname, phone=phone, email=email)
+        customer = Customer(firstname=firstname, lastname=lastname, phone=phone, email=email)
         customers.append(customer)
 
     # Generate sample data for Rental
@@ -52,7 +52,7 @@ def generate_data():
     #     rentals.append(rental)
 
     # Add the sample data to the database
-    #db.session.bulk_save_objects(instruments + customers + rentals)
+    # db.session.bulk_save_objects(instruments + customers + rentals)
     db.session.bulk_save_objects(instruments + customers)
     db.session.commit()
 
