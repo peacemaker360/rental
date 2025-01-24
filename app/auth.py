@@ -1,11 +1,10 @@
-from datetime import datetime
 from flask import current_app as app
 from flask import jsonify, render_template, flash, redirect, url_for, request
 from flask_login import login_user, logout_user, current_user, login_required
 from urllib.parse import urlparse as url_parse
 
 from app import db
-from app.forms import LoginForm, RegistrationForm, ResetPasswordForm, ResetPasswordRequestForm, UserConfigForm, UserSelectForm
+from app.forms import LoginForm, RegistrationForm, ResetPasswordForm, UserConfigForm, UserSelectForm
 from app.models.User import User
 
 #################################
@@ -107,8 +106,7 @@ def resetpassword():
                 return render_template('resetpassword.html', title='Reset password', form=form)
             user.set_password(form.password.data)
             db.session.commit()
-            flash("Password for '{}' was reset!".format(
-                form.email.data), 'success')
+            flash("Password for '{}' was reset!".format(form.email.data), 'success')
             return redirect(url_for('login'))
         elif request.method == 'GET' and request.args.get('email', None, type=str) is not None:
             form.email.data = request.args.get('email', None, type=str)
@@ -157,11 +155,11 @@ def edit_user(id):
         # For example: user.email = form.email.data
         if form.email.data is not None:
             user.email = form.email.data
-        if form.enabled.data == True:
+        if form.enabled.data:
             user.is_active = 1
         else:
             user.is_active = 0
-        if form.admin.data == True:
+        if form.admin.data:
             user.role = 0
         else:
             user.role = 1
