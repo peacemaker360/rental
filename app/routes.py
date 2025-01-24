@@ -455,8 +455,7 @@ def import_users():
                 if exclude_group_ids:
                     users = [user for user in users if user.get('attributes', {}).get(
                         'primary_group_id') not in exclude_group_ids]
-                    flash(f'Excluded users from groups: {
-                          ", ".join(map(str, exclude_group_ids))}', 'info')
+                    flash(f'Excluded users from groups: {", ".join(map(str, exclude_group_ids))}', 'info')
 
                 # Store filtered users in session or another method if needed for preview
                 # For simplicity, we'll just flash the count
@@ -498,8 +497,7 @@ def import_users():
                 if exclude_group_ids:
                     users = [user for user in users if user.get('attributes', {}).get(
                         'primary_group_id') not in exclude_group_ids]
-                    flash(f'Excluded users from group IDs: {
-                          ", ".join(map(str, exclude_group_ids))}', 'info')
+                    flash(f'Excluded users from group IDs: {", ".join(map(str, exclude_group_ids))}', 'info')
 
                 imported = 0
                 updated = 0
