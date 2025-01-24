@@ -1,12 +1,8 @@
 import os
 import json
-from datetime import date, datetime
-from random import choice
-from sqlalchemy import and_, or_
-from sqlalchemy.exc import SQLAlchemyError
 from flask import current_app as app
-from flask import flash, jsonify, redirect, render_template, send_from_directory, url_for, request
-from flask_login import login_user, logout_user, current_user, login_required
+from flask import flash, redirect, render_template, send_from_directory, url_for, request
+from flask_login import current_user, login_required
 
 from app import db
 from app.models import Instrument, Customer, Rental, RentalHistory
@@ -81,7 +77,12 @@ def instruments():
     # Return a help message, if the retruned instruments list is null or zero.
     if instruments is None or len(instruments) == 0:
         flash('No instrument records found.', 'info')
-    return render_template('instruments.html', instruments=instruments, title="Instrumente", search=search, filterAvailable=filterAvailable, stats=stats)
+    return render_template('instruments.html',
+                           instruments=instruments,
+                           title="Instrumente",
+                           search=search,
+                           filterAvailable=filterAvailable,
+                           stats=stats)
 
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
@@ -92,8 +93,12 @@ def new_instrument():
         if request.form.get('submit') == 'Cancel':
             return redirect(url_for('instruments'))
     if form.validate_on_submit():
-        instrument = Instrument(name=form.name.data, brand=form.brand.data, type=form.type.data,
-                                serial=form.serial.data, description=form.description.data, price=form.price.data)
+        instrument = Instrument(name=form.name.data,
+                                brand=form.brand.data,
+                                type=form.type.data,
+                                serial=form.serial.data,
+                                description=form.description.data,
+                                price=form.price.data)
         db.session.add(instrument)
         db.session.commit()
         flash('Instrument created successfully!', 'success')
