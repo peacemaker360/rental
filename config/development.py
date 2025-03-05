@@ -13,11 +13,17 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 #     dbname=os.environ['DBNAME']
 # )
 #DATABASE_URI = 'sqlite:///' + os.path.join(basedir, 'app.db')
+# DATABASE_URI = 'mysql+pymysql://{dbuser}:{dbpass}@{dbhost}/{dbname}'.format(
+#     dbuser='rentalapp',
+#     dbpass='rentalapp',
+#     dbhost='localhost',
+#     dbname='rentalapp'
+# )
 DATABASE_URI = 'mysql+pymysql://{dbuser}:{dbpass}@{dbhost}/{dbname}'.format(
-    dbuser='rentalapp',
-    dbpass='rentalapp',
-    dbhost='localhost',
-    dbname='rentalapp'
+    dbuser='musikge6_rent',
+    dbpass='d-tQYzXdMbvq!E*2T269',
+    dbhost='musikge6.mysql.db.hostpoint.ch',
+    dbname='musikge6_rentalapp'
 )
 
 TIME_ZONE = 'UTC'
