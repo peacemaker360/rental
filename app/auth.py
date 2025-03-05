@@ -2,27 +2,32 @@ from flask import current_app as app
 from flask import jsonify, render_template, flash, redirect, url_for, request
 from flask_login import login_user, logout_user, current_user, login_required
 from urllib.parse import urlparse as url_parse
-
 from app import db
 from app.forms import LoginForm, RegistrationForm, ResetPasswordForm, UserConfigForm, UserSelectForm
 from app.models.User import User
+import logging
 
 #################################
 # User auth routes
-# Quelle: Übernommen aus den Beispielen
 #################################
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
+        # If already logged in, go to the index
         return redirect(url_for('index'))
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
+        # Optional: normalize username to lower case if you store usernames that way.
+        username = form.username.data.strip().lower()
+        user = User.query.filter_by(username=username).first()
         if user is None or not user.check_password(form.password.data):
-            flash('Invalid username or password')
+            flash('Invalid username or password', 'danger')
+            # Log the failed attempt (but be sure not to log sensitive information)
+            app.logger.warning("Failed login attempt for username: %s", username)
             return redirect(url_for('login'))
+        # Log in the user. Check for any issues returned by login_user.
         if login_user(user, remember=form.remember_me.data):
             next_page = request.args.get('next')
             if not next_page or url_parse(next_page).netloc != '':
@@ -47,12 +52,31 @@ def register():
         return redirect(url_for('index'))
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = User(username=form.username.data, email=form.email.data)
-        user.set_password(form.password.data)
-        db.session.add(user)
-        db.session.commit()
-        flash('Congratulations, you are now a registered user!')
-        return redirect(url_for('login'))
+        # Normalize username and email
+        username = form.username.data.strip().lower()
+        email = form.email.data.strip().lower()
+        # Check if the username or email already exists:
+        if User.query.filter_by(username=username).first():
+            flash('Username already taken. Please choose a different one.', 'danger')
+            return redirect(url_for('register'))
+        if User.query.filter_by(email=email).first():
+            flash('Email already registered. Please use a different email.', 'danger')
+            return redirect(url_for('register'))
+        # Create the user, set password and add them to the database
+        try:
+            user = User(username=username, email=email)
+            user.set_password(form.password.data)
+            db.session.add(user)
+            db.session.commit()
+            flash('Congratulations, you are now a registered user!', 'success')
+            # Optionally, automatically log in the user after registration:
+            # login_user(user)
+            return redirect(url_for('login'))
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error("Error in registration: %s", e)
+            flash('An error occurred while creating your account. Please try again.', 'danger')
+            return redirect(url_for('register'))
     return render_template('register.html', title='Register', form=form)
 
 
