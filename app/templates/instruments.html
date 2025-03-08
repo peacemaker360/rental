@@ -51,53 +51,58 @@
 
 </div>
 
-
-<table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Marke</th>
-            <th class="d-none d-sm-table-cell">Typ</th>
-            <th class="d-none d-sm-table-cell">Serial</th>
-            <th>Options</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for instrument in instruments %}
-        <tr>
-            <td style="white-space: nowrap;">
-                {% if instrument.is_available %}
-                <span class="bi bi-check text-success">{{ instrument.name }}</span>&nbsp;
-                {% else %}
-                <span class="bi bi-x text-danger">{{ instrument.name }}</span>&nbsp;
-                {% endif %}
-            </td>
-            <td>{{ instrument.brand }}</td>
-            <td class="d-none d-sm-table-cell">{{ instrument.type }}</td>
-            <td class="d-none d-sm-table-cell">{{ instrument.serial }}</td>
-            <td>
-                {% if instrument.is_available %}
-                <a href="{{ url_for('new_rental', instrument_id=instrument.id, source='instruments') }}"
-                    class="btn btn-primary btn-sm {{ '' if instrument.is_available else 'disabled' }}">Rent</a>
-                {% else %}
-                {% set rental = instrument.rental | selectattr('instrument_id', 'equalto', instrument.id) | first %}
-                <form method="post" action="{{ url_for('delete_rental', id=rental.id, source='instruments') }}"
-                    class="d-inline-block">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-secondary btn-sm"
-                        onclick="return confirm('Are you sure you want to return this rental?')">Return</button>
-                </form>
-                {% endif %}
-            </td>
-            <td>
-                {{ macros.render_actions(url_for('view_instrument', id=instrument.id),
-                url_for('edit_instrument', id=instrument.id),
-                url_for('delete_instrument', id=instrument.id)) }}
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{{ paginate.render_paginate(prev_url, next_url) }}
+<div class="table-responsive mt-3">
+    <table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Marke</th>
+                <th class="d-none d-sm-table-cell">Typ</th>
+                <th class="d-none d-sm-table-cell">Serial</th>
+                <th>Options</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for instrument in instruments %}
+            <tr>
+                <td style="white-space: nowrap;">
+                    {% if instrument.is_available %}
+                    <span class="bi bi-check text-success">{{ instrument.name }}</span>&nbsp;
+                    {% else %}
+                    <span class="bi bi-x text-danger">{{ instrument.name }}</span>&nbsp;
+                    {% endif %}
+                </td>
+                <td>{{ instrument.brand }}</td>
+                <td class="d-none d-sm-table-cell">{{ instrument.type }}</td>
+                <td class="d-none d-sm-table-cell">{{ instrument.serial }}</td>
+                <td>
+                    {% if instrument.is_available %}
+                    <a href="{{ url_for('new_rental', instrument_id=instrument.id, source='instruments') }}"
+                        class="btn btn-primary btn-sm {{ '' if instrument.is_available else 'disabled' }}">Rent</a>
+                    {% else %}
+                    {% set rental = instrument.rental | selectattr('instrument_id', 'equalto', instrument.id) | first %}
+                    <form method="post" action="{{ url_for('delete_rental', id=rental.id, source='instruments') }}"
+                        class="d-inline-block">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary btn-sm"
+                            onclick="return confirm('Are you sure you want to return this rental?')">Return</button>
+                    </form>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ macros.render_actions(url_for('view_instrument', id=instrument.id),
+                    url_for('edit_instrument', id=instrument.id),
+                    url_for('delete_instrument', id=instrument.id)) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="row py-3">
+    <div class="col-12">
+        {{ paginate.render_paginate(prev_url, next_url) }}
+    </div>
+</div>
 {% endblock %}

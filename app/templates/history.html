@@ -27,30 +27,35 @@
     </div>
 </div>
 
-
-<table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
-    <thead>
-        <tr>
-            <th>Timestamp</th>
-            <th>Instrument</th>
-            <th>Customer</th>
-            <th>Rental note</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for entry in history %}
-        <tr>
-            <td>{{ entry.timestamp }}</td>
-            <td>{{ entry.instrument_name }}</td>
-            <td>{{ entry.customer_name }}</td>
-            <td>
-                <div class="text-truncate" style="max-width: 150px;" title="{{ entry.rental_note }}">
-                    {{entry.rental_note }}
-                </div>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{{ paginate.render_paginate(prev_url, next_url) }}
+<div class="table-responsive mt-3">
+    <table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Instrument</th>
+                <th>Customer</th>
+                <th>Rental note</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in history %}
+            <tr>
+                <td>{{ entry.timestamp }}</td>
+                <td>{{ entry.instrument_name }}</td>
+                <td>{{ entry.customer_name }}</td>
+                <td>
+                    <div class="text-truncate" style="max-width: 150px;" title="{{ entry.rental_note }}">
+                        {{entry.rental_note }}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="row py-3">
+    <div class="col-12">
+        {{ paginate.render_paginate(prev_url, next_url) }}
+    </div>
+</div>
 {% endblock %}
