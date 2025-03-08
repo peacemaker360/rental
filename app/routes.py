@@ -88,13 +88,10 @@ def instruments():
                            title="Instrumente",
                            search=search,
                            filterAvailable=filterAvailable,
-                           stats=stats,
                            paginate=paginate_obj,
                            prev_url=prev_url,
-                           next_url=next_url)
-
+                           next_url=next_url,
                            stats=stats)
-
 
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
@@ -339,7 +336,8 @@ def new_rental(instrument_id=None, customer_id=None, ):
         # instrument = Instrument.query.get_or_404(form.instrument.data.id)
         # Check for availability of the instrument before saving. show info to user.
         if form.instrument.data.is_available is False:
-            flash("Rental cannot be placed. Instrument '{}' already in use!".format(form.instrument.data.name), 'danger')
+            flash(
+                "Rental cannot be placed. Instrument '{}' already in use!".format(form.instrument.data.name), 'danger')
             return redirect(url_for('rentals'))
         try:
             db.session.add(rental)
