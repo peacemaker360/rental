@@ -60,5 +60,9 @@
         {% endfor %}
     </tbody>
 </table>
-{{ paginate.render_paginate(prev_url, next_url) }}
+<div class="row py-3">
+    <div class="col-12">
+        {{ paginate.render_paginate(prev_url, next_url) }}
+    </div>
+</div>
 {% endblock %}
