@@ -7,3 +7,15 @@
     display: block;
     transition-delay: 0.5s;
 }
+
+@media (max-width: 576px) {
+    .action-btn-group {
+        flex-direction: column;
+    }
+
+    .action-btn-group .btn {
+        width: 100%;
+        /* full-width buttons on mobile */
+        margin-bottom: 5px;
+    }
+}

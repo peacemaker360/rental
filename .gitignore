@@ -7,4 +7,6 @@ Lib
 Scripts
 Include
 app.db
+.env
 .data/hitobito.json
+.env

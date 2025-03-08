@@ -24,7 +24,7 @@
     "serverfarms_ASP_name": "[concat('ASP-', parameters('sites_name'), '-', uniqueString(resourceGroup().id))]",
     "flexibleServers_dbserver_name": "[concat(parameters('sites_name'), '-dbserver')]",
     "defaultLocation": "[parameters('location')]",
-    "pyVersion": "PYTHON|3.10",
+    "pyVersion": "PYTHON|3.12",
     "dbadmin": "dbaadmin",
     "dbname": "app",
     "randomPassword": "[concat(substring(uniqueString(resourceGroup().id, 'hui768g!gwq'), 0, 4), substring('ABCDEFGHIJKLMNOPQRSTUVWXYZ', mod(length(resourceGroup().id), 26), 1), substring('abcdefghijklmnopqrstuvwxyz', mod(length(resourceGroup().id), 26), 1), substring('0123456789', mod(length(resourceGroup().id), 10), 1), substring('!@#$%^&*_-+=`|(){}[]:;<>,.?~', mod(length(resourceGroup().id), 29), 1))]",

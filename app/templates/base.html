@@ -33,6 +33,7 @@
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="navbarNav">
+                    {% if current_user.is_authenticated %}
                     <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                         <li class="nav-item {% if request.path==url_for('instruments') %} active {% endif %} dropdown">
                             <a class="nav-link dropdown-toggle" href="{{ url_for('instruments') }}" role="button"
@@ -40,12 +41,12 @@
                             <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="{{ url_for('instruments') }}">Alle</a></li>
                                 <li><a class="dropdown-item" href="{{ url_for('instruments', is_available=true) }}">Im
-                                        Lager</a>
-                                </li>
+                                        Lager</a></li>
                                 <li><a class="dropdown-item" href="{{ url_for('instruments', is_available=false) }}">In
                                         Gebrauch</a></li>
                             </ul>
                         </li>
+
                         <li class="nav-item {% if request.path==url_for('customers') %} active {% endif %}">
                             <a class="nav-link" href="{{ url_for('customers') }}">Mitglieder</a>
                         </li>
@@ -63,6 +64,7 @@
                             </ul>
                         </li>
                     </ul>
+                    {% endif %}
                     {% if current_user.is_authenticated %}
                     <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                         <li class="nav-item dropdown">

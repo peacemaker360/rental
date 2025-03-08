@@ -71,13 +71,12 @@ class Customer(db.Model):
         db.session.commit()
         return self
 
-    @staticmethod
-    def search_customers(keyword):
-        customers = Customer.query.filter(or_(
+    @classmethod
+    def search(cls, keyword):
+        return cls.query.filter(or_(
             # Customer.name.ilike(f'%{keyword}%'),
-            Customer.firstname.ilike(f'%{keyword}%'),
-            Customer.lastname.ilike(f'%{keyword}%'),
-            Customer.email.ilike(f'%{keyword}%'),
-            Customer.phone.ilike(f'%{keyword}%')
-        )).all()
-        return customers
+            cls.firstname.ilike(f'%{keyword}%'),
+            cls.lastname.ilike(f'%{keyword}%'),
+            cls.email.ilike(f'%{keyword}%'),
+            cls.phone.ilike(f'%{keyword}%')
+        ))

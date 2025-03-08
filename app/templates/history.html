@@ -1,5 +1,7 @@
 <!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
+{% import 'macros.html' as macros %}
+{% import '_paginate.html' as paginate %}
 
 {% block app_content %}
 
@@ -41,9 +43,14 @@
             <td>{{ entry.timestamp }}</td>
             <td>{{ entry.instrument_name }}</td>
             <td>{{ entry.customer_name }}</td>
-            <td>{{ entry.rental_note }}</td>
+            <td>
+                <div class="text-truncate" style="max-width: 150px;" title="{{ entry.rental_note }}">
+                    {{entry.rental_note }}
+                </div>
+            </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+{{ paginate.render_paginate(prev_url, next_url) }}
 {% endblock %}
