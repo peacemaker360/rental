@@ -78,10 +78,12 @@
             }
 
             importButton.disabled = false;
+            importButton.className = 'btn btn-success';
             preview.innerHTML = `<p style="color: green;">Verification successful. You can proceed to import.</p>`;
         } catch (error) {
             preview.innerHTML = `<p style='color: red;'>${error.message}</p>`;
             importButton.disabled = true;
+            importButton.className = 'btn btn-error';
         }
     }
 
