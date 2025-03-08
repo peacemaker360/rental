@@ -41,7 +41,11 @@
             <td>{{ entry.timestamp }}</td>
             <td>{{ entry.instrument_name }}</td>
             <td>{{ entry.customer_name }}</td>
-            <td>{{ entry.rental_note }}</td>
+            <td>
+                <div class="text-truncate" style="max-width: 150px;" title="{{ entry.rental_note }}">
+                    {{entry.rental_note }}
+                </div>
+            </td>
         </tr>
         {% endfor %}
     </tbody>
