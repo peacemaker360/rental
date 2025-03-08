@@ -1,6 +1,7 @@
 <!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
 {% import 'macros.html' as macros %}
+{% import '_paginate.html' as paginate %}
 
 {% block app_content %}
 
@@ -98,4 +99,5 @@
         {% endfor %}
     </tbody>
 </table>
+{{ paginate.render_paginate(prev_url, next_url) }}
 {% endblock %}
