@@ -6,7 +6,7 @@ from flask_login import current_user, login_required
 
 from app import db
 from app.models import Instrument, Customer, Rental, RentalHistory
-from .forms import InstrumentForm, CustomerForm, RentalForm, ImportForm
+from .forms import InstrumentForm, CustomerForm, RentalForm, BulkCustomerImportForm
 
 import logging
 # Configure logging
@@ -465,7 +465,7 @@ def import_users():
     if current_user.role > 1:
         flash('You do not have permission to access this page.', 'danger')
         return redirect(url_for('index'))
-    form = ImportForm()
+    form = BulkCustomerImportForm()
     if form.validate_on_submit():
         # Determine which button was pressed
         if form.submit_verify.data:

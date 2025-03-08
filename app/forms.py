@@ -125,7 +125,7 @@ class RentalForm(FlaskForm):
 #################################
 
 
-class ImportForm(FlaskForm):
+class BulkCustomerImportForm(FlaskForm):
     json_data = TextAreaField(
         'Paste JSON data:',
         validators=[DataRequired()],
