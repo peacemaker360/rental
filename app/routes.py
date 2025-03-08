@@ -93,6 +93,9 @@ def instruments():
                            prev_url=prev_url,
                            next_url=next_url)
 
+                           stats=stats)
+
+
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
 @login_required
@@ -179,7 +182,7 @@ def customers():
     query = Customer.query.filter_by(is_active=True)
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
-            flash(f"Please provide more than {app.config.get('SEARCH_REQ_MIN')} search characters", 'info')
+            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('customers'))
         else:
             query = Customer.search(search)
