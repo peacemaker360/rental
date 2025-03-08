@@ -29,16 +29,16 @@ class Rental(db.Model):
         onupdate=lambda: datetime.now(timezone.utc)
     )
 
-    @staticmethod
-    def search_rentals(keyword):
-        rentals = Rental.query.join(Customer).join(Instrument).filter(
+    @classmethod
+    def search(cls, keyword):
+        return cls.query.join(Customer).join(Instrument).filter(
             or_(
-                Rental.id.like(f'%{keyword}%'),
-                Customer.name.like(f'%{keyword}%'),
+                cls.id.like(f'%{keyword}%'),
+                Customer.firstname.like(f'%{keyword}%'),
+                Customer.lastname.like(f'%{keyword}%'),
                 Instrument.name.like(f'%{keyword}%'),
-                Rental.start_date.like(f'%{keyword}%'),
-                Rental.end_date.like(f'%{keyword}%'),
-                Rental.description.like(f'%{keyword}%')
+                cls.start_date.like(f'%{keyword}%'),
+                cls.end_date.like(f'%{keyword}%'),
+                cls.description.like(f'%{keyword}%')
             )
-        ).all()
-        return rentals
+        )

@@ -40,8 +40,9 @@ def create_app():
         SQLALCHEMY_DATABASE_URI=app.config.get('DATABASE_URI'),
         SQLALCHEMY_TRACK_MODIFICATIONS=True,
         # Pagination settings
-        ITEMS_PER_PAGE=5,
+        ITEMS_PER_PAGE=10,
         USERS_PER_PAGE=10,
+        HISTORY_PER_PAGE=10,
         # Search settings
         SEARCH_REQ_MIN=3,
     )

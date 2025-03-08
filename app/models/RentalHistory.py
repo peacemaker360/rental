@@ -38,14 +38,15 @@ class RentalHistory(db.Model):
         self.end_date = rental.end_date
         self.rental_note = rental.description
 
-    @staticmethod
-    def search_rentalshistory(keyword):
-        rentalshistory = RentalHistory.query.filter(or_(
-            RentalHistory.rental_note.ilike(f'%{keyword}%'),
-            RentalHistory.instrument_name.ilike(f'%{keyword}%'),
-            RentalHistory.customer_name.ilike(f'%{keyword}%')
-        )).order_by(RentalHistory.timestamp.desc()).all()
-        return rentalshistory
+    @classmethod
+    def search(cls, keyword):
+        return cls.query.filter(
+            or_(
+                cls.rental_note.ilike(f'%{keyword}%'),
+                cls.instrument_name.ilike(f'%{keyword}%'),
+                cls.customer_name.ilike(f'%{keyword}%')
+            )
+        ).order_by(cls.timestamp.desc())
 
     @staticmethod
     def getBy_instrumentId(id):

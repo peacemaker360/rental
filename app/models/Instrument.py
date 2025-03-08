@@ -45,7 +45,8 @@ class Instrument(db.Model):
         # rental = Rental.query.filter_by(instrument_id=self.id).order_by(Rental.end_date.desc()).first() # => using this, we have cricular references because we need Rental class
         instrument_instance = Instrument.query.get(self.id)
         # create a sorted list of rentals using a lambda function inline. Importend to handle the "empty end_date" here.
-        rentals = sorted(instrument_instance.rental, key=lambda rental: (rental.end_date is None, rental.end_date), reverse=True)
+        rentals = sorted(instrument_instance.rental, key=lambda rental: (
+            rental.end_date is None, rental.end_date), reverse=True)
         # get the top/first result from the sorted list
         rental = next(iter(rentals), None)
 
@@ -59,16 +60,12 @@ class Instrument(db.Model):
         else:
             return False
 
-    @staticmethod
-    def search_instruments(keyword):
+    @classmethod
+    def search(cls, keyword):
         # Start with a base query for the search string
-        query = Instrument.query.filter(or_(
-            Instrument.name.ilike(f'%{keyword}%'),
-            Instrument.brand.ilike(f'%{keyword}%'),
-            Instrument.type.ilike(f'%{keyword}%'),
-            Instrument.serial.ilike(f'%{keyword}%')
+        return cls.query.filter(or_(
+            cls.name.ilike(f'%{keyword}%'),
+            cls.brand.ilike(f'%{keyword}%'),
+            cls.type.ilike(f'%{keyword}%'),
+            cls.serial.ilike(f'%{keyword}%')
         ))
-        # Execute the query and return the results
-        instruments = query.all()
-
-        return instruments

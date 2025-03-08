@@ -42,46 +42,56 @@ def favicon():
 @app.route('/instruments')
 @login_required
 def instruments():
-    # Get serach string from url parameters
     search = request.args.get('search', '').strip()
-    # Get available filter from url parameters
     filterAvailable = request.args.get('is_available', '').strip().lower()
+    page = request.args.get('page', 1, type=int)
 
-    # Define a "stats" object which can be passed to the frontend to show some numberts
-    total_instruments = Instrument.query.count()
-    available_instruments = sum(
-        1 for inst in Instrument.query.all() if inst.is_available)
-    unavailable_instruments = total_instruments - available_instruments
-    stats = {
-        'total': total_instruments,
-        'available': available_instruments,
-        'unavailable': unavailable_instruments
-    }
+    query = Instrument.query  # start with a query object
 
-    # Hanlde the minimum search query length & trigger the search if ok
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
             flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('instruments'))
         else:
-            instruments = Instrument.search_instruments(search)
-    else:
-        instruments = Instrument.query.all()
-    # If filterAvailable is 'true' or 'false', return a filtered list
+            query = Instrument.search(search)
+
+    # Paginate using ITEMS_PER_PAGE
+    paginate_obj = query.order_by(Instrument.name.asc()).paginate(
+        page=page, per_page=app.config.get('ITEMS_PER_PAGE', 10), error_out=False
+    )
+    instruments = paginate_obj.items
+    prev_url = url_for('instruments', page=paginate_obj.prev_num, search=search,
+                       is_available=filterAvailable) if paginate_obj.has_prev else None
+    next_url = url_for('instruments', page=paginate_obj.next_num, search=search,
+                       is_available=filterAvailable) if paginate_obj.has_next else None
+
+    # Apply filterAvailable if set
     if filterAvailable == 'true':
         instruments = list(filter(lambda i: i.is_available, instruments))
     elif filterAvailable == 'false':
         instruments = list(filter(lambda i: not i.is_available, instruments))
 
-    # Return a help message, if the retruned instruments list is null or zero.
-    if instruments is None or len(instruments) == 0:
+    # Prepare some stats if needed (as in your original code)
+    total_instruments = Instrument.query.count()
+    available_instruments = sum(
+        1 for inst in Instrument.query.all() if inst.is_available)
+    stats = {
+        'total': total_instruments,
+        'available': available_instruments,
+        'unavailable': total_instruments - available_instruments
+    }
+
+    if not instruments:
         flash('No instrument records found.', 'info')
     return render_template('instruments.html',
                            instruments=instruments,
                            title="Instrumente",
                            search=search,
                            filterAvailable=filterAvailable,
-                           stats=stats)
+                           stats=stats,
+                           paginate=paginate_obj,
+                           prev_url=prev_url,
+                           next_url=next_url)
 
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
@@ -165,17 +175,31 @@ def delete_instrument(id):
 @login_required
 def customers():
     search = request.args.get('search', '').strip()
+    page = request.args.get('page', 1, type=int)
+    query = Customer.query.filter_by(is_active=True)
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
-            flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
+            flash(f"Please provide more than {app.config.get('SEARCH_REQ_MIN')} search characters", 'info')
             return redirect(url_for('customers'))
         else:
-            customers = Customer.search_customers(search)
-    else:
-        customers = Customer.query.filter_by(is_active=True).all()
-    if customers is None or len(customers) == 0:
+            query = Customer.search(search)
+
+    paginate = query.order_by(Customer.lastname.asc()).paginate(
+        page=page, per_page=app.config.get('USERS_PER_PAGE', 10), error_out=False
+    )
+    customers = paginate.items
+    prev_url = url_for('customers', page=paginate.prev_num, search=search) if paginate.has_prev else None
+    next_url = url_for('customers', page=paginate.next_num, search=search) if paginate.has_next else None
+
+    if not customers:
         flash('No customer records found.', 'info')
-    return render_template('customers.html', customers=customers, title="Mitglieder", search=search)
+    return render_template('customers.html',
+                           customers=customers,
+                           title="Mitglieder",
+                           search=search,
+                           paginate=paginate,
+                           prev_url=prev_url,
+                           next_url=next_url)
 
 
 @app.route('/customers/new', methods=['GET', 'POST'])
@@ -256,17 +280,28 @@ def delete_customer(id):
 @login_required
 def rentals():
     search = request.args.get('search', '').strip()
+    page = request.args.get('page', 1, type=int)
+    query = Rental.query  # start with the base query
+
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
             flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('rentals'))
         else:
-            rentals = Rental.search_rentals(search)
-    else:
-        rentals = Rental.query.all()
-    if rentals is None or len(rentals) == 0:
+            query = Rental.search(search)
+
+    # Paginate with ITEMS_PER_PAGE (ensure this is defined in your config)
+    paginate_obj = query.order_by(Rental.start_date.desc()).paginate(
+        page=page, per_page=app.config.get('ITEMS_PER_PAGE', 10), error_out=False
+    )
+    rentals = paginate_obj.items
+    prev_url = url_for('rentals', page=paginate_obj.prev_num, search=search) if paginate_obj.has_prev else None
+    next_url = url_for('rentals', page=paginate_obj.next_num, search=search) if paginate_obj.has_next else None
+
+    if not rentals:
         flash('No rental records found.', 'info')
-    return render_template('rentals.html', rentals=rentals, title="Verleihe", search=search)
+    return render_template('rentals.html', rentals=rentals, title="Verleihe", search=search,
+                           paginate=paginate_obj, prev_url=prev_url, next_url=next_url)
 
 
 @app.route('/rentals/new', methods=['GET', 'POST'])
@@ -392,18 +427,27 @@ def delete_rental(id):
 @login_required
 def rentals_history():
     search = request.args.get('search', '').strip()
+    page = request.args.get('page', 1, type=int)
+    query = RentalHistory.query
+
     if search:
         if len(search) < app.config.get('SEARCH_REQ_MIN'):
             flash("Please provide more than {0} search characters".format(app.config.get('SEARCH_REQ_MIN')), 'info')
             return redirect(url_for('rentals_history'))
         else:
-            history = RentalHistory.search_rentalshistory(search)
-    else:
-        history = RentalHistory.query.order_by(
-            RentalHistory.timestamp.desc()).all()
-    if history is None or len(history) == 0:
+            query = RentalHistory.search(search)
+
+    paginate_obj = query.order_by(RentalHistory.timestamp.desc()).paginate(
+        page=page, per_page=app.config.get('HISTORY_PER_PAGE', 10), error_out=False
+    )
+    history = paginate_obj.items
+    prev_url = url_for('rentals_history', page=paginate_obj.prev_num, search=search) if paginate_obj.has_prev else None
+    next_url = url_for('rentals_history', page=paginate_obj.next_num, search=search) if paginate_obj.has_next else None
+
+    if not history:
         flash('No history records found.', 'info')
-    return render_template('history.html', history=history, title="History", search=search)
+    return render_template('history.html', history=history, title="History", search=search,
+                           paginate=paginate_obj, prev_url=prev_url, next_url=next_url)
 
 #################
 # User import Routes
