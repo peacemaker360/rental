@@ -44,6 +44,7 @@ def favicon():
 def instruments():
     search = request.args.get('search', '').strip()
     filterAvailable = request.args.get('is_available', '').strip().lower()
+    filterOverdue = request.args.get('show_overdue', '').strip().lower()
     page = request.args.get('page', 1, type=int)
 
     query = Instrument.query  # start with a query object
@@ -67,9 +68,15 @@ def instruments():
 
     # Apply filterAvailable if set
     if filterAvailable == 'true':
-        instruments = list(filter(lambda i: i.is_available, instruments))
+        instruments = list(filter(lambda i: not i.is_rented, instruments))
     elif filterAvailable == 'false':
-        instruments = list(filter(lambda i: not i.is_available, instruments))
+        instruments = list(filter(lambda i: i.is_rented, instruments))
+
+    # Apply show_overdue if set
+    if filterOverdue == 'true':
+        instruments = list(filter(lambda i: i.is_overdue, instruments))
+    elif filterOverdue == 'false' or None:
+        instruments = list(filter(lambda i: not i.is_overdue, instruments))
 
     # Prepare some stats if needed (as in your original code)
     total_instruments = Instrument.query.count()
@@ -78,7 +85,8 @@ def instruments():
     stats = {
         'total': total_instruments,
         'available': available_instruments,
-        'unavailable': total_instruments - available_instruments
+        'unavailable': total_instruments - available_instruments,
+        'overdue': sum(1 for inst in Instrument.query.all() if inst.is_overdue)
     }
 
     if not instruments:
@@ -88,6 +96,7 @@ def instruments():
                            title="Instrumente",
                            search=search,
                            filterAvailable=filterAvailable,
+                           filterOverdue=filterOverdue,
                            paginate=paginate_obj,
                            prev_url=prev_url,
                            next_url=next_url,
@@ -420,10 +429,23 @@ def delete_rental(id):
     return redirect(url_for(source_page))
 
 
+@app.route('/rentals/<int:id>/return', methods=['POST'])
+@login_required
+def return_rental(id):
+    # logic to return a rental
+    rental = Rental.query.get_or_404(id)
+    rental.end_rental()
+    db.session.commit()
+    flash('Rental returned successfully!', 'success')
+    source_page = request.args.get('source', 'rentals')
+    return redirect(url_for(source_page))
+
 #################
 # Histroy Routes
 # Quelle: Eigenentwicklung
 #################
+
+
 @app.route('/history')
 @login_required
 def rentals_history():
