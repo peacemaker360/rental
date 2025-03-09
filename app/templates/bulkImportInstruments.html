@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% import 'macros.html' as macros %}
+
+{% block app_content %}
+<h1>Import Instruments</h1>
+
+<p>
+    To import instrument data, please prepare your CSV file in the correct format.
+    You can download a sample CSV file here:
+    <a class="btn btn-sm btn-outline-info" href="{{ url_for('static', filename='sample_instruments.csv') }}" download>
+        Download Sample CSV
+    </a>
+</p>
+
+<!-- CSV File input for client-side processing -->
+<div class="form-group">
+    <label for="csvFile">Select CSV File</label>
+    <input type="file" id="csvFile" accept=".csv" class="form-control btn-outline-info">
+</div>
+
+<!-- Container for previewing parsed CSV content -->
+<div id="preview" class="mt-3"></div>
+
+<form action="{{ url_for('import_instruments') }}" method="post" id="importForm">
+    {{ form.hidden_tag() }}
+    <!-- Hidden TextArea to hold the JSON (styled as hidden) -->
+    {{ form.json_data(class="form-control", style="display: none;") }}
+    <div class="form-group mt-2">
+        {{ form.submit_verify(class="btn btn-secondary", id="verifyButton") }}
+        {{ form.submit_import(class="btn btn-primary", id="importButton", disabled="disabled") }}
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<!-- Include PapaParse from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"
+    integrity="sha512-dfX5uYVXzyU8+KHqj8bjo7UkOdg18PaOtpa48djpNbZHwExddghZ+ZmzWT06R5v6NSk3ZUfsH6FNEDepLx9hPQ=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+    // Get references to our elements
+    const csvFileInput = document.getElementById('csvFile');
+    const preview = document.getElementById('preview');
+    const importButton = document.getElementById('importButton');
+    // Use the form field's auto-generated id, e.g. "json_data"
+    const jsonDataField = document.getElementById('{{ form.json_data.id }}');
+    const verifyButton = document.getElementById('verifyButton');
+
+    verifyButton.addEventListener('click', function () {
+        const file = csvFileInput.files[0];
+        if (!file) {
+            preview.innerHTML = "<p style='color:red;'>Please select a CSV file.</p>";
+            return;
+        }
+        try {
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function (results) {
+                    if (!results.data || results.data.length === 0) {
+                        preview.innerHTML = "<p style='color:red;'>No data found in CSV file.</p>";
+                        importButton.disabled = true;
+                        return;
+                    }
+                    preview.innerHTML = `<p style="color:green;">Parsed ${results.data.length} instrument records successfully.</p>
+                                     <p><strong>First record preview:</strong> ${JSON.stringify(results.data[0])}</p>`;
+                    // Store the JSON data in the hidden TextArea for submission
+                    jsonDataField.value = JSON.stringify({ data: results.data }, null, 2);
+                    importButton.disabled = false;
+                    verifyButton.disabled = true;
+                    importButton.className = 'btn btn-success';
+                },
+                error: function (err) {
+                    preview.innerHTML = `<p style='color:red;'>Error parsing CSV: ${err}</p>`;
+                    importButton.disabled = true;
+                    importButton.className = 'btn btn-error';
+                }
+            });
+        } catch (error) {
+            preview.innerHTML = `<p style='color: red;'>${error.message}</p>`;
+            importButton.disabled = true;
+            importButton.className = 'btn btn-danger';
+        }
+
+    });
+</script>
+{% endblock %}

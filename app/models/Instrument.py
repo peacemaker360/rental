@@ -39,26 +39,64 @@ class Instrument(db.Model):
         # self.is_available = self.check_availability()
 
     @property
-    def is_available(self):
-        # Load the related rentals.
-        # With `joinedload`, it will fetch the related rentals in the same query.
-        # rental = Rental.query.filter_by(instrument_id=self.id).order_by(Rental.end_date.desc()).first() # => using this, we have cricular references because we need Rental class
-        instrument_instance = Instrument.query.get(self.id)
-        # create a sorted list of rentals using a lambda function inline. Importend to handle the "empty end_date" here.
-        rentals = sorted(instrument_instance.rental, key=lambda rental: (
-            rental.end_date is None, rental.end_date), reverse=True)
-        # get the top/first result from the sorted list
-        rental = next(iter(rentals), None)
+    def latest_rental(self):
+        """
+        Retrieve the most recent rental based on end_date and handling None values.
+        """
+        # Fetch all rentals; you may already have them via self.rental
+        rentals = sorted(self.rental, key=lambda r: (r.end_date is None, r.end_date), reverse=True)
+        return next(iter(rentals), None)
 
-        # Check if there are any active rentals associated with this instrument.
-        if rental is None:  # Means, it has no active renatals => is available
+    @property
+    def is_overdue(self):
+        """
+        Returns True if the instrument is currently rented, the rental has an end_date in the past and hasn't been returned.
+        """
+        rental = self.latest_rental
+        if rental and rental.return_date is None:
+            # Check if an end_date is defined and has passed.
+            if rental.end_date and rental.end_date < date.today():
+                return True
+        return False
+
+    @property
+    def is_available(self):
+        """
+        Logic:
+          - If no rental exists, return True.
+          - If there is an active rental (return_date is None):
+              • if no end_date is given, then it's not available.
+              • if an end_date is provided:
+                    - if the end_date is in the future, then it's currently in use: not available.
+                    - if the end_date is in the past (overdue), we may consider it available (for re-rental) though it is overdue.
+          - Otherwise, return True.
+        """
+        rental = self.latest_rental
+        if rental is None:
             return True
-        elif rental.end_date is None:  # Means, its open ended => not available
-            return False
-        elif rental.end_date < date.today():  # Means, it is overdue => technically, its available
+        if rental.return_date is not None:
+            # Rental finished.
             return True
-        else:
+        # Rental is active (not returned)
+        if rental.end_date is None:
+            # No end_date means the rental is open ended – instrument is not available.
             return False
+        # There is an end_date; check if it's overdue.
+        if rental.end_date < date.today():
+            # Overdue rental; treat as available for re-rental (but subject to your business logic).
+            return True
+        # Rental is active and currently within the rental period.
+        return False
+
+    @property
+    def is_rented(self):
+        """
+        Returns True if the instrument is currently rented and hasn't been returned.
+        """
+        rental = self.latest_rental
+        if rental and rental.return_date is None:
+            return True
+        return False
 
     @classmethod
     def search(cls, keyword):

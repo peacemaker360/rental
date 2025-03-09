@@ -6,7 +6,7 @@ from flask_login import current_user, login_required
 
 from app import db
 from app.models import Instrument, Customer, Rental, RentalHistory
-from .forms import InstrumentForm, CustomerForm, RentalForm, ImportForm
+from .forms import InstrumentForm, CustomerForm, RentalForm
 
 import logging
 # Configure logging
@@ -44,6 +44,7 @@ def favicon():
 def instruments():
     search = request.args.get('search', '').strip()
     filterAvailable = request.args.get('is_available', '').strip().lower()
+    filterOverdue = request.args.get('show_overdue', '').strip().lower()
     page = request.args.get('page', 1, type=int)
 
     query = Instrument.query  # start with a query object
@@ -67,9 +68,15 @@ def instruments():
 
     # Apply filterAvailable if set
     if filterAvailable == 'true':
-        instruments = list(filter(lambda i: i.is_available, instruments))
+        instruments = list(filter(lambda i: not i.is_rented, instruments))
     elif filterAvailable == 'false':
-        instruments = list(filter(lambda i: not i.is_available, instruments))
+        instruments = list(filter(lambda i: i.is_rented, instruments))
+
+    # Apply show_overdue if set
+    if filterOverdue == 'true':
+        instruments = list(filter(lambda i: i.is_overdue, instruments))
+    elif filterOverdue == 'false' or None:
+        instruments = list(filter(lambda i: not i.is_overdue, instruments))
 
     # Prepare some stats if needed (as in your original code)
     total_instruments = Instrument.query.count()
@@ -78,7 +85,8 @@ def instruments():
     stats = {
         'total': total_instruments,
         'available': available_instruments,
-        'unavailable': total_instruments - available_instruments
+        'unavailable': total_instruments - available_instruments,
+        'overdue': sum(1 for inst in Instrument.query.all() if inst.is_overdue)
     }
 
     if not instruments:
@@ -88,6 +96,7 @@ def instruments():
                            title="Instrumente",
                            search=search,
                            filterAvailable=filterAvailable,
+                           filterOverdue=filterOverdue,
                            paginate=paginate_obj,
                            prev_url=prev_url,
                            next_url=next_url,
@@ -420,10 +429,23 @@ def delete_rental(id):
     return redirect(url_for(source_page))
 
 
+@app.route('/rentals/<int:id>/return', methods=['POST'])
+@login_required
+def return_rental(id):
+    # logic to return a rental
+    rental = Rental.query.get_or_404(id)
+    rental.end_rental()
+    db.session.commit()
+    flash('Rental returned successfully!', 'success')
+    source_page = request.args.get('source', 'rentals')
+    return redirect(url_for(source_page))
+
 #################
 # Histroy Routes
 # Quelle: Eigenentwicklung
 #################
+
+
 @app.route('/history')
 @login_required
 def rentals_history():
@@ -450,146 +472,3 @@ def rentals_history():
     return render_template('history.html', history=history, title="History", search=search,
                            paginate=paginate_obj, prev_url=prev_url, next_url=next_url)
 
-#################
-# User import Routes
-# Quelle: Eigenentwicklung
-#################
-
-
-# routes.py
-
-
-@app.route('/import_users', methods=['GET', 'POST'])
-@login_required
-def import_users():
-    if current_user.role > 1:
-        flash('You do not have permission to access this page.', 'danger')
-        return redirect(url_for('index'))
-    form = ImportForm()
-    if form.validate_on_submit():
-        # Determine which button was pressed
-        if form.submit_verify.data:
-            json_data = form.json_data.data
-            exclude_groups_str = form.exclude_groups.data
-            exclude_group_ids = []
-
-            if exclude_groups_str:
-                try:
-                    exclude_group_ids = [int(id.strip()) for id in exclude_groups_str.split(
-                        ',') if id.strip().isdigit()]
-                except ValueError:
-                    flash('Exclude Group IDs must be integers separated by commas.', 'danger')
-                    return redirect(url_for('import_users'))
-
-            try:
-                parsed_data = json.loads(json_data)
-                users = parsed_data.get('data', [])
-
-                if not isinstance(users, list) or len(users) < 1:
-                    flash('Invalid JSON format: "data" should be a non-empty list.', 'danger')
-                    return redirect(url_for('import_users'))
-
-                # Exclude users belonging to specified groups
-                if exclude_group_ids:
-                    users = [user for user in users if user.get('attributes', {}).get(
-                        'primary_group_id') not in exclude_group_ids]
-                    flash(f'Excluded users from groups: {", ".join(map(str, exclude_group_ids))}', 'info')
-
-                # Store filtered users in session or another method if needed for preview
-                # For simplicity, we'll just flash the count
-                user_count = len(users)
-                flash(f'Verification successful. {user_count} user(s) ready for import.', 'success')
-                return redirect(url_for('import_users'))
-
-            except json.JSONDecodeError:
-                flash('Invalid JSON data.', 'danger')
-            except Exception as e:
-                flash(f'An error occurred during verification: {str(e)}', 'danger')
-
-        elif form.submit_import.data:
-            json_data = form.json_data.data
-            exclude_groups_str = form.exclude_groups.data
-            exclude_group_ids = []
-
-            if exclude_groups_str:
-                try:
-                    exclude_group_ids = [int(id.strip()) for id in exclude_groups_str.split(
-                        ',') if id.strip().isdigit()]
-                except ValueError:
-                    flash('Exclude Group IDs must be integers separated by commas.', 'danger')
-                    return redirect(url_for('import_users'))
-
-            try:
-                parsed_data = json.loads(json_data)
-                users = parsed_data.get('data', [])
-
-                if not isinstance(users, list) or len(users) < 1:
-                    flash('Invalid JSON format: "data" should be a non-empty list.', 'danger')
-                    return redirect(url_for('import_users'))
-
-                # Exclude users belonging to specified groups
-                if exclude_group_ids:
-                    users = [user for user in users if user.get('attributes', {}).get(
-                        'primary_group_id') not in exclude_group_ids]
-                    flash(f'Excluded users from group IDs: {", ".join(map(str, exclude_group_ids))}', 'info')
-
-                imported = 0
-                updated = 0
-                skipped_users = []
-
-                for user_data in users:
-                    attributes = user_data.get('attributes', {})
-                    email = attributes.get('email')
-                    first_name = attributes.get('first_name')
-                    last_name = attributes.get('last_name')
-                    groups = attributes.get('primary_group_id', [])
-                    if not isinstance(groups, list):
-                        groups = [groups]
-
-                    if not email:
-                        skipped_users.append({
-                            'first_name': first_name,
-                            'last_name': last_name,
-                            'email': email,
-                            'reason': 'Missing email'
-                        })
-                        continue
-
-                    existing_user = Customer.query.filter_by(
-                        email=email).first()
-                    if existing_user:
-                        # Update existing user
-                        existing_user.firstname = str(first_name)
-                        existing_user.lastname = str(last_name)
-                        existing_user.groups = json.dumps(groups)
-                        existing_user.update_active_status()
-                        updated += 1
-                    else:
-                        # Create new user
-                        new_user = Customer(
-                            email=email,
-                            firstname=first_name,
-                            lastname=last_name,
-                            groups=json.dumps(groups)
-                        )
-                        db.session.add(new_user)
-                        imported += 1
-
-                db.session.commit()
-                flash(f'Import completed: {imported} user(s) imported, {updated} user(s) updated.', 'success')
-
-                if skipped_users:
-                    skipped_message = "Skipped the following users due to errors:\n\n"
-                    for user in skipped_users:
-                        skipped_message += f"Name: {user.get('first_name', '')} {user.get('last_name', '')}, Email: {
-                            user.get('email', 'N/A')}, Reason: {user.get('reason')}"
-                    flash(skipped_message, 'warning')
-
-            except json.JSONDecodeError:
-                flash('Invalid JSON data.', 'danger')
-            except Exception as e:
-                db.session.rollback()
-                flash(f'An error occurred during import: {str(e)}', 'danger')
-
-            return redirect(url_for('import_users'))
-    return render_template('import.html', form=form)

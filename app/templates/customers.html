@@ -29,31 +29,37 @@
 
 </div>
 
-<table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for customer in customers %}
-        <tr>
-            <td>{{ customer.display_name }}</td>
-            <td>
-                <div class="text-truncate" style="max-width: 150px;" title="{{ customer.email }}">
-                    {{ customer.email }}
-                </div>
-            </td>
-            <td>
-                {{ macros.render_actions(url_for('view_customer', id=customer.id),
-                url_for('edit_customer', id=customer.id),
-                url_for('delete_customer', id=customer.id)) }}
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{{ paginate.render_paginate(prev_url, next_url) }}
+<div class="table-responsive">
+    <table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in customers %}
+            <tr>
+                <td>{{ customer.display_name }}</td>
+                <td>
+                    <div class="text-truncate" style="max-width: 150px;" title="{{ customer.email }}">
+                        {{ customer.email }}
+                    </div>
+                </td>
+                <td>
+                    {{ macros.render_actions(url_for('view_customer', id=customer.id),
+                    url_for('edit_customer', id=customer.id),
+                    url_for('delete_customer', id=customer.id)) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="row py-3">
+    <div class="col-12">
+        {{ paginate.render_paginate(prev_url, next_url) }}
+    </div>
+</div>
 {% endblock %}

@@ -125,7 +125,7 @@ class RentalForm(FlaskForm):
 #################################
 
 
-class ImportForm(FlaskForm):
+class BulkUserImportForm(FlaskForm):
     json_data = TextAreaField(
         'Paste JSON data:',
         validators=[DataRequired()],
@@ -141,3 +141,11 @@ class ImportForm(FlaskForm):
         'Verify', render_kw={"class": "btn btn-secondary"})
     submit_import = SubmitField(
         'Import', render_kw={"class": "btn btn-primary", "disabled": True})
+
+
+class BulkInstrumentImportForm(FlaskForm):
+    json_data = TextAreaField('Paste JSON data:',
+                              validators=[DataRequired()],
+                              render_kw={"rows": 10, "class": "form-control"})
+    submit_verify = SubmitField('Verify', render_kw={"class": "btn btn-secondary"})
+    submit_import = SubmitField('Import', render_kw={"class": "btn btn-primary", "disabled": True})
