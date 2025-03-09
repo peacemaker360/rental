@@ -18,6 +18,7 @@ class Rental(db.Model):
         'customer.id'), nullable=False)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=True)
+    return_date = db.Column(db.Date, nullable=True)
     description = db.Column(db.Text, nullable=True)
     created = db.Column(
         db.DateTime(timezone=True),
@@ -28,6 +29,35 @@ class Rental(db.Model):
         db.DateTime(timezone=True),
         onupdate=lambda: datetime.now(timezone.utc)
     )
+
+    def end_rental(self):
+        self.return_date = datetime.now()
+        if self.end_date is None:
+            self.end_date = datetime.now()
+
+    @property
+    def is_active(self):
+        return self.return_date is None
+
+    @property
+    def is_available(self):
+        return self.return_date is not None
+
+    @property
+    def is_late(self):
+        if self.end_date is None:
+            return False
+        return self.end_date < datetime.now().date() and self.return_date is None
+
+    @property
+    def is_on_time(self):
+        if self.end_date is None:
+            return False
+        return self.end_date >= datetime.now().date() and self.return_date is None
+
+    @property
+    def is_returned(self):
+        return self.return_date is not None
 
     @classmethod
     def search(cls, keyword):

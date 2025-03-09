@@ -12,7 +12,8 @@
         <p><strong>Nachname:</strong> {{ customer.lastname }}</p>
         <p><strong>Email:</strong> {{ customer.email }}</p>
         <p><strong>Phone:</strong> {{ customer.phone|default("None",true) }}</p>
-        <p><strong>Status:</strong> <span style="color: {{ 'green' if customer.is_active else 'red' }}">{{ "Aktiv" if customer.is_active else "Deaktiviert" }}</span></p>
+        <p><strong>Status:</strong> <span style="color: {{ 'green' if customer.is_active else 'red' }}">{{ "Aktiv" if
+                customer.is_active else "Deaktiviert" }}</span></p>
         <p><strong>Erstellt:</strong> {{ customer.created }}</p>
         <p><strong>Aktualisiert:</strong> {{ customer.updated }}</p>
     </div>
@@ -48,11 +49,12 @@
                 <td>{{ rental.start_date }}</td>
                 <td>{{ rental.end_date }}</td>
                 <td>
-                    <form method="post" action="{{ url_for('delete_rental', id=rental.id, source='customers') }}"
+                    <form method="post" action="{{ url_for('return_rental', id=rental.id, source='customers') }}"
                         class="d-inline-block">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-secondary btn-sm"
-                            onclick="return confirm('Are you sure you want to return this rental?')">Return</button>
+                            onclick="return confirm('Are you sure you want to return this rental?')">
+                            <i class="bi-box-arrow-in-left"></i> Return</button>
                     </form>
                 </td>
             </tr>
