@@ -39,6 +39,8 @@ def create_app():
     app.config.update(
         SQLALCHEMY_DATABASE_URI=app.config.get('DATABASE_URI'),
         SQLALCHEMY_TRACK_MODIFICATIONS=True,
+        SQLALCHEMY_POOL_PRE_PING=True,
+        SQLALCHEMY_POOL_RECYCLE=280,
         # Pagination settings
         ITEMS_PER_PAGE=10,
         USERS_PER_PAGE=10,

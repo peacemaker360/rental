@@ -161,20 +161,24 @@ def edit_instrument(id):
 @app.route('/instruments/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_instrument(id):
-    instrument = Instrument.query.get_or_404(id)
-    active_rentals = Rental.query.filter_by(instrument_id=instrument.id).all()
-    if active_rentals:
-        flash('Cannot delete instrument with active rentals.', 'danger')
+    try:
+        instrument = Instrument.query.get_or_404(id)
+        active_rentals = Rental.query.filter_by(instrument_id=instrument.id).all()
+        if active_rentals:
+            flash('Cannot delete instrument with active rentals.', 'danger')
+            return redirect(url_for('instruments'))
+        db.session.delete(instrument)
+        db.session.commit()
+        flash('Instrument deleted successfully!', 'success')
+        # Get the source page from the query parameter
+        source_page = request.args.get('source', 'instruments')
+
+        # Redirect to the source page
+        return redirect(url_for(source_page))
+    except Exception as e:
+        db.session.rollback()
+        flash('Error: {}'.format(e), 'danger')
         return redirect(url_for('instruments'))
-    db.session.delete(instrument)
-    db.session.commit()
-    flash('Instrument deleted successfully!', 'success')
-    # Get the source page from the query parameter
-    source_page = request.args.get('source', 'instruments')
-
-    # Redirect to the source page
-    return redirect(url_for(source_page))
-
 
 #################
 # Customer Routes
