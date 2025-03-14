@@ -64,7 +64,7 @@ def create_app():
     login.login_message_category = 'info'
     with app.app_context():
         # Import parts of our application
-        from . import models, routes, auth, api, bulkImport, errors  # NOQA: F401
+        from . import models, routes, auth, api, bulkImport, bulkExport, errors  # NOQA: F401
 
         # Create database tables if they don't exist
         db.create_all()

@@ -5,44 +5,50 @@
 
 {% block app_content %}
 
-<div class="row">
+<div class="row align-items-center">
     <div class="col-md-6">
         <h1>{{ title }}</h1>
     </div>
+    {% if current_user.role <= 5 %} <div class="col-md-6 d-flex justify-content-end align-items-end">
+        <a href="{{ url_for('export_instruments') }}" class="btn btn-sm btn-outline-info">
+            Export Instruments
+        </a>
 </div>
-<div class="row">
-    <div class="col-md-2">
-        <a href="{{ url_for('new_instrument') }}" class="btn btn-primary mb-3">Erfassen</a>
+{% endif %}
+</div>
+<div class="row align-items-center">
+    <div class="col-md-1">
+        <a href="{{ url_for('new_instrument') }}" class="btn btn-primary">Erfassen</a>
     </div>
-    <div class="col-md-6 d-flex justify-content-between flex-wrap">
-        <ul class="nav nav-pills justify-content-around" role="tablist">
-            <li class="nav-item flex-fill text-center">
-                <a class="nav-link" href="{{ url_for('instruments', is_available=true) }}">
-                    Verfügbar
-                    <span class="badge bg-primary">{{ stats.available }}</span>
-                </a>
-            </li>
-            <li class="nav-item flex-fill text-center">
-                <a class="nav-link" href="{{ url_for('instruments', is_available=false) }}">
-                    Ausgeliehen
-                    <span class="badge bg-primary">{{ stats.unavailable }}</span>
-                </a>
-            </li>
-            <li class="nav-item flex-fill text-center">
-                <a class="nav-link" href="{{ url_for('instruments', show_overdue=true) }}">
-                    Überfällig
-                    <span class="badge bg-primary">{{ stats.overdue }}</span>
-                </a>
-            </li>
-            <li class="nav-item flex-fill text-center">
-                <a class="nav-link" href="{{ url_for('instruments') }}">
-                    Alle
-                    <span class="badge bg-primary">{{ stats.total }}</span>
-                </a>
-            </li>
-        </ul>
-    </div>
-    <div class="col-md-4 text-right">
+        <div class="col-md-8 d-flex">
+            <ul class="nav nav-pills justify-content-around" role="tablist">
+                <li class="nav-item flex-fill text-center">
+                    <a class="nav-link" href="{{ url_for('instruments', is_available=true) }}">
+                        Verfügbar
+                        <span class="badge bg-primary">{{ stats.available }}</span>
+                    </a>
+                </li>
+                <li class="nav-item flex-fill text-center">
+                    <a class="nav-link" href="{{ url_for('instruments', is_available=false) }}">
+                        Ausgeliehen
+                        <span class="badge bg-primary">{{ stats.unavailable }}</span>
+                    </a>
+                </li>
+                <li class="nav-item flex-fill text-center">
+                    <a class="nav-link" href="{{ url_for('instruments', show_overdue=true) }}">
+                        Überfällig
+                        <span class="badge bg-primary">{{ stats.overdue }}</span>
+                    </a>
+                </li>
+                <li class="nav-item flex-fill text-center">
+                    <a class="nav-link" href="{{ url_for('instruments') }}">
+                        Alle
+                        <span class="badge bg-primary">{{ stats.total }}</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    <div class="col-md-3 d-flex justify-content-end align-items-end align-self-end">
         <form class="form-inline float-right" method="GET" action="{{ url_for('instruments') }}">
             <div class="input-group">
                 <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">

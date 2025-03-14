@@ -67,6 +67,7 @@ class UserConfigForm(FlaskForm):
     email = StringField('Email', validators=[Optional(), Email()])
     enabled = BooleanField('Account enabled', default=False)
     admin = BooleanField('Is admin', default=False)
+    exporter = BooleanField('Can export data', default=False)
     submit = SubmitField('Update')
 
 #################################
