@@ -14,6 +14,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# @app.route('/test-error')
+# def test_error():
+#     # Force an exception in order to trigger the 500 error handler.
+#     raise Exception("This is a test error to trigger the 500 error page.")
+
 #################
 # MAIN Routes
 # Quelle: Übernommen aus den Beispielen

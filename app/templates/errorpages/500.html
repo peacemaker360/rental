@@ -2,7 +2,15 @@
 {% extends "base.html" %}
 
 {% block app_content %}
-<h1>An unexpected error has occured.</h1>
-<p>The administrator has been notified. Sorry for the inconvinience!</p>
-<p><a href="{{url_for('index') }}">Back</a></p>
+<div class="container my-5 text-center">
+    <h1 class="display-4 text-danger">
+        <i class="bi bi-exclamation-triangle text-warning"></i>
+        Oops! Something went wrong.
+    </h1>
+    <p class="lead">An unexpected error has occurred. Our team has been notified and is working to fix it.</p>
+    <hr>
+    <p>Please try refreshing the page or return to the homepage.</p>
+    <a href="{{ url_for('index') }}" class="btn btn-primary btn">Return Home</a>
+    <button onclick="window.location.reload();" class="btn btn-secondary btn ml-2">Refresh Page</button>
+</div>
 {% endblock %}
