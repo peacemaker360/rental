@@ -10,11 +10,11 @@
         <h1>{{ title }}</h1>
     </div>
 </div>
-<div class="row">
-    <div class="col-md-8">
-        <a href="{{ url_for('new_customer') }}" class="btn btn-primary mb-3">Erfassen</a>
+<div class="row align-items-center">
+    <div class="col-md-1">
+        <a href="{{ url_for('new_customer') }}" class="btn btn-primary">Erfassen</a>
     </div>
-    <div class="col-md-4 text-right">
+    <div class="col-md-11 d-flex justify-content-end align-items-end">
         <form class="form-inline float-right" method="GET" action="{{ url_for('customers') }}">
             <div class="input-group">
                 <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">

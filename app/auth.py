@@ -185,8 +185,10 @@ def edit_user(id):
             user.is_active = 0
         if form.admin.data:
             user.role = 0
+        elif form.exporter.data:
+            user.role = 5
         else:
-            user.role = 1
+            user.role = 10
         db.session.commit()
         flash(f"User '{user.username}' updated!", 'success')
         return redirect(url_for('select_user'))
@@ -195,6 +197,7 @@ def edit_user(id):
     form.email.data = user.email
     form.enabled.data = user.is_active
     form.admin.data = True if user.role == 0 else False
+    form.exporter.data = True if user.role <= 5 else False
 
     return render_template('user.html', title='User update', form=form)
 
