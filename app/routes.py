@@ -1,8 +1,7 @@
 import os
-import json
 from flask import current_app as app
 from flask import flash, redirect, render_template, send_from_directory, url_for, request
-from flask_login import current_user, login_required
+from flask_login import login_required
 
 from app import db
 from app.models import Instrument, Customer, Rental, RentalHistory
@@ -184,6 +183,7 @@ def delete_instrument(id):
         db.session.rollback()
         flash('Error: {}'.format(e), 'danger')
         return redirect(url_for('instruments'))
+
 
 #################
 # Customer Routes
@@ -480,4 +480,3 @@ def rentals_history():
         flash('No history records found.', 'info')
     return render_template('history.html', history=history, title="History", search=search,
                            paginate=paginate_obj, prev_url=prev_url, next_url=next_url)
-
