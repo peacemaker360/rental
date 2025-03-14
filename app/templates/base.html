@@ -58,16 +58,24 @@
                                 aria-expanded="false">Mehr</a>
                             <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="{{ url_for('rentals_history') }}">History</a></li>
-                                {% if current_user.role == 0 %}
-                                <li><a class="dropdown-item" href="{{ url_for('import_users') }}">
-                                        Import members from hitobito
-                                    </a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('import_instruments') }}">
-                                        Import instruments
-                                    </a></li>
-                                {% endif %}
-                            </ul>
+                                {% if current_user.role <= 5 %} <li>
+                                    <hr class="dropdown-divider">
                         </li>
+                        <li><a class="dropdown-item" href="{{ url_for('import_users') }}">
+                                <i class="bi bi-file-arrow-up"></i> Import members
+                            </a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('import_instruments') }}">
+                                <i class="bi bi-file-arrow-up"></i> Import instruments
+                            </a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('export_rentals') }}">
+                                <i class="bi bi-download"></i> Export rentals
+                            </a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('export_instruments') }}">
+                                <i class="bi bi-download"></i> Export instruments
+                            </a></li>
+                        {% endif %}
+                    </ul>
+                    </li>
                     </ul>
                     {% endif %}
                     {% if current_user.is_authenticated %}

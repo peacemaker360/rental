@@ -1,7 +1,7 @@
 # Description: This file contains the routes and logic for importing users and instruments in bulk.
 import json
 from flask import current_app as app
-from flask import flash, redirect, render_template, url_for, request
+from flask import flash, redirect, render_template, url_for
 from flask_login import current_user, login_required
 
 from app import db
