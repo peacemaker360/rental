@@ -1,7 +1,7 @@
 import os
 from flask import current_app as app
 from flask import flash, redirect, render_template, send_from_directory, url_for, request
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from app import db
 from app.models import Instrument, Customer, Rental, RentalHistory
@@ -365,7 +365,7 @@ def new_rental(instrument_id=None, customer_id=None, ):
             print(e)
             flash("Error: '{}'".format(e), 'danger')
             return redirect(url_for('rentals'))
-        history = RentalHistory(rental)
+        history = RentalHistory(rental=rental, updated_by=current_user.username, update_type='Created')
         db.session.add(history)
         db.session.commit()
         flash('Rental created successfully!', 'success')
@@ -412,7 +412,7 @@ def edit_rental(id):
             print(e)
             flash("Error: '{}'".format(e), 'danger')
             return redirect(url_for('rentals'))
-        history = RentalHistory(rental)
+        history = RentalHistory(rental, updated_by=current_user.username, update_type='Edit')
         db.session.add(history)
         db.session.commit()
         flash('Rental updated successfully!', 'success')
@@ -429,7 +429,16 @@ def edit_rental(id):
 def delete_rental(id):
     rental = Rental.query.get_or_404(id)
     db.session.delete(rental)
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash('Error: {}'.format(e), 'danger')
+        return redirect(url_for('rentals'))
+    history = RentalHistory(rental, updated_by=current_user.username, update_type='Delete')
+    db.session.add(history)
     db.session.commit()
+
     flash('Rental deleted successfully!', 'success')
     # Get the source page from the query parameter
     source_page = request.args.get('source', 'rentals')
@@ -444,6 +453,15 @@ def return_rental(id):
     # logic to return a rental
     rental = Rental.query.get_or_404(id)
     rental.end_rental()
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash('Error: {}'.format(e), 'danger')
+        return redirect(url_for('rentals'))
+
+    history = RentalHistory(rental, updated_by=current_user.username, update_type='Returned')
+    db.session.add(history)
     db.session.commit()
     flash('Rental returned successfully!', 'success')
     source_page = request.args.get('source', 'rentals')
