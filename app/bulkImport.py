@@ -187,35 +187,45 @@ def import_instruments():
 
                 imported = 0
                 updated = 0
+
+                def get_case_insensitive(dictionary, key):
+                    """Helper function to get dictionary value regardless of key case"""
+                    if not dictionary:
+                        return None
+                    for k in dictionary:
+                        if isinstance(k, str) and k.lower() == key.lower():
+                            return dictionary[k]
+                    return None
+
                 for row in instruments_data:
-                    name = row.get('name')
-                    serial = row.get('serial')
+                    name = get_case_insensitive(row, 'name')
+                    serial = get_case_insensitive(row, 'serial')
                     if not name or not serial:
                         continue
 
                     instrument = Instrument.query.filter_by(serial=serial).first()
                     if instrument:
                         # update existing instrument
-                        instrument.brand = row.get('brand')
-                        instrument.type = row.get('type')
-                        instrument.serial = row.get('serial')
-                        instrument.description = row.get('description')
+                        instrument.brand = get_case_insensitive(row, 'brand')
+                        instrument.type = get_case_insensitive(row, 'type')
+                        instrument.serial = serial
+                        instrument.description = get_case_insensitive(row, 'description')
                         try:
-                            instrument.price = float(row.get('price'))
+                            instrument.price = float(get_case_insensitive(row, 'price') or 0)
                         except (ValueError, TypeError):
                             instrument.price = 0.0
                         updated += 1
                     else:
                         try:
-                            price = float(row.get('price'))
+                            price = float(get_case_insensitive(row, 'price') or 0)
                         except (ValueError, TypeError):
                             price = 0.0
                         instrument = Instrument(
                             name=name,
-                            brand=row.get('brand'),
-                            type=row.get('type'),
-                            serial=row.get('serial'),
-                            description=row.get('description'),
+                            brand=get_case_insensitive(row, 'brand'),
+                            type=get_case_insensitive(row, 'type'),
+                            serial=serial,
+                            description=get_case_insensitive(row, 'description'),
                             price=price
                         )
                         db.session.add(instrument)
