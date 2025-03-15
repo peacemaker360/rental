@@ -2,7 +2,7 @@
 # Quelle: Eigenentwicklung, in anlehnung an Unterrichst bsp.
 
 from datetime import date, datetime, timezone
-from sqlalchemy import or_, event
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import db
@@ -10,12 +10,10 @@ from app import db
 
 class RentalHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    rental_id = db.Column(db.Integer, db.ForeignKey('rental.id'))
-    instrument_id = db.Column(db.Integer, db.ForeignKey(
-        'instrument.id'), nullable=False)
+    rental_id = db.Column(db.Integer, nullable=True)
+    instrument_id = db.Column(db.Integer, nullable=True)
     instrument_name = db.Column(db.Text, nullable=True)
-    customer_id = db.Column(db.Integer, db.ForeignKey(
-        'customer.id'), nullable=False)
+    customer_id = db.Column(db.Integer, nullable=True)
     customer_name = db.Column(db.Text, nullable=True)
     start_date = db.Column(db.DateTime)
     end_date = db.Column(db.DateTime)
@@ -25,7 +23,12 @@ class RentalHistory(db.Model):
         index=True,
         default=lambda: datetime.now(timezone.utc)
     )
-    rental = db.relationship('Rental', backref='history', lazy=True)
+    # rental = db.relationship(
+    #     'Rental',
+    #     primaryjoin="RentalHistory.rental_id == Rental.id",
+    #     backref='history',
+    #     lazy=True,
+    # )
 
     # Additional columns as needed
     def __init__(self, rental):
@@ -50,11 +53,10 @@ class RentalHistory(db.Model):
 
     @staticmethod
     def getBy_instrumentId(id):
-        rentalshistory = RentalHistory.query.filter_by(instrument_id=id).distinct(
-            RentalHistory.customer_id, RentalHistory.rental_id).order_by(RentalHistory.timestamp.desc())
-        return rentalshistory
+        return RentalHistory.query.filter_by(instrument_id=id).distinct(
+            RentalHistory.customer_id, RentalHistory.rental_id
+        ).order_by(RentalHistory.timestamp.desc())
 
     @staticmethod
     def getBy_customerId(id):
-        rentalshistory = RentalHistory.query.filter_by(customer_id=id).all()
-        return rentalshistory
+        return RentalHistory.query.filter_by(customer_id=id).all()
