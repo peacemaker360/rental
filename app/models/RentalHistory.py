@@ -23,6 +23,8 @@ class RentalHistory(db.Model):
         index=True,
         default=lambda: datetime.now(timezone.utc)
     )
+    update_type = db.Column(db.Text, nullable=True)
+    updated_by = db.Column(db.Text, nullable=True)
     # rental = db.relationship(
     #     'Rental',
     #     primaryjoin="RentalHistory.rental_id == Rental.id",
@@ -31,7 +33,7 @@ class RentalHistory(db.Model):
     # )
 
     # Additional columns as needed
-    def __init__(self, rental):
+    def __init__(self, rental, updated_by=None, update_type="General"):
         self.rental_id = rental.id
         self.instrument_id = rental.instrument_id
         self.instrument_name = rental.instrument.name
@@ -40,6 +42,8 @@ class RentalHistory(db.Model):
         self.start_date = rental.start_date
         self.end_date = rental.end_date
         self.rental_note = rental.description
+        self.updated_by = updated_by
+        self.update_type = update_type
 
     @classmethod
     def search(cls, keyword):
