@@ -34,20 +34,26 @@
                 <th>Timestamp</th>
                 <th>Instrument</th>
                 <th>Customer</th>
-                <th>Rental note</th>
+                <th class="d-none d-sm-table-cell">Rental note</th>
+                <th>Actions</th>
+                <th>Updated by</th>
             </tr>
         </thead>
         <tbody>
             {% for entry in history %}
             <tr>
-                <td>{{ entry.timestamp }}</td>
+                <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td>{{ entry.instrument_name }}</td>
                 <td>{{ entry.customer_name }}</td>
-                <td>
+                <td class="d-none d-sm-table-cell">
                     <div class="text-truncate" style="max-width: 150px;" title="{{ entry.rental_note }}">
                         {{entry.rental_note }}
                     </div>
                 </td>
+                <td>
+                    {{ entry.update_type }}
+                </td>
+                <td>{{ entry.updated_by }}</td>
             </tr>
             {% endfor %}
         </tbody>
