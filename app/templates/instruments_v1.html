@@ -1,0 +1,136 @@
+<!-- Quelle: Eigenentwicklung -->
+{% extends 'base.html' %}
+{% import 'macros.html' as macros %}
+{% import '_paginate.html' as paginate %}
+
+{% block app_content %}
+
+<div class="row align-items-center">
+    <div class="col-md-6">
+        <h1>{{ title }}</h1>
+    </div>
+    {% if current_user.role <= 5 %} <div class="col-md-6 d-flex justify-content-end align-items-end">
+        <a href="{{ url_for('export_instruments') }}" class="btn btn-sm btn-outline-info">
+            Export Instruments
+        </a>
+</div>
+{% endif %}
+</div>
+<div class="row align-items-center">
+    <div class="col-md-1">
+        <a href="{{ url_for('new_instrument') }}" class="btn btn-primary">Erfassen</a>
+    </div>
+        <div class="col-md-8 d-flex">
+            <ul class="nav nav-pills justify-content-around" role="tablist">
+                <li class="nav-item flex-fill text-center">
+                    <a class="nav-link" href="{{ url_for('instruments', is_available=true) }}">
+                        Verfügbar
+                        <span class="badge bg-primary">{{ stats.available }}</span>
+                    </a>
+                </li>
+                <li class="nav-item flex-fill text-center">
+                    <a class="nav-link" href="{{ url_for('instruments', is_available=false) }}">
+                        Ausgeliehen
+                        <span class="badge bg-primary">{{ stats.unavailable }}</span>
+                    </a>
+                </li>
+                <li class="nav-item flex-fill text-center">
+                    <a class="nav-link" href="{{ url_for('instruments', show_overdue=true) }}">
+                        Überfällig
+                        <span class="badge bg-primary">{{ stats.overdue }}</span>
+                    </a>
+                </li>
+                <li class="nav-item flex-fill text-center">
+                    <a class="nav-link" href="{{ url_for('instruments') }}">
+                        Alle
+                        <span class="badge bg-primary">{{ stats.total }}</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    <div class="col-md-3 d-flex justify-content-end align-items-end align-self-end">
+        <form class="form-inline float-right" method="GET" action="{{ url_for('instruments') }}">
+            <div class="input-group">
+                <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">
+                <div class="input-group-btn">
+                    <button class="btn btn-secondary" type="submit" title="Search by name, brand, type">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+
+<table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Marke</th>
+            <th class="d-none d-sm-table-cell">Typ</th>
+            <th class="d-none d-sm-table-cell">Serial</th>
+            <th>Options</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for instrument in instruments %}
+        <tr>
+            <td style="white-space: nowrap;">
+                {% if instrument.is_overdue %}
+                <span class="bi bi-exclamation-triangle text-warning" data-toggle="tooltip"
+                    title="Item is overdue. Please return it.">
+                    {{ instrument.name }}
+                    {{instrument.name }}
+                </span>
+                {% elif instrument.is_available %}
+                <span class="bi bi-check text-success" data-toggle="tooltip" title="Item is available for rental.">
+                    {{ instrument.name}}</span>
+                {% else %}
+                <span class="bi bi-x text-danger" data-toggle="tooltip" title="Item is currently rented out.">
+                    {{ instrument.name }}
+                </span>
+                {% endif %}
+            </td>
+            <td>{{ instrument.brand }}</td>
+            <td class="d-none d-sm-table-cell">{{ instrument.type }}</td>
+            <td class="d-none d-sm-table-cell">{{ instrument.serial }}</td>
+            <td>
+                {% if instrument.is_available and not instrument.is_overdue %}
+                <a href="{{ url_for('new_rental', instrument_id=instrument.id, source='instruments') }}"
+                    class="btn btn-primary btn-sm {{ '' if instrument.is_available else 'disabled' }}"><i
+                        class="bi bi-box-arrow-right"></i> Rent</a>
+                {% else %}
+                {% set rental = instrument.latest_rental %}
+                <form method="post" action="{{ url_for('return_rental', id=rental.id, source='instruments') }}"
+                    class="d-inline-block">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-secondary btn-sm"
+                        onclick="return confirm('Are you sure you want to return this rental?')">
+                        <i class="bi-box-arrow-in-left"></i> Return</button>
+                </form>
+                {% endif %}
+            </td>
+            <td>
+                {{ macros.render_actions(url_for('view_instrument', id=instrument.id),
+                url_for('edit_instrument', id=instrument.id),
+                url_for('delete_instrument', id=instrument.id)) }}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="row py-3">
+    <div class="col-12">
+        {{ paginate.render_paginate(prev_url, next_url) }}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+
+{% endblock %}

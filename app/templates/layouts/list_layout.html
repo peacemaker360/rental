@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% import 'macros.html' as macros %}
+{% import 'partials/_paginate.html' as paginate %}
+
+{% block app_content %}
+<div class="container-fluid px-2 px-sm-4">
+    {% include 'partials/_list_header.html' %}
+
+    <div class="card">
+        {% if filters %}
+        {% include 'partials/_list_filters.html' %}
+        {% endif %}
+        {% include 'partials/_list_controls.html' %}
+
+        <div class="card-body p-0">
+            {% block list_content %}{% endblock %}
+        </div>
+
+        {% if prev_url or next_url %}
+        <div class="card-footer bg-white p-2 p-sm-3">
+            {{ paginate.render_paginate(prev_url, next_url) }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

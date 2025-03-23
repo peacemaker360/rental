@@ -1,0 +1,26 @@
+<div class="card-header bg-white border-bottom p-2 p-sm-3">
+    <div class="row g-2 align-items-center">
+        <div class="col-12 col-sm-auto">
+            {% if new_url %}
+            <a href="{{ new_url }}" class="btn btn-primary btn-sm btn-md-normal w-100 w-sm-auto">
+                <i class="bi bi-plus"></i> {{ new_button_text|default('New Item') }}
+            </a>
+            {% endif %}
+        </div>
+        <div class="col-12 col-sm">
+            {% if search_url %}
+            <form method="GET" action="{{ search_url }}">
+                <div class="input-group input-group-sm">
+                    <input type="text" class="form-control" name="search"
+                        placeholder="{{ search_placeholder|default('Search...') }}" value="{{ search }}">
+                    <div class="input-group-append">
+                        <button class="btn btn-outline-secondary" type="submit">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>

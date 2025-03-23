@@ -1,53 +1,25 @@
-<!-- Quelle: Eigenentwicklung -->
-{% extends 'base.html' %}
-{% import 'macros.html' as macros %}
-{% import '_paginate.html' as paginate %}
+{% extends 'layouts/list_layout.html' %}
 
-{% block app_content %}
-
-<div class="row">
-    <div class="col-md-6">
-        <h1>{{ title }}</h1>
-    </div>
-</div>
-<div class="row align-items-center">
-    <div class="col-md-1">
-        <a href="{{ url_for('new_customer') }}" class="btn btn-primary">Erfassen</a>
-    </div>
-    <div class="col-md-11 d-flex justify-content-end align-items-end">
-        <form class="form-inline float-right" method="GET" action="{{ url_for('customers') }}">
-            <div class="input-group">
-                <input type="text" class="form-control" name="search" placeholder="Search..." value="{{ search }}">
-                <div class="input-group-btn">
-                    <button class="btn btn-secondary" type="submit" title="Search by name, email or phone">
-                        <i class="bi bi-search"></i>
-                    </button>
-                </div>
-            </div>
-        </form>
-    </div>
-
-</div>
-
+{% block list_content %}
 <div class="table-responsive">
-    <table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
-        <thead>
+    <table class="table table-hover table-sm mb-0">
+        <thead class="bg-light">
             <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Actions</th>
+                <th class="px-2">Name</th>
+                <th class="px-2">Email</th>
+                <th class="px-2 text-right">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for customer in customers %}
             <tr>
-                <td>{{ customer.display_name }}</td>
-                <td>
+                <td class="px-2">{{ customer.display_name }}</td>
+                <td class="px-2">
                     <div class="text-truncate" style="max-width: 150px;" title="{{ customer.email }}">
                         {{ customer.email }}
                     </div>
                 </td>
-                <td>
+                <td class="px-2 text-right">
                     {{ macros.render_actions(url_for('view_customer', id=customer.id),
                     url_for('edit_customer', id=customer.id),
                     url_for('delete_customer', id=customer.id)) }}
@@ -56,10 +28,5 @@
             {% endfor %}
         </tbody>
     </table>
-</div>
-<div class="row py-3">
-    <div class="col-12">
-        {{ paginate.render_paginate(prev_url, next_url) }}
-    </div>
 </div>
 {% endblock %}

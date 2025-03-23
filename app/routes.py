@@ -93,18 +93,54 @@ def instruments():
         'overdue': sum(1 for inst in Instrument.query.all() if inst.is_overdue)
     }
 
+    # Define filters
+    filters = [
+        {
+            'label': 'Available',
+            'url': url_for('instruments', is_available=True),
+            'active': request.args.get('is_available') == 'True',
+            'count': stats['available'],
+            'badge_class': 'bg-success'
+        },
+        {
+            'label': 'Rented',
+            'url': url_for('instruments', is_available=False),
+            'active': request.args.get('is_available') == 'False',
+            'count': stats['unavailable'] + stats['overdue'],
+            'badge_class': 'bg-info'
+        },
+        {
+            'label': 'Overdue',
+            'url': url_for('instruments', show_overdue=True),
+            'active': request.args.get('show_overdue') == 'True',
+            'count': stats['overdue'],
+            'badge_class': 'bg-danger'
+        },
+        {
+            'label': 'All',
+            'url': url_for('instruments'),
+            'active': not any(x in request.args for x in ['is_available', 'show_overdue']),
+            'count': stats['total'],
+            'badge_class': 'bg-primary'
+        }
+    ]
+
     if not instruments:
         flash('No instrument records found.', 'info')
     return render_template('instruments.html',
+                           title='Instruments',
                            instruments=instruments,
-                           title="Instrumente",
+                           stats=stats,
                            search=search,
-                           filterAvailable=filterAvailable,
-                           filterOverdue=filterOverdue,
-                           paginate=paginate_obj,
+                           filters=filters,
+                           export_url=url_for('export_instruments'),
+                           new_url=url_for('new_instrument'),
+                           new_button_text='New Instrument',
+                           search_url=url_for('instruments'),
+                           search_placeholder='Search instruments...',
                            prev_url=prev_url,
-                           next_url=next_url,
-                           stats=stats)
+                           next_url=next_url
+                           )
 
 
 @app.route('/instruments/add', methods=['GET', 'POST'])
@@ -215,7 +251,10 @@ def customers():
                            customers=customers,
                            title="Mitglieder",
                            search=search,
-                           paginate=paginate,
+                           new_url=url_for('new_customer'),
+                           new_button_text='New Customer',
+                           search_url=url_for('customers'),
+                           search_placeholder='Search customers...',
                            prev_url=prev_url,
                            next_url=next_url)
 
@@ -317,9 +356,19 @@ def rentals():
     next_url = url_for('rentals', page=paginate_obj.next_num, search=search) if paginate_obj.has_next else None
 
     if not rentals:
-        flash('No rental records found.', 'info')
-    return render_template('rentals.html', rentals=rentals, title="Verleihe", search=search,
-                           paginate=paginate_obj, prev_url=prev_url, next_url=next_url)
+        flash('No rental records found. <a href="{}">Add new rental</a>'.format(url_for('new_rental')), 'info')
+    return render_template('rentals.html',
+                           title='Rentals',
+                           rentals=rentals,
+                           search=search,
+                           export_url=url_for('export_rentals'),
+                           new_url=url_for('new_rental'),
+                           new_button_text='New Rental',
+                           search_url=url_for('rentals'),
+                           search_placeholder='Search rentals...',
+                           prev_url=prev_url,
+                           next_url=next_url
+                           )
 
 
 @app.route('/rentals/new', methods=['GET', 'POST'])
