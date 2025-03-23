@@ -134,10 +134,16 @@ def import_users():
                 flash(f'Import completed: {imported} user(s) imported, {updated} user(s) updated.', 'success')
 
                 if skipped_users:
-                    skipped_message = "Skipped the following users due to errors:\n\n"
+                    skipped_message = (
+                        "<strong>Skipped the following users due to errors:</strong>"
+                        "<ul>"
+                    )
                     for user in skipped_users:
-                        skipped_message += f"Name: {user.get('first_name', '')} {user.get('last_name', '')}, Email: {
-                            user.get('email', 'N/A')}, Reason: {user.get('reason')}"
+                        skipped_message += (
+                            f"<li>Name: {user.get('first_name', '')} {user.get('last_name', '')}, "
+                            f"Email: {user.get('email', 'N/A')}, Reason: {user.get('reason')}</li>"
+                        )
+                    skipped_message += "</ul>"
                     flash(skipped_message, 'warning')
 
             except json.JSONDecodeError:
