@@ -1,0 +1,91 @@
+<!-- Quelle: Eigenentwicklung -->
+{% extends 'base.html' %}
+{% import 'macros.html' as macros %}
+{% import '_paginate.html' as paginate %}
+
+{% block app_content %}
+<div class="container-fluid px-2 px-sm-4">
+    <!-- Header Section -->
+    <div class="row align-items-center mb-3">
+        <div class="col">
+            <h1 class="h3 mb-0">{{ title }}</h1>
+        </div>
+        <div class="col-auto">
+            {% if current_user.role <= 5 %} <a href="{{ url_for('export_rentals') }}"
+                class="btn btn-outline-info btn-sm btn-md-normal">
+                <i class="bi bi-download"></i> <span class="d-none d-sm-inline">Export</span>
+                </a>
+                {% endif %}
+        </div>
+    </div>
+
+    <!-- Combined Card for Controls and Table -->
+    <div class="card">
+        <!-- Card Header with Controls -->
+        <div class="card-header bg-white border-bottom p-2 p-sm-3">
+            <div class="row g-2 align-items-center">
+                <div class="col-12 col-sm-auto">
+                    <a href="{{ url_for('new_rental') }}" class="btn btn-primary btn-sm btn-md-normal w-100 w-sm-auto">
+                        <i class="bi bi-plus"></i> New Rental
+                    </a>
+                </div>
+                <div class="col-12 col-sm">
+                    <form method="GET" action="{{ url_for('rentals') }}">
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" name="search" placeholder="Search..."
+                                value="{{ search }}">
+                            <div class="input-group-append">
+                                <button class="btn btn-outline-secondary" type="submit">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table Section -->
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="px-2">Customer</th>
+                            <th class="px-2">Instrument</th>
+                            <th class="px-2 d-none d-sm-table-cell">Start Date</th>
+                            <th class="px-2 d-none d-sm-table-cell">End Date</th>
+                            <th class="px-2 d-none d-sm-table-cell">Returned</th>
+                            <th class="px-2 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rental in rentals %}
+                        <tr>
+                            <td class="px-2">{{ rental.customer.display_name }}</td>
+                            <td class="px-2">{{ rental.instrument.name }}</td>
+                            <td class="px-2 d-none d-sm-table-cell">{{ rental.start_date }}</td>
+                            <td class="px-2 d-none d-sm-table-cell">{{ rental.end_date }}</td>
+                            <td class="px-2 d-none d-sm-table-cell">{{ rental.return_date }}</td>
+                            <td class="px-2 text-right">
+                                {{ macros.render_actions(
+                                url_for('view_rental', id=rental.id),
+                                url_for('edit_rental', id=rental.id),
+                                url_for('delete_rental', id=rental.id),
+                                'Are you sure you want to delete this item or did you mean to return it?'
+                                ) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Card Footer with Pagination -->
+        <div class="card-footer bg-white p-2 p-sm-3">
+            {{ paginate.render_paginate(prev_url, next_url) }}
+        </div>
+    </div>
+</div>
+{% endblock %}
