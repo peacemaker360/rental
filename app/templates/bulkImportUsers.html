@@ -10,6 +10,7 @@
 </p>
 <ol>
     <li>Log in to the external system if you haven't already.</li>
+    <li>Use the API URL Builder below to generate the API URL for the user data.</li>
     <li>Visit the API endpoint that provides user data (e.g.,
         "<a href="https://db.windband.ch/api/people?page%5Bsize%5D=100"
             target="_blank">https://db.windband.ch/api/people?page%5Bsize%5D=100</a>").</li>
@@ -20,33 +21,115 @@
         field. (e.g. 34212 is inactive members)</li>
 </ol>
 
-<form action="{{ url_for('import_users') }}" method="post" class="form-horizontal">
-    {{ form.hidden_tag() }} <!-- Flask-WTF CSRF token and hidden fields -->
-
-    <div class="form-group">
-        {{ form.json_data.label(class="col-sm-2 control-label") }}
-        <div class="col-sm-10">
-            {{ form.json_data() }}
+<div class="card mb-4">
+    <div class="card-header" role="button" data-toggle="collapse" data-target="#urlBuilder" aria-expanded="false"
+        aria-controls="urlBuilder">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">API URL Builder</h5>
+            <i class="bi bi-chevron-down"></i>
         </div>
     </div>
-
-    <div class="form-group">
-        {{ form.exclude_groups.label(class="col-sm-2 control-label") }}
-        <div class="col-sm-10">
-            {{ form.exclude_groups(value="34212") }}
+    <div class="collapse" id="urlBuilder">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="groupId">Group ID (optional)</label>
+                        <input type="text" class="form-control" id="groupId" placeholder="Enter group ID">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="pageSize">Page Size</label>
+                        <input type="number" class="form-control" id="pageSize" value="100" min="1" max="1000">
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-secondary" onclick="buildApiUrl()">Build URL</button>
+                <a href="#" id="apiUrl" target="_blank" class="btn btn-primary ml-2">Open API</a>
+            </div>
+            <div class="mt-3">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="generatedUrl" readonly>
+                    <div class="input-group-append">
+                        <button class="btn btn-outline-secondary" onclick="copyUrl()">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+</div>
 
-    <div class="form-group">
-        <div class="col-sm-10 col-sm-offset-2">
-            {{ form.submit_verify(class="btn btn-secondary") }}
-            {{ form.submit_import(class="btn btn-primary", disabled=True, id="importButton") }}
+
+<!-- ...existing code until form... -->
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Import Data</h5>
+    </div>
+    <div class="card-body">
+        <form action="{{ url_for('import_users') }}" method="post">
+            {{ form.hidden_tag() }}
+
+            <div class="form-group">
+                {{ form.json_data.label(class="form-label") }}
+                <div class="input-group mb-3">
+                    {{ form.json_data(class="form-control", rows="10", style="font-family: monospace;") }}
+                </div>
+                {% if form.json_data.errors %}
+                <div class="invalid-feedback d-block">
+                    {% for error in form.json_data.errors %}
+                    <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                {{ form.exclude_groups.label(class="form-label") }}
+                <div class="input-group mb-3">
+                    {{ form.exclude_groups(class="form-control", value="34212") }}
+                    <div class="input-group-append">
+                        <span class="input-group-text" data-toggle="tooltip"
+                            title="Comma-separated list of group IDs to exclude">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </div>
+                </div>
+                {% if form.exclude_groups.errors %}
+                <div class="invalid-feedback d-block">
+                    {% for error in form.exclude_groups.errors %}
+                    <span>{{ error }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="form-group d-flex gap-2">
+                {{ form.submit_verify(class="btn btn-secondary mr-2") }}
+                {{ form.submit_import(class="btn btn-primary", disabled=True, id="importButton") }}
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Preview Card -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Import Preview</h5>
+        <span id="previewCount" class="badge badge-secondary">0 users</span>
+    </div>
+    <div class="card-body p-0">
+        <div id="preview" class="p-3">
+            <p class="text-muted text-center mb-0">Verify your data to see preview</p>
         </div>
     </div>
+</div>
 
-    <h3>Import Preview:</h3>
-    <div id="preview" class="well"></div>
-</form>
+
 {% endblock %}
 
 {% block scripts %}
@@ -81,7 +164,7 @@
             importButton.className = 'btn btn-success';
             preview.innerHTML = `<p style="color: green;">Verification successful. You can proceed to import.</p>`;
         } catch (error) {
-            preview.innerHTML = `<p style='color: red;'>${error.message}</p>`;
+            preview.innerHTML = `<p style='color: red;'>${error.message}</p><p style='color: red;'>Double check your input data or recopy from the API.</p>`;
             importButton.disabled = true;
             importButton.className = 'btn btn-error';
         }
@@ -105,23 +188,74 @@
                 const primary_group_id = user.attributes.primary_group_id;
 
                 usersHtml += `
-                        <div class="user">
-                            <strong>Id:</strong> ${id}<br>
-                            <strong>Group:</strong> ${primary_group_id}<br>
-                            <strong>Name:</strong> ${firstName} ${lastName}<br>
-                            <strong>Email:</strong> ${email}
-                            <p>------------------------------------</p>
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h5 class="card-title">${firstName} ${lastName}</h5>
+                                <h6 class="card-subtitle mb-2 text-muted">
+                                    ID: ${id} | Primary Group: ${primary_group_id}
+                                </h6>
+                                <p class="card-text">Email: ${email || "(None)"}</p>
+                            </div>
                         </div>
                     `;
             }
 
             preview.innerHTML = usersHtml;
-            importButton.disabled = false;
+            //importButton.disabled = false; //do not enable after parsing, only after verifying
         } catch (error) {
-            preview.innerHTML = "<p style='color: red;'>Invalid JSON data</p>";
+            preview.innerHTML = "<p style='color: red;'>Invalid JSON data</p><p style='color: red;'>Double check your input data or recopy from the API.</p>";
             importButton.disabled = true;
         }
     }
+
+    function buildApiUrl() {
+        const baseUrl = 'https://db.windband.ch/api/people';
+        const groupId = document.getElementById('groupId').value.trim();
+        const pageSize = document.getElementById('pageSize').value;
+
+        let params = new URLSearchParams();
+        params.append('page[size]', pageSize);
+
+        if (groupId) {
+            params.append('filter[primary_group_id][eq]', groupId);
+            params.append('fields[groups]', 'id');
+        }
+
+        const finalUrl = `${baseUrl}?${params.toString()}`;
+
+        document.getElementById('generatedUrl').value = finalUrl;
+        document.getElementById('apiUrl').href = finalUrl;
+    }
+
+    function copyUrl() {
+        const urlInput = document.getElementById('generatedUrl');
+        urlInput.select();
+        document.execCommand('copy');
+
+        // Optional: Show feedback
+        const button = event.target.closest('button');
+        const originalContent = button.innerHTML;
+        button.innerHTML = '<i class="bi bi-check"></i>';
+        setTimeout(() => {
+            button.innerHTML = originalContent;
+        }, 1000);
+    }
+
+    // Add to existing scripts block
+    document.querySelector('.card-header[data-toggle="collapse"]').addEventListener('click', function () {
+        const icon = this.querySelector('.bi');
+        icon.classList.toggle('bi-chevron-down');
+        icon.classList.toggle('bi-chevron-up');
+        document.getElementById('urlBuilder').classList.toggle('show');
+    });
+
+    // Initialize the URL builder when the page loads
+    document.addEventListener('DOMContentLoaded', function () {
+        buildApiUrl();
+
+        // Add transition style for smooth collapse
+        document.querySelector('.collapse').style.transition = 'all 0.2s ease';
+    });
 
     // Attach event listeners to the verify and import buttons
     document.querySelector('form').addEventListener('click', function (event) {
