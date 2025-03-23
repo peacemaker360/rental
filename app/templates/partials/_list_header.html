@@ -1,0 +1,12 @@
+<div class="row align-items-center mb-3">
+    <div class="col">
+        <h1 class="h3 mb-0">{{ title }}</h1>
+    </div>
+    <div class="col-auto">
+        {% if export_url and current_user.role <= 5 %} <a href="{{ export_url }}"
+            class="btn btn-outline-info btn-sm btn-md-normal">
+            <i class="bi bi-download"></i> <span class="d-none d-sm-inline">Export</span>
+            </a>
+            {% endif %}
+    </div>
+</div>

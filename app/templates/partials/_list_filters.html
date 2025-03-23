@@ -1,0 +1,22 @@
+<div class="card-header bg-white border-bottom">
+    <div class="row align-items-center g-2">
+        {% if filters %}
+        <div class="col-12">
+            <ul class="nav nav-pills nav-fill">
+                {% for filter in filters %}
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active' if filter.active }}" href="{{ filter.url }}">
+                        {{ filter.label }}
+                        {% if filter.count is defined %}
+                        <span class="badge {{ filter.badge_class|default('bg-secondary') }} ms-1">
+                            {{ filter.count }}
+                        </span>
+                        {% endif %}
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</div>

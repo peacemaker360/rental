@@ -1,5 +1,6 @@
 <!-- Quelle: Eigenentwicklung -->
 {% extends 'base.html' %}
+{% import 'macros.html' as macros %}
 
 {% block app_content %}
 <div class="card mb-3">
@@ -66,7 +67,11 @@
     </div>
     {% endif %}
     <div class="card-footer">
-        <a href="{{ url_for('edit_instrument', id=instrument.id) }}" class="btn btn-primary">Edit</a>
+        {{ macros.render_item_actions(
+        id=instrument.id,
+        edit_url=url_for('edit_instrument', id=instrument.id),
+        delete_url=url_for('delete_instrument', id=instrument.id),
+        ) }}
     </div>
 </div>
 {% endblock %}
