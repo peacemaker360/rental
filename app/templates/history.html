@@ -28,32 +28,45 @@
 </div>
 
 <div class="table-responsive mt-3">
-    <table class="table table-bordered table-hover" style="margin-bottom: 0;margin-top: 10px;">
-        <thead>
+    <table class="table table-hover table-sm mb-0">
+        <thead class="bg-light">
             <tr>
-                <th>Timestamp</th>
-                <th>Instrument</th>
-                <th>Customer</th>
-                <th class="d-none d-sm-table-cell">Rental note</th>
-                <th>Actions</th>
-                <th>Updated by</th>
+                <th class="px-2">
+                    <span class="d-none d-sm-inline">Timestamp</span>
+                    <span class="d-sm-none">Date</span>
+                </th>
+                <th class="px-2">Instrument</th>
+                <th class="px-2">Customer</th>
+                <th class="px-2 d-none d-sm-table-cell">Note</th>
+                <th class="px-2">
+                    <span class="d-none d-sm-inline">Action</span>
+                    <span class="d-sm-none"><i class="bi bi-arrow-left-right"></i></span>
+                </th>
+                <th class="px-2 d-none d-sm-table-cell">Author</th>
             </tr>
         </thead>
         <tbody>
             {% for entry in history %}
             <tr>
-                <td>{{ entry.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-                <td>{{ entry.instrument_name }}</td>
-                <td>{{ entry.customer_name }}</td>
-                <td class="d-none d-sm-table-cell">
-                    <div class="text-truncate" style="max-width: 150px;" title="{{ entry.rental_note }}">
-                        {{entry.rental_note }}
+                <td class="px-2">
+                    <span class="d-none d-sm-inline">{{ entry.timestamp.strftime('%Y-%m-%d %H:%M') }}</span>
+                    <span class="d-sm-none">{{ entry.timestamp.strftime('%d.%m') }}</span>
+                </td>
+                <td class="px-2">
+                    <div class="text-truncate">{{ entry.instrument_name }}</div>
+                </td>
+                <td class="px-2">
+                    <div class="text-truncate">{{ entry.customer_name }}</div>
+                </td>
+                <td class="px-2 d-none d-sm-table-cell">
+                    <div class="text-truncate" style="max-width: 150px" title="{{ entry.rental_note }}">
+                        {{ entry.rental_note }}
                     </div>
                 </td>
-                <td>
-                    {{ entry.update_type }}
+                <td class="px-2">
+                    <span class="badge bg-secondary">{{ entry.update_type }}</span>
                 </td>
-                <td>{{ entry.updated_by }}</td>
+                <td class="px-2 d-none d-sm-table-cell">{{ entry.updated_by }}</td>
             </tr>
             {% endfor %}
         </tbody>
