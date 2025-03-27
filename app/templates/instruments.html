@@ -6,7 +6,7 @@
         <thead class="bg-light">
             <tr>
                 <th class="px-2">Name</th>
-                <th class="px-2">Marke</th>
+                <th class="px-2 d-none d-sm-table-cell">Marke</th>
                 <th class="px-2 d-none d-sm-table-cell">Typ</th>
                 <th class="px-2 d-none d-sm-table-cell">Serial</th>
                 <th class="px-2">Options</th>
@@ -16,7 +16,7 @@
         <tbody>
             {% for instrument in instruments %}
             <tr>
-                <td class="px-2" style="white-space: nowrap;">
+                <td class="px-2">
                     {% if instrument.is_overdue %}
                     <span class="bi bi-exclamation-triangle text-warning" data-toggle="tooltip"
                         title="Item is overdue. Please return it.">
@@ -32,10 +32,10 @@
                     </span>
                     {% endif %}
                 </td>
-                <td class="px-2">{{ instrument.brand }}</td>
+                <td class="px-2 d-none d-sm-table-cell">{{ instrument.brand }}</td>
                 <td class="px-2 d-none d-sm-table-cell">{{ instrument.type }}</td>
                 <td class="px-2 d-none d-sm-table-cell">{{ instrument.serial }}</td>
-                <td class="px-2">
+                <td class="px-2" style="white-space: nowrap;">
                     {% if instrument.is_available and not instrument.is_overdue %}
                     <a href="{{ url_for('new_rental', instrument_id=instrument.id, source='instruments') }}"
                         class="btn btn-primary btn-sm w-100">
