@@ -7,70 +7,153 @@
     <div class="card-header">
         <h3 class="card-title">{{ instrument.name }}</h3>
     </div>
+
     <div class="card-body">
-        <p><strong>Anzeigename:</strong> {{ instrument.name }}</p>
-        <p><strong>Marke:</strong> {{ instrument.brand }}</p>
-        <p><strong>Typ:</strong> {{ instrument.type }}</p>
-        <p><strong>Serial:</strong> {{ instrument.serial }}</p>
-        <p><strong>Wert:</strong> {{ instrument.price }}</p>
-        <p><strong>Verfügbar:</strong> {{ instrument.is_available }}</p>
-        <p><strong>Erstellt:</strong> {{ instrument.created }}</p>
-        <p><strong>Aktualisiert:</strong> {{ instrument.updated }}</p>
-    </div>
-    <div class="card-header">
-        <h4 class="card-title">Notitzen</h4>
-    </div>
-    <div class="card-body">
+        <div class="row g-3">
+            <!-- Status Section -->
+            <div class="col-12 col-sm-4">
+                <div class="d-flex align-items-center">
+                    <div class="me-2">
+                        {% if instrument.is_overdue %}
+                        <span class="badge bg-danger rounded-pill" data-bs-toggle="tooltip" title="Item is overdue">
+                            <i class="bi bi-exclamation-triangle"></i>
+                        </span>
+                        {% elif instrument.is_available %}
+                        <span class="badge bg-success rounded-pill" data-bs-toggle="tooltip"
+                            title="Available for rental">
+                            <i class="bi bi-check-circle"></i>
+                        </span>
+                        {% else %}
+                        <span class="badge bg-info rounded-pill" data-bs-toggle="tooltip" title="Currently rented">
+                            <i class="bi bi-box-arrow-right"></i>
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <div class="small text-muted">Status</div>
+                        <strong>{{ "Available" if instrument.is_available else "Rented" }}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Type Icon -->
+            <div class="col-12 col-sm-4">
+                <div class="d-flex align-items-center">
+                    <div class="me-2">
+                        <span class="badge bg-primary rounded-pill">
+                            {% if 'guitar' in instrument.type.lower() %}
+                            <i class="bi bi-music-player"></i>
+                            {% elif 'drum' in instrument.type.lower() %}
+                            <i class="bi bi-music-note-beamed"></i>
+                            {% elif 'piano' in instrument.type.lower() %}
+                            <i class="bi bi-piano"></i>
+                            {% elif 'wind' in instrument.type.lower() %}
+                            <i class="bi bi-music-note"></i>
+                            {% else %}
+                            <i class="bi bi-soundwave"></i>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div>
+                        <div class="small text-muted">Type</div>
+                        <strong>{{ instrument.type }}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Price -->
+            <div class="col-12 col-sm-4">
+                <div class="d-flex align-items-center">
+                    <div class="me-2">
+                        <span class="badge bg-success rounded-pill">
+                            <i class="bi bi-tag"></i>
+                        </span>
+                    </div>
+                    <div>
+                        <div class="small text-muted">Value</div>
+                        <strong>{{ "%.2f"|format(instrument.price|float) }} CHF</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <hr>
+
+        <!-- Details Section -->
+        <div class="row g-3">
+            <div class="col-12 col-md-6">
+                <h5>Instrument Details</h5>
+                <div class="mb-2">
+                    <div class="small text-muted">Brand</div>
+                    <strong>{{ instrument.brand }}</strong>
+                </div>
+                <div class="mb-2">
+                    <div class="small text-muted">Serial Number</div>
+                    <strong>{{ instrument.serial }}</strong>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <h5>System Information</h5>
+                <div class="mb-2">
+                    <div class="small text-muted">Created</div>
+                    <strong>{{ instrument.created }}</strong>
+                </div>
+                <div class="mb-2">
+                    <div class="small text-muted">Last Updated</div>
+                    <strong>{{ instrument.updated }}</strong>
+                </div>
+            </div>
+        </div>
+
         {% if instrument.description %}
-        <p>{{ instrument.description }}</p>
-        {% else %}
-        <p>Keine</p>
+        <hr>
+        <h5>Notes</h5>
+        <p class="mb-0">{{ instrument.description }}</p>
         {% endif %}
     </div>
-    <div class="card-header">
-        <h4 class="card-title">History</h4>
-    </div>
+
     {% if history %}
+    <div class="card-header">
+        <h4 class="card-title">Rental History</h4>
+    </div>
     <div class="table-responsive">
-        <table class="table table-hover">
-            <thead>
+        <table class="table table-hover table-sm mb-0">
+            <thead class="bg-light">
                 <tr>
-                    <th>Rental Id</th>
-                    <th>Mitglied</th>
-                    <th>Start</th>
-                    <th>Ende</th>
-                    <th>Timestamp</th>
+                    <th class="px-2">Customer</th>
+                    <th class="px-2 d-none d-sm-table-cell">Start Date</th>
+                    <th class="px-2 d-none d-sm-table-cell">End Date</th>
+                    <th class="px-2">Status</th>
                 </tr>
             </thead>
             <tbody>
                 {% for entry in history %}
-                {% if entry.rental_id %}
-                <tr onclick="location.href='{{ url_for('view_rental', id=entry.rental_id) }}'">
-                    {% else %}
-                <tr>
-                    {% endif %}
-                    <th scope="row">
-                        {{ entry.rental_id }}
-                    </th>
-                    <td>{{ entry.customer_name }}</td>
-                    <td>{{ entry.start_date}}</td>
-                    <td>{{ entry.end_date}}</td>
-                    <td>{{ entry.timestamp }}</td>
+                <tr class="clickable-row" {% if entry.rental_id
+                    %}data-href="{{ url_for('view_rental', id=entry.rental_id) }}" {% endif %} {% if entry.rental_id
+                    %}style="cursor: pointer" {% endif %}>
+                    <td class="px-2">{{ entry.customer_name }}</td>
+                    <td class="px-2 d-none d-sm-table-cell">{{ entry.start_date }}</td>
+                    <td class="px-2 d-none d-sm-table-cell">{{ entry.end_date }}</td>
+                    <td class="px-2">
+                        {% if not entry.end_date %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Returned</span>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% else %}
-        <div class="card-title">
-            <p>Keine Eintragungen.</p>
-        </div>
     </div>
     {% endif %}
+
     <div class="card-footer">
         {{ macros.render_item_actions(
         id=instrument.id,
         edit_url=url_for('edit_instrument', id=instrument.id),
-        delete_url=url_for('delete_instrument', id=instrument.id),
+        delete_url=url_for('delete_instrument', id=instrument.id)
         ) }}
     </div>
 </div>

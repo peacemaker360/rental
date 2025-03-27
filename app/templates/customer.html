@@ -3,59 +3,134 @@
 {% import 'macros.html' as macros %}
 
 {% block app_content %}
-
 <div class="card mb-3">
     <div class="card-header">
-        <h3 class="card-title">Profil: {{ customer.display_name }}</h3>
+        <h3 class="card-title">{{ customer.display_name }}</h3>
     </div>
+
     <div class="card-body">
-        <p><strong>Vorname:</strong> {{ customer.firstname }}</p>
-        <p><strong>Nachname:</strong> {{ customer.lastname }}</p>
-        <p><strong>Email:</strong> {{ customer.email }}</p>
-        <p><strong>Phone:</strong> {{ customer.phone|default("None",true) }}</p>
-        <p><strong>Status:</strong> <span style="color: {{ 'green' if customer.is_active else 'red' }}">{{ "Aktiv" if
-                customer.is_active else "Deaktiviert" }}</span></p>
-        <p><strong>Erstellt:</strong> {{ customer.created }}</p>
-        <p><strong>Aktualisiert:</strong> {{ customer.updated }}</p>
+        <div class="row g-3">
+            <div class="col-12 col-sm-4">
+                <div class="d-flex align-items-center">
+                    <div class="me-2">
+                        {% if customer.is_active %}
+                        <span class="badge bg-success rounded-pill">
+                            <i class="bi bi-person-check"></i>
+                        </span>
+                        {% else %}
+                        <span class="badge bg-secondary rounded-pill">
+                            <i class="bi bi-person-x"></i>
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <div class="small text-muted">Status</div>
+                        <strong>{{ "Active" if customer.is_active else "Inactive" }}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-4">
+                <div class="d-flex align-items-center">
+                    <div class="me-2">
+                        <span class="badge bg-info rounded-pill">
+                            <i class="bi bi-box-seam"></i>
+                        </span>
+                    </div>
+                    <div>
+                        <div class="small text-muted">Active Rentals</div>
+                        <strong>{{ customer.rental|length }}</strong>
+                    </div>
+                </div>
+            </div>
+
+            {% if current_user.role <= 1 %} <div class="col-12 col-sm-4">
+                <div class="d-flex align-items-center">
+                    <div class="me-2">
+                        <span class="badge bg-primary rounded-pill">
+                            <i class="bi bi-people"></i>
+                        </span>
+                    </div>
+                    <div>
+                        <div class="small text-muted">Groups</div>
+                        <strong>{{ customer.groups }}</strong>
+                    </div>
+                </div>
+        </div>
+        {% endif %}
     </div>
-    {% if current_user.role <= 1 %} <div class="card-header">
-        <h4 class="card-title">Admin Infos</h4>
+
+    <hr>
+
+    <div class="row g-3">
+        <div class="col-12 col-md-6">
+            <h5>Contact Information</h5>
+            <div class="mb-2">
+                <div class="small text-muted">Full Name</div>
+                <strong>{{ customer.firstname }} {{ customer.lastname }}</strong>
+            </div>
+            <div class="mb-2">
+                <div class="small text-muted">Email</div>
+                <strong>{{ customer.email }}</strong>
+            </div>
+            <div class="mb-2">
+                <div class="small text-muted">Phone</div>
+                <strong>{{ customer.phone|default("Not provided", true) }}</strong>
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6">
+            <h5>Account Details</h5>
+            <div class="mb-2">
+                <div class="small text-muted">Created</div>
+                <strong>{{ customer.created }}</strong>
+            </div>
+            <div class="mb-2">
+                <div class="small text-muted">Last Updated</div>
+                <strong>{{ customer.updated }}</strong>
+            </div>
+        </div>
+    </div>
 </div>
-<div class="card-body">
-    <p><strong>Groups:</strong> {{ customer.groups }}</p>
-</div>
-{% endif %}
+
 {% if customer.rental %}
 <div class="card-header">
-    <h4 class="card-title">Leihgabe</h4>
+    <h4 class="card-title">Current Rentals</h4>
 </div>
 <div class="table-responsive">
-    <table class="table table-hover">
-        <thead>
+    <table class="table table-hover table-sm mb-0">
+        <thead class="bg-light">
             <tr>
-                <th>#</th>
-                <th>Name</th>
-                <th>Start</th>
-                <th>Ende</th>
-                <th></th>
+                <th class="px-2">Instrument</th>
+                <th class="px-2 d-none d-sm-table-cell">Start Date</th>
+                <th class="px-2 d-none d-sm-table-cell">End Date</th>
+                <th class="px-2">Status</th>
+                <th class="px-2">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for rental in customer.rental %}
-            <tr onclick="location.href='{{ url_for('view_rental', id=rental.id) }}'">
-                <th scope="row">
-                    {{ rental.id }}
-                </th>
-                <td>{{ rental.instrument.name }}</td>
-                <td>{{ rental.start_date }}</td>
-                <td>{{ rental.end_date }}</td>
-                <td>
+            <tr class="clickable-row" data-href="{{ url_for('view_rental', id=rental.id) }}" style="cursor: pointer;">
+                <td class="px-2">{{ rental.instrument.name }}</td>
+                <td class="px-2 d-none d-sm-table-cell">{{ rental.start_date }}</td>
+                <td class="px-2 d-none d-sm-table-cell">{{ rental.end_date }}</td>
+                <td class="px-2">
+                    {% if rental.is_late %}
+                    <span class="badge bg-danger">Overdue</span>
+                    {% elif rental.is_active %}
+                    <span class="badge bg-success">Active</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Returned</span>
+                    {% endif %}
+                </td>
+                <td class="px-2" onclick="event.stopPropagation();">
                     <form method="post" action="{{ url_for('return_rental', id=rental.id, source='customers') }}"
                         class="d-inline-block">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-secondary btn-sm"
                             onclick="return confirm('Are you sure you want to return this rental?')">
-                            <i class="bi-box-arrow-in-left"></i> Return</button>
+                            <i class="bi bi-box-arrow-in-left"></i> Return
+                        </button>
                     </form>
                 </td>
             </tr>
@@ -64,13 +139,13 @@
     </table>
 </div>
 {% endif %}
+
 <div class="card-footer">
     {{ macros.render_item_actions(
     id=customer.id,
     edit_url=url_for('edit_customer', id=customer.id),
-    delete_url=url_for('delete_customer', id=customer.id),
+    delete_url=url_for('delete_customer', id=customer.id)
     ) }}
 </div>
 </div>
-
 {% endblock %}
