@@ -16,18 +16,6 @@
                 rental.customer.display_name }}</a>
         </h6>
     </div>
-    <div class="card-body">
-        <p><strong>Id nummer:</strong> {{ rental.id }}</p>
-        <p><strong>Start Date:</strong> {{ rental.start_date }}</p>
-        <p><strong>End Date:</strong> {{ rental.end_date }}</p>
-        <p><strong>Return Date:</strong> {{ rental.return_date }}</p>
-        <p><strong>Notes:</strong> {{ rental.description }}</p>
-    </div>
-    <div class="card-body">
-        <a href="{{ url_for('view_customer', id=rental.customer.id) }}" class="card-link">Zum Mitglied</a>
-        <a href="{{ url_for('view_instrument', id=rental.instrument.id) }}" class="card-link">Zum Instrument</a>
-    </div>
-
     <div class="card-header">
         <h4 class="card-title">Status</h4>
     </div>
@@ -52,7 +40,7 @@
                     </div>
                 </div>
             </div>
-
+            
             <div class="col-12 col-sm-4">
                 <div class="d-flex align-items-center">
                     <div class="me-2">
@@ -72,7 +60,7 @@
                     </div>
                 </div>
             </div>
-
+            
             <div class="col-12 col-sm-4">
                 <div class="d-flex align-items-center">
                     <div class="me-2">
@@ -93,6 +81,20 @@
                 </div>
             </div>
         </div>
+    </div>
+    <div class="card-header">
+        <h4 class="card-title">Details</h4>
+    </div>
+    <div class="card-body">
+        <p><strong>Id nummer:</strong> {{ rental.id }}</p>
+        <p><strong>Start Date:</strong> {{ rental.start_date }}</p>
+        <p><strong>End Date:</strong> {{ rental.end_date }}</p>
+        <p><strong>Return Date:</strong> {{ rental.return_date }}</p>
+        <p><strong>Notes:</strong> {{ rental.description }}</p>
+    </div>
+    <div class="card-body">
+        <a href="{{ url_for('view_customer', id=rental.customer.id) }}" class="card-link">Zum Mitglied</a>
+        <a href="{{ url_for('view_instrument', id=rental.instrument.id) }}" class="card-link">Zum Instrument</a>
     </div>
     <div class="card-footer">
         {{ macros.render_item_actions(
