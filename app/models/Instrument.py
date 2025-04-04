@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import or_
 
 from app import db
+from app.models.note import Note
 
 
 class Instrument(db.Model):
@@ -25,6 +26,8 @@ class Instrument(db.Model):
         onupdate=lambda: datetime.now(timezone.utc)
     )
     rental = db.relationship('Rental', backref='instrument', lazy=True)
+    notes = db.relationship('Note', backref='instrument', lazy='dynamic',
+                          cascade='all, delete-orphan', order_by='Note.created.desc()')
 
     def __repr__(self):
         return str(self.id)
@@ -107,3 +110,13 @@ class Instrument(db.Model):
             cls.type.ilike(f'%{keyword}%'),
             cls.serial.ilike(f'%{keyword}%')
         ))
+
+    def add_note(self, content, note_type, user_id):
+        new_note = Note( 
+            instrument_id=self.id,
+            content=content,
+            type=note_type,
+            created_by=user_id
+        )
+        db.session.add(new_note)
+        return new_note

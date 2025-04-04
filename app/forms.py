@@ -1,6 +1,6 @@
 from datetime import date
 from flask_wtf import FlaskForm
-from wtforms import BooleanField, StringField, PasswordField, FloatField, DateField, SubmitField, TextAreaField
+from wtforms import BooleanField, StringField, PasswordField, FloatField, DateField, SubmitField, TextAreaField, SelectField
 from wtforms.validators import ValidationError, DataRequired, Email, EqualTo, Length, Optional
 from wtforms_sqlalchemy.fields import QuerySelectField
 
@@ -150,3 +150,15 @@ class BulkInstrumentImportForm(FlaskForm):
                               render_kw={"rows": 10, "class": "form-control"})
     submit_verify = SubmitField('Verify', render_kw={"class": "btn btn-secondary"})
     submit_import = SubmitField('Import', render_kw={"class": "btn btn-primary", "disabled": True})
+
+
+class NoteForm(FlaskForm):
+    content = TextAreaField('Note Content', validators=[DataRequired()])
+    note_type = SelectField('Note Type', choices=[
+        ('condition', 'Condition'),
+        ('service', 'Service Record'),
+        ('handling', 'Handling Instructions'),
+        ('addon', 'Included Accessories'),
+        ('other', 'Other')
+    ])
+    submit = SubmitField('Add Note')

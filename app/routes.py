@@ -5,7 +5,8 @@ from flask_login import login_required, current_user
 
 from app import db
 from app.models import Instrument, Customer, Rental, RentalHistory
-from .forms import InstrumentForm, CustomerForm, RentalForm
+from app.models.note import Note
+from .forms import InstrumentForm, CustomerForm, RentalForm, NoteForm
 
 import logging
 # Configure logging
@@ -169,7 +170,11 @@ def new_instrument():
 def view_instrument(id):
     instrument = Instrument.query.get_or_404(id)
     instrumentHistory = RentalHistory.getBy_instrumentId(id)
-    return render_template('instrument.html', instrument=instrument, history=instrumentHistory)
+    form = NoteForm()
+    return render_template('instrument.html', 
+                         instrument=instrument, 
+                         history=instrumentHistory,
+                         form=form)
 
 
 @app.route('/instruments/<int:id>/edit', methods=['GET', 'POST'])
@@ -219,6 +224,44 @@ def delete_instrument(id):
         db.session.rollback()
         flash('Error: {}'.format(e), 'danger')
         return redirect(url_for('instruments'))
+
+
+@app.route('/instrument/<int:instrument_id>/notes/add', methods=['POST'])
+@login_required
+def add_note(instrument_id):
+    instrument = Instrument.query.get_or_404(instrument_id)
+    form = NoteForm()
+    if form.validate_on_submit():
+        note = instrument.add_note(
+            content=form.content.data,
+            note_type=form.note_type.data,  # Updated parameter name
+            user_id=current_user.id
+        )
+        db.session.commit()
+        flash('Note added successfully.', 'success')
+    return redirect(url_for('view_instrument', id=instrument_id))
+
+@app.route('/notes/<int:id>/edit', methods=['POST'])
+@login_required
+def edit_note(id):
+    note = note.query.get_or_404(id)
+    form = NoteForm()
+    if form.validate_on_submit():
+        note.content = form.content.data
+        note.type = form.note_type.data
+        db.session.commit()
+        flash('Note updated successfully.', 'success')
+    return redirect(url_for('view_instrument', id=note.instrument_id, form=form))
+
+@app.route('/notes/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_note(id):
+    note = Note.query.get_or_404(id)
+    instrument_id = note.instrument_id
+    db.session.delete(note)
+    db.session.commit()
+    flash('Note deleted successfully.', 'success')
+    return redirect(url_for('view_instrument', id=instrument_id))
 
 
 #################
