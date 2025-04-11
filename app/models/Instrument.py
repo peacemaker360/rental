@@ -15,6 +15,7 @@ class Instrument(db.Model):
     serial = db.Column(db.String(50), nullable=False)
     description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
+    year_of_purchase = db.Column(db.Date, nullable=True)
     created = db.Column(
         db.DateTime(timezone=True),
         index=True,
@@ -29,13 +30,15 @@ class Instrument(db.Model):
     def __repr__(self):
         return str(self.id)
 
-    def __init__(self, name=None, brand=None, type=None, description=None, price=None, serial=None):
+    def __init__(self, name=None, brand=None, type=None, description=None, price=None, serial=None, year_of_purchase=None):
         self.name = name or f"{brand} {type} ({serial})"
         self.brand = brand
         self.type = type
         self.serial = serial
         self.description = description
         self.price = price
+        self.year_of_purchase = year_of_purchase
+        self.updated = datetime.now(timezone.utc)
         # self.is_available = self.check_availability()
 
     @property

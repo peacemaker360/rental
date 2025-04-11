@@ -91,18 +91,47 @@
                     <div class="small text-muted">Serial Number</div>
                     <strong>{{ instrument.serial }}</strong>
                 </div>
+                <div class="mb-2">
+                    <div class="small text-muted">Year of Purchase</div>
+                    <strong>
+                        {% if instrument.year_of_purchase %}
+                        <span title="{{ instrument.year_of_purchase.strftime('%d-%m-%Y') }}" data-bs-toggle="tooltip">
+                            {{ instrument.year_of_purchase.strftime('%Y') }}
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </strong>
+                </div>
             </div>
 
             <div class="col-12 col-md-6">
                 <h5>System Information</h5>
                 <div class="mb-2">
                     <div class="small text-muted">Created</div>
-                    <strong>{{ instrument.created }}</strong>
+                    <strong>
+                        {% if instrument.created %}
+                        <span title="{{ instrument.created }}" data-bs-toggle="tooltip">
+                            {{ instrument.created.strftime('%Y-%m-%d') }}
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </strong>
                 </div>
                 <div class="mb-2">
                     <div class="small text-muted">Last Updated</div>
-                    <strong>{{ instrument.updated }}</strong>
+                    <strong>
+                        {% if instrument.updated %}
+                        <span title="{{ instrument.updated }}" data-bs-toggle="tooltip">
+                            {{ instrument.updated.strftime('%Y-%m-%d') }}
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </strong>
                 </div>
+                
             </div>
         </div>
 
@@ -133,8 +162,8 @@
                     %}data-href="{{ url_for('view_rental', id=entry.rental_id) }}" {% endif %} {% if entry.rental_id
                     %}style="cursor: pointer" {% endif %}>
                     <td class="px-2">{{ entry.customer_name }}</td>
-                    <td class="px-2 d-none d-sm-table-cell">{{ entry.start_date }}</td>
-                    <td class="px-2 d-none d-sm-table-cell">{{ entry.end_date }}</td>
+                    <td class="px-2 d-none d-sm-table-cell">{{ entry.start_date.strftime('%Y-%m-%d') if entry.start_date else '-' }}</td>
+                    <td class="px-2 d-none d-sm-table-cell">{{ entry.end_date.strftime('%Y-%m-%d') if entry.end_date else '-' }}</td>
                     <td class="px-2">
                         {% if not entry.end_date %}
                         <span class="badge bg-success">Active</span>

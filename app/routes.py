@@ -187,6 +187,7 @@ def edit_instrument(id):
         instrument.serial = form.serial.data
         instrument.description = form.description.data
         instrument.price = form.price.data
+        instrument.year_of_purchase = form.year_of_purchase.data
         db.session.commit()
         flash('Instrument updated successfully!', 'success')
 
@@ -384,7 +385,7 @@ def new_rental(instrument_id=None, customer_id=None, ):
     form.instrument.query = db.session.query(Instrument)
     form.customer.query = db.session.query(Customer)
     form.customer.choices = [(c.id, c.display_name)
-                             for c in Customer.query.filter_by(is_active=True).order_by('email')]
+                             for c in Customer.query.filter_by(is_active=True)]
     form.instrument.choices = [(i.id, i.name)
                                for i in Instrument.query.order_by('name')]
 

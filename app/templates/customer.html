@@ -83,11 +83,27 @@
             <h5>Account Details</h5>
             <div class="mb-2">
                 <div class="small text-muted">Created</div>
-                <strong>{{ customer.created }}</strong>
+                <strong>
+                    {% if customer.created %}
+                    <span title="{{ customer.created }}" data-bs-toggle="tooltip">
+                        {{ customer.created.strftime('%Y-%m-%d') }}
+                    </span>
+                    {% else %}
+                    -
+                    {% endif %}
+                </strong>
             </div>
             <div class="mb-2">
                 <div class="small text-muted">Last Updated</div>
-                <strong>{{ customer.updated }}</strong>
+                <strong>
+                    {% if customer.updated %}
+                    <span title="{{ customer.updated }}" data-bs-toggle="tooltip">
+                        {{ customer.updated.strftime('%Y-%m-%d') }}
+                    </span>
+                    {% else %}
+                    -
+                    {% endif %}
+                </strong>
             </div>
         </div>
     </div>
