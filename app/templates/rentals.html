@@ -33,9 +33,9 @@
                     {% endif %}
                 </td>
                 <td class="px-2">{{ rental.customer.display_name }}</td>
-                <td class="px-2 d-none d-sm-table-cell">{{ rental.start_date }}</td>
-                <td class="px-2 d-none d-sm-table-cell">{{ rental.end_date }}</td>
-                <td class="px-2 d-none d-sm-table-cell">{{ rental.return_date }}</td>
+                <td class="px-2 d-none d-sm-table-cell">{{ rental.start_date.strftime('%Y-%m-%d') if rental.start_date else '-' }}</td>
+                <td class="px-2 d-none d-sm-table-cell">{{ rental.end_date.strftime('%Y-%m-%d') if rental.end_date else '-' }}</td>
+                <td class="px-2 d-none d-sm-table-cell">{{ rental.return_date.strftime('%Y-%m-%d') if rental.return_date else '-' }}</td>
                 <td class="px-2" onclick="event.stopPropagation();">
                     {% if not rental.is_returned %}
                     <form method="post" action="{{ url_for('return_rental', id=rental.id, source='rentals') }}"

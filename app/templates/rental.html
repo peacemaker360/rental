@@ -7,7 +7,7 @@
     <div class="card-header">
         <h3 class="card-title d-flex align-items-center gap-2">
             <span class="badge bg-primary rounded-pill">
-                <i class="bi bi-box-seam"></i>
+                <i class="bi bi-music-note-list"></i>
             </span>
             Rental #{{ rental.id }}
         </h3>
@@ -122,11 +122,11 @@
                 <h5>Rental Period</h5>
                 <div class="mb-2">
                     <div class="small text-muted">Start Date</div>
-                    <strong>{{ rental.start_date }}</strong>
+                    <strong>{{ rental.start_date.strftime('%Y-%m-%d') if rental.start_date else '-' }}</strong>
                 </div>
                 <div class="mb-2">
                     <div class="small text-muted">End Date</div>
-                    <strong>{{ rental.end_date }}</strong>
+                    <strong>{{ rental.end_date.strftime('%Y-%m-%d') if rental.end_date else '-' }}</strong>
                     {% if rental.is_late %}
                     <span class="badge bg-danger ms-2">
                         {{ (rental.end_date - rental.start_date).days }} days overdue
@@ -136,7 +136,7 @@
                 {% if rental.return_date %}
                 <div class="mb-2">
                     <div class="small text-muted">Return Date</div>
-                    <strong>{{ rental.return_date }}</strong>
+                    <strong>{{ rental.return_date.strftime('%Y-%m-%d') if rental.return_date else '-' }}</strong>
                 </div>
                 {% endif %}
             </div>
@@ -145,11 +145,15 @@
                 <h5>Additional Information</h5>
                 <div class="mb-2">
                     <div class="small text-muted">Created</div>
-                    <strong>{{ rental.created }}</strong>
+                    <span title="{{ rental.created }}" data-bs-toggle="tooltip">
+                        <strong>{{ rental.created.strftime('%Y-%m-%d') if rental.created else '-' }}</strong>
+                    </span>
                 </div>
                 <div class="mb-2">
                     <div class="small text-muted">Last Updated</div>
-                    <strong>{{ rental.updated }}</strong>
+                    <span title="{{ rental.updated }}" data-bs-toggle="tooltip">
+                        <strong>{{ rental.updated.strftime('%Y-%m-%d') if rental.updated else '-' }}</strong>
+                    </span>
                 </div>
             </div>
         </div>

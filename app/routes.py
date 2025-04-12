@@ -168,7 +168,7 @@ def new_instrument():
 @login_required
 def view_instrument(id):
     instrument = Instrument.query.get_or_404(id)
-    instrumentHistory = RentalHistory.getBy_instrumentId(id)
+    instrumentHistory = RentalHistory.getBy_instrumentId(id) or None
     return render_template('instrument.html', instrument=instrument, history=instrumentHistory)
 
 
@@ -187,6 +187,7 @@ def edit_instrument(id):
         instrument.serial = form.serial.data
         instrument.description = form.description.data
         instrument.price = form.price.data
+        instrument.year_of_purchase = form.year_of_purchase.data
         db.session.commit()
         flash('Instrument updated successfully!', 'success')
 
@@ -372,21 +373,15 @@ def rentals():
 
 
 @app.route('/rentals/new', methods=['GET', 'POST'])
-# Below routes allow pre-selcation of elements based on URL.
 @app.route('/rentals/new/instrument/<int:instrument_id>', methods=['GET', 'POST'])
 @app.route('/rentals/new/customer/<int:customer_id>', methods=['GET', 'POST'])
 @app.route('/rentals/new/instrument/<int:instrument_id>/customer/<int:customer_id>', methods=['GET', 'POST'])
 @app.route('/rentals/new/customer/<int:customer_id>/instrument/<int:instrument_id>', methods=['GET', 'POST'])
 @login_required
-def new_rental(instrument_id=None, customer_id=None, ):
+def new_rental(instrument_id=None, customer_id=None):
     form = RentalForm()
-    # initialize data for the dropdowns
     form.instrument.query = db.session.query(Instrument)
-    form.customer.query = db.session.query(Customer)
-    form.customer.choices = [(c.id, c.display_name)
-                             for c in Customer.query.filter_by(is_active=True).order_by('email')]
-    form.instrument.choices = [(i.id, i.name)
-                               for i in Instrument.query.order_by('name')]
+    form.customer.query = db.session.query(Customer).order_by(Customer.firstname.asc(), Customer.lastname.asc())
 
     # Pre-select choices based on URL arguments, if present
     if customer_id:
@@ -400,8 +395,6 @@ def new_rental(instrument_id=None, customer_id=None, ):
     if form.validate_on_submit():
         rental = Rental(customer_id=form.customer.data.id, instrument_id=form.instrument.data.id,
                         start_date=form.start_date.data, end_date=form.end_date.data)
-        # instrument = Instrument.query.get_or_404(form.instrument.data.id)
-        # Check for availability of the instrument before saving. show info to user.
         if form.instrument.data.is_available is False:
             flash(
                 "Rental cannot be placed. Instrument '{}' already in use!".format(form.instrument.data.name), 'danger')
@@ -418,10 +411,7 @@ def new_rental(instrument_id=None, customer_id=None, ):
         db.session.add(history)
         db.session.commit()
         flash('Rental created successfully!', 'success')
-        # Get the source page from the query parameter
         source_page = request.args.get('source', 'rentals')
-
-        # Redirect to the source page
         return redirect(url_for(source_page))
     return render_template('rental_form.html', form=form, action='New')
 

@@ -78,12 +78,14 @@ class UserConfigForm(FlaskForm):
 
 
 class InstrumentForm(FlaskForm):
-    name = StringField('Name', validators=[Optional()], default=None)
-    brand = StringField('Marke*', validators=[DataRequired()])
-    type = StringField('Typ*', validators=[DataRequired()])
+    name = StringField('Instrument', validators=[Optional()], default=None)
+    brand = StringField('Marke', validators=[Optional()])
+    type = StringField('Typ', validators=[Optional()])
     serial = StringField('Serial*', validators=[DataRequired()])
+    price = FloatField('Wert', validators=[Optional()])
+    year_of_purchase = DateField('Jahrgang (Kaufdatum)', format='%Y-%m-%d',
+                     validators=[Optional()], default=None)
     description = StringField('Beschreibung')
-    price = FloatField('Wert*', validators=[DataRequired()])
     submit = SubmitField('Ok')
     cancel = SubmitField('Cancel', render_kw={
                          'formnovalidate': True})
@@ -109,12 +111,13 @@ class RentalForm(FlaskForm):
     # customer = StringField('Customer', validators=[DataRequired()])
     customer = QuerySelectField(allow_blank=True,
                                 get_label='display_name',
+                                query_factory=lambda: db.session.query(Customer).order_by(Customer.lastname.asc(), Customer.firstname.asc()),
                                 validators=[DataRequired()],
                                 blank_text=u'Select...'
                                 )
     start_date = DateField('Start Datum*', format='%Y-%m-%d',
                            validators=[DataRequired()], default=date.today())
-    end_date = DateField('Rückgabe (End) Datum*',
+    end_date = DateField('Rückgabe (End) Datum',
                          format='%Y-%m-%d', validators=[Optional()], default=None)
     description = StringField('Notitz')
     submit = SubmitField('Ok')

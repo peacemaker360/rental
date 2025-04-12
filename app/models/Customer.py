@@ -14,6 +14,7 @@ class Customer(db.Model):
     lastname = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(120), index=True, unique=True)
     phone = db.Column(db.String(20), nullable=True)
+    external_id = db.Column(db.String(50), index=True, unique=True, nullable=True)
     created = db.Column(
         db.DateTime(timezone=True),
         index=True,
@@ -34,13 +35,14 @@ class Customer(db.Model):
     def __repr__(self):
         return f'<Customer {self.firstname} {self.lastname}>'
 
-    def __init__(self, firstname=None, lastname=None, email=None, phone=None, groups=None):
+    def __init__(self, firstname=None, lastname=None, email=None, phone=None, groups=None, external_id=None):
         self.firstname = firstname
         self.lastname = lastname
         # self.name = f"{firstname} {lastname}"
         self.email = email
         self.phone = phone
         self.groups = groups
+        self.external_id = external_id
         self.update_active_status()
 
     def update_active_status(self):

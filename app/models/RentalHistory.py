@@ -57,9 +57,10 @@ class RentalHistory(db.Model):
 
     @staticmethod
     def getBy_instrumentId(id):
-        return RentalHistory.query.filter_by(instrument_id=id).distinct(
+        results = RentalHistory.query.filter_by(instrument_id=id).distinct(
             RentalHistory.customer_id, RentalHistory.rental_id
-        ).order_by(RentalHistory.timestamp.desc())
+        ).order_by(RentalHistory.timestamp.desc()).all()
+        return results if results else None
 
     @staticmethod
     def getBy_customerId(id):

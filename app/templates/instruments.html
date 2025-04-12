@@ -5,10 +5,11 @@
     <table class="table table-hover table-sm mb-0">
         <thead class="bg-light">
             <tr>
-                <th class="px-2">Name</th>
+                <th class="px-2">Instrument</th>
                 <th class="px-2 d-none d-sm-table-cell">Marke</th>
                 <th class="px-2 d-none d-sm-table-cell">Typ</th>
                 <th class="px-2 d-none d-sm-table-cell">Serial</th>
+                <th class="px-2 d-none d-sm-table-cell">Jahrgang (Kaufdatum)</th>
                 <th class="px-2">Options</th>
                 <th class="px-2 text-right">Actions</th>
             </tr>
@@ -35,6 +36,15 @@
                 <td class="px-2 d-none d-sm-table-cell">{{ instrument.brand }}</td>
                 <td class="px-2 d-none d-sm-table-cell">{{ instrument.type }}</td>
                 <td class="px-2 d-none d-sm-table-cell">{{ instrument.serial }}</td>
+                <td class="px-2 d-none d-sm-table-cell">
+                    {% if instrument.year_of_purchase %}
+                    <span title="{{ instrument.year_of_purchase.strftime('%d-%m-%Y') }}" data-bs-toggle="tooltip">
+                        {{ instrument.year_of_purchase.strftime('%Y') }}
+                    </span>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
                 <td class="px-2" style="white-space: nowrap;" onclick="event.stopPropagation();">
                     {% if instrument.is_available and not instrument.is_overdue %}
                     <a href="{{ url_for('new_rental', instrument_id=instrument.id, source='instruments') }}"
