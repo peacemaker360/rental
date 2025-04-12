@@ -157,10 +157,9 @@
                 </tr>
             </thead>
             <tbody>
-                {% for entry in history %}
-                <tr class="clickable-row" {% if entry.rental_id
-                    %}data-href="{{ url_for('view_rental', id=entry.rental_id) }}" {% endif %} {% if entry.rental_id
-                    %}style="cursor: pointer" {% endif %}>
+                {% for entry in history|unique(attribute='rental_id') %}
+                <tr class="clickable-row" 
+                    {% if entry.rental_id%}data-href="{{ url_for('view_rental', id=entry.rental_id) }}" {% endif %} {% if entry.rental_id%} style="cursor: pointer" {% endif %}>
                     <td class="px-2">{{ entry.customer_name }}</td>
                     <td class="px-2 d-none d-sm-table-cell">{{ entry.start_date.strftime('%Y-%m-%d') if entry.start_date else '-' }}</td>
                     <td class="px-2 d-none d-sm-table-cell">{{ entry.end_date.strftime('%Y-%m-%d') if entry.end_date else '-' }}</td>
@@ -186,4 +185,8 @@
         ) }}
     </div>
 </div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/custom.js') }}"></script>
 {% endblock %}
