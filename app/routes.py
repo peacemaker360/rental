@@ -168,7 +168,7 @@ def new_instrument():
 @login_required
 def view_instrument(id):
     instrument = Instrument.query.get_or_404(id)
-    instrumentHistory = RentalHistory.getBy_instrumentId(id)
+    instrumentHistory = RentalHistory.getBy_instrumentId(id) or None
     return render_template('instrument.html', instrument=instrument, history=instrumentHistory)
 
 
