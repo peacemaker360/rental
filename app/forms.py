@@ -111,7 +111,7 @@ class RentalForm(FlaskForm):
     # customer = StringField('Customer', validators=[DataRequired()])
     customer = QuerySelectField(allow_blank=True,
                                 get_label='display_name',
-                                query_factory=lambda: Customer.query.order_by(Customer.lastname, Customer.firstname),
+                                query_factory=lambda: Customer.query.order_by(Customer.firstname.asc(), Customer.lastname.asc()),
                                 validators=[DataRequired()],
                                 blank_text=u'Select...'
                                 )
