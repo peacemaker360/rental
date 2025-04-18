@@ -72,6 +72,43 @@ class Customer(db.Model):
         self.is_active = True
         db.session.commit()
         return self
+    
+    @property
+    def group_display_ids(self):
+        """
+        Returns a string representation of the groups.
+        """
+        if self.groups:
+            try:
+                group_ids = json.loads(self.groups)
+            except ValueError:
+                group_ids = self.groups.split(',')
+            return ', '.join(group_ids)
+        return None
+    @property
+    def group_ids(self):
+        """
+        Returns a list of group IDs.
+        """
+        if self.groups:
+            try:
+                group_ids = json.loads(self.groups)
+            except ValueError:
+                group_ids = self.groups.split(',')
+            return group_ids
+        return None
+    @property
+    def group_display_names(self):
+        """
+        Returns a list of group names.
+        """
+        if self.groups:
+            try:
+                group_ids = json.loads(self.groups)
+            except ValueError:
+                group_ids = self.groups.split(',')
+            return [ACTIVE_GROUPS.get(group_id, group_id) for group_id in group_ids]
+        return None
 
     @classmethod
     def search(cls, keyword):

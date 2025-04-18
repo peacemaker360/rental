@@ -43,8 +43,13 @@
                     </div>
                 </div>
             </div>
+        </div>
 
-            {% if current_user.role <= 1 %} <div class="col-12 col-sm-4">
+        {% if current_user.role <= 1 %}
+        <hr>
+        <h5 class="mb-3">Administrative Information</h5>
+        <div class="row g-3">
+            <div class="col-12 col-sm-6">
                 <div class="d-flex align-items-center">
                     <div class="me-2">
                         <span class="badge bg-primary rounded-pill">
@@ -52,17 +57,30 @@
                         </span>
                     </div>
                     <div>
-                        <div class="small text-muted">Groups</div>
-                        <strong>{{ customer.groups }}</strong>
+                        <div class="small text-muted">Groups (Id)</div>
+                        <strong>{{ customer.group_ids }}</strong>
                     </div>
                 </div>
+            </div>
+            <div class="col-12 col-sm-6">
+                <div class="d-flex align-items-center">
+                    <div class="me-2">
+                        <span class="badge bg-info rounded-pill">
+                            <i class="bi bi-person-badge"></i>
+                        </span>
+                    </div>
+                    <div>
+                        <div class="small text-muted">External ID</div>
+                        <strong>{{ customer.external_id|default("Not provided", true) }}</strong>
+                    </div>
+                </div>
+            </div>
         </div>
         {% endif %}
-    </div>
 
-    <hr>
+        <hr>
 
-    <div class="row g-3">
+        <div class="row g-3">
         <div class="col-12 col-md-6">
             <h5>Contact Information</h5>
             <div class="mb-2">
@@ -77,6 +95,24 @@
                 <div class="small text-muted">Phone</div>
                 <strong>{{ customer.phone|default("Not provided", true) }}</strong>
             </div>
+            {% if customer.group_ids %}
+            <div class="mb-2">
+                <div class="small text-muted">Funktion (Gruppe)</div>
+                <strong>{{ customer.group_display_names|default("Not provided", true) }}</strong>
+            </div>
+            {% endif %}
+
+            {% if customer.external_id and customer.group_ids %}
+            <div class="mb-2">
+                <div class="small text-muted">hitobito Link</div>
+                <a href="https://db.windband.ch/de/groups/{{ customer.group_ids | first }}/people/{{ customer.external_id }}.html" 
+                   target="_blank" 
+                   class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                    View in hitobito
+                </a>
+            </div>
+            {% endif %}
         </div>
 
         <div class="col-12 col-md-6">

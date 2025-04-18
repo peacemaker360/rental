@@ -3,13 +3,13 @@
 {% import 'macros.html' as macros %}
 
 {% block app_content %}
-<h1>Import Users</h1>
+<h1>Users Import</h1>
 
 <p>
     To import users from the external system, please follow these steps:
 </p>
 <ol>
-    <li>Log in to the external system if you haven't already.</li>
+    <li>Log in to <a href="https://db.windband.ch/de/users/sign_in" target="_blank">hitobito</a> if you haven't already.</li>
     <li>Use the API URL Builder below to generate the API URL for the user data.</li>
     <li>Visit the API endpoint that provides user data (e.g.,
         "<a href="https://db.windband.ch/api/people?page%5Bsize%5D=100"
@@ -108,6 +108,23 @@
                 {% endif %}
             </div>
 
+            <div class="form-group">
+                <label for="referenceType">Reference Type</label>
+                <div class="input-group">
+                    <select class="form-control" id="referenceType" name="reference_type">
+                        <option value="auto">(Automatic)</option>
+                        <option value="external_id">External ID</option>
+                        <option value="email">Email</option>
+                    </select>
+                    <div class="input-group-append">
+                        <span class="input-group-text" data-toggle="tooltip" 
+                              title="Select how to match users: by their external ID or email address">
+                            <i class="bi bi-info-circle"></i>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <hr>
             <div class="form-group d-flex gap-2">
                 {{ form.submit_verify(class="btn btn-secondary mr-2") }}
                 {{ form.submit_import(class="btn btn-primary", disabled=True, id="importButton") }}
@@ -265,5 +282,43 @@
         }
         // The 'Import' button will naturally submit the form
     });
+
+    function analyzeJsonData() {
+        const jsonData = document.getElementById("json_data").value;
+        const referenceTypeSelect = document.getElementById("referenceType");
+
+        try {
+            const parsedData = JSON.parse(jsonData);
+            const users = parsedData.data;
+
+            if (!Array.isArray(users) || users.length < 1) {
+                throw new Error("Invalid JSON format: 'data' should be a non-empty list.");
+            }
+
+            const firstUser = users[0];
+            let suggestedReferenceType = "";
+
+            if ("id" in firstUser) {
+                suggestedReferenceType = "external_id";
+            } else if ("attributes" in firstUser && "email" in firstUser.attributes) {
+                suggestedReferenceType = "email";
+            } else {
+                throw new Error("Unable to determine reference type from the data. Please check the JSON format.");
+            }
+
+            // Set the suggested reference type in the dropdown
+            referenceTypeSelect.value = suggestedReferenceType;
+            // Remove option "auto" from the dropdown
+            referenceTypeSelect.querySelector('option[value="auto"]').remove();
+            //alert(`Suggested reference type: ${suggestedReferenceType}. You can confirm or override.`);
+            console.log(`Suggested reference type: ${suggestedReferenceType}. You can confirm or override.`);
+        } catch (error) {
+            console.log(error.message);
+        }
+    }
+
+    // Attach the analyzeJsonData function to the JSON input field
+    document.getElementById("json_data").addEventListener("input", analyzeJsonData);
 </script>
+<script src="{{ url_for('static', filename='js/custom.js') }}"></script>
 {% endblock %}
