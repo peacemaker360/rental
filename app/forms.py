@@ -1,7 +1,7 @@
 from datetime import date
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, StringField, PasswordField, FloatField, DateField, SubmitField, TextAreaField
-from wtforms.validators import ValidationError, DataRequired, Email, EqualTo, Length, Optional
+from wtforms.validators import ValidationError, DataRequired, Email, EqualTo, Length, Optional, AnyOf
 from wtforms_sqlalchemy.fields import QuerySelectField
 
 from app.models.User import User
@@ -140,6 +140,14 @@ class BulkUserImportForm(FlaskForm):
         'Exclude Group IDs:',
         validators=[Optional()],
         render_kw={"placeholder": "e.g. 1,2,3", "class": "form-control"}
+    )
+    reference_type = StringField(
+        'Reference Type:',
+        validators=[
+            DataRequired(),
+            AnyOf(['external_id', 'email'], message='Reference type must be either external_id or email')
+        ],
+        render_kw={"placeholder": "e.g. external_id or email", "class": "form-control"}
     )
     submit_verify = SubmitField(
         'Verify', render_kw={"class": "btn btn-secondary"})
