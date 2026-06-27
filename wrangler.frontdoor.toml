@@ -1,0 +1,15 @@
+name = "association-rental-frontdoor"
+main = "frontdoor/access_context_worker.js"
+compatibility_date = "2026-06-26"
+
+kv_namespaces = [
+  { binding = "TENANT_ACCESS_KV", id = "replace-with-tenant-access-kv-id", preview_id = "replace-with-tenant-access-preview-kv-id" }
+]
+
+services = [
+  { binding = "RENTAL_BACKEND", service = "association-rental" }
+]
+
+[vars]
+CF_ACCESS_TEAM_DOMAIN = "replace-with-team.cloudflareaccess.com"
+CF_ACCESS_AUD = "replace-with-access-aud-tag"

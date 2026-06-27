@@ -10,3 +10,6 @@ app.db
 .env
 .data/hitobito.json
 .env
+node_modules/
+.wrangler/
+.data/local-kv/

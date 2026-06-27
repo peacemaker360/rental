@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Rental Desk</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark">RD</span>
+          <div>
+            <strong>Rental Desk</strong>
+            <span id="tenantLabel">Association</span>
+          </div>
+        </div>
+        <nav class="nav" aria-label="Main">
+          <button class="nav-item is-active" data-view="dashboard" data-i18n="views.dashboard">Dashboard</button>
+          <button class="nav-item" data-view="instruments" data-i18n="views.instruments">Instruments</button>
+          <button class="nav-item" data-view="members" data-i18n="views.members">Members</button>
+          <button class="nav-item" data-view="rentals" data-i18n="views.rentals">Rentals</button>
+          <button class="nav-item" data-view="history" data-i18n="views.history">History</button>
+        </nav>
+        <div class="tenant-box">
+          <label for="tenantInput" data-i18n="labels.tenant">Tenant</label>
+          <div class="tenant-row">
+            <input id="tenantInput" autocomplete="off" spellcheck="false" pattern="[a-z0-9][a-z0-9_-]{1,62}" title="2-63 lowercase letters, numbers, hyphens, or underscores" data-i18n-title="tenant.title">
+            <button id="saveTenant" class="icon-button" title="Switch tenant" aria-label="Switch tenant" data-i18n-title="actions.switch_tenant" data-i18n-aria-label="actions.switch_tenant">↵</button>
+          </div>
+          <div class="tenant-meta" aria-live="polite">
+            <span><span data-i18n="labels.revision">Revision</span> <strong id="tenantRevision">0</strong></span>
+            <span id="tenantUpdatedAt"></span>
+          </div>
+        </div>
+        <div class="language-box">
+          <span data-i18n="labels.language">Language</span>
+          <div class="language-switch" aria-label="Language" data-i18n-aria-label="labels.language">
+            <button type="button" data-lang="en">EN</button>
+            <button type="button" data-lang="de">DE</button>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" data-i18n="app.eyebrow">Instrument rental</p>
+            <h1 id="viewTitle">Dashboard</h1>
+          </div>
+          <div class="topbar-actions">
+            <button id="seedButton" class="ghost-button" data-i18n="actions.load_demo">Load Demo</button>
+            <button id="exportButton" class="ghost-button" data-i18n="actions.export">Export</button>
+            <button id="importButton" class="ghost-button" data-i18n="actions.import">Import</button>
+            <button id="refreshButton" class="icon-button" title="Refresh" aria-label="Refresh" data-i18n-title="actions.refresh" data-i18n-aria-label="actions.refresh">↻</button>
+            <button id="primaryAction" class="primary-button">New Rental</button>
+          </div>
+        </header>
+
+        <section id="message" class="message" hidden></section>
+        <section id="view" class="view"></section>
+        <input id="importFile" type="file" accept="application/json,.json" hidden>
+      </main>
+    </div>
+
+    <dialog id="recordDialog" class="record-dialog">
+      <form id="recordForm" method="dialog">
+        <div class="dialog-head">
+          <h2 id="dialogTitle">Record</h2>
+          <button class="icon-button" value="cancel" formnovalidate title="Close" aria-label="Close" data-i18n-title="actions.close" data-i18n-aria-label="actions.close">×</button>
+        </div>
+        <div id="formFields" class="form-grid"></div>
+        <menu class="dialog-actions">
+          <button value="cancel" class="ghost-button" formnovalidate data-i18n="actions.cancel">Cancel</button>
+          <button id="saveRecord" value="default" class="primary-button" data-i18n="actions.save">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

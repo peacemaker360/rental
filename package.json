@@ -1,0 +1,22 @@
+{
+  "name": "association-rental",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --persist-to .wrangler/state",
+    "dev:frontdoor": "wrangler dev --config wrangler.frontdoor.toml",
+    "dev:python": "python3 scripts/local_dev_server.py",
+    "deploy": "wrangler deploy",
+    "deploy:frontdoor": "wrangler deploy --config wrangler.frontdoor.toml",
+    "kv:create": "wrangler kv namespace create RENTAL_KV",
+    "kv:create-preview": "wrangler kv namespace create RENTAL_KV --preview",
+    "kv:create-tenant-access": "wrangler kv namespace create TENANT_ACCESS_KV --config wrangler.frontdoor.toml",
+    "kv:create-tenant-access-preview": "wrangler kv namespace create TENANT_ACCESS_KV --preview --config wrangler.frontdoor.toml",
+    "test": "python3 -m unittest discover -s tests",
+    "smoke:python": "python3 scripts/smoke_local.py"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
