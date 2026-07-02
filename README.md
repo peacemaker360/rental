@@ -374,3 +374,7 @@ API JSON responses from both the Worker and the Python local server are marked
 intentionally cached by the browser while operators work. The API does not emit
 wildcard CORS origins; the static frontend and Worker are expected to run
 same-origin, with the Access front door handling deployed authentication.
+
+
+--
+Just trigger a deploy.
