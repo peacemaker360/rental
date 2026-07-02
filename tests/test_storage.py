@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from worker.storage import KVRepository, entity_key, index_key, metadata_key
+from worker.storage import KVRepository, association_key, associations_index_key, entity_key, index_key, metadata_key
 
 
 class FakeKV:
@@ -85,6 +85,46 @@ class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
             "revision": 0,
             "updated_at": None,
         })
+
+    async def test_tenant_exists_uses_metadata(self):
+        kv = FakeKV()
+        repo = KVRepository(kv)
+
+        self.assertFalse(await repo.tenant_exists("tenant-a"))
+
+        await repo.save_tenant("tenant-a", {
+            "instruments": [],
+            "members": [{"id": "member_1", "display_name": "Member One"}],
+            "rentals": [],
+            "service_records": [],
+            "history": [],
+        })
+
+        self.assertTrue(await repo.tenant_exists("tenant-a"))
+
+    async def test_tenant_exists_supports_entity_only_indexes(self):
+        kv = FakeKV()
+        repo = KVRepository(kv)
+        await kv.put(index_key("tenant-a", "members"), json.dumps(["member_1"]))
+
+        self.assertTrue(await repo.tenant_exists("tenant-a"))
+        self.assertFalse(await repo.tenant_exists("tenant-b"))
+
+    async def test_association_registry_round_trip(self):
+        kv = FakeKV()
+        repo = KVRepository(kv)
+
+        saved = await repo.save_association("tenant-a", {
+            "tenant_id": "tenant-a",
+            "display_name": "Tenant A",
+            "status": "active",
+        })
+
+        self.assertEqual(saved["display_name"], "Tenant A")
+        self.assertIn(associations_index_key(), kv.values)
+        self.assertIn(association_key("tenant-a"), kv.values)
+        self.assertEqual((await repo.load_association("tenant-a"))["status"], "active")
+        self.assertEqual([item["tenant_id"] for item in await repo.list_associations()], ["tenant-a"])
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import time
 import unittest
 
-from worker.api_core import RequestContext, context_from_headers, handle_api_request, signed_context_headers
+from worker.api_core import RequestContext, context_from_headers, handle_api_request, is_api_request_path, parse_api_path, signed_context_headers
 from worker.domain import empty_records
 
 
@@ -9,6 +9,7 @@ class MemoryRepository:
     def __init__(self):
         self.tenants = {}
         self.meta = {}
+        self.associations = {}
 
     async def load_tenant(self, tenant_id):
         return self.tenants.get(tenant_id, empty_records())
@@ -21,6 +22,16 @@ class MemoryRepository:
 
     async def load_metadata(self, tenant_id):
         return self.meta.get(tenant_id, {"tenant_id": tenant_id, "revision": 0, "updated_at": None})
+
+    async def list_associations(self):
+        return sorted(self.associations.values(), key=lambda item: item["tenant_id"])
+
+    async def load_association(self, tenant_id):
+        return self.associations.get(tenant_id)
+
+    async def save_association(self, tenant_id, association):
+        self.associations[tenant_id] = association
+        return association
 
 
 class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
@@ -57,6 +68,85 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("email", member["data"])
         self.assertNotIn("phone", member["data"])
         self.assertEqual(member["meta"]["revision"], 1)
+
+    async def test_member_collection_status_filters_match_ui_activity_states(self):
+        repo = MemoryRepository()
+        operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
+
+        await handle_api_request("POST", "/api/tenant-a/members", "", {
+            "display_name": "Active Member",
+            "is_active": True,
+        }, repo, operator)
+        await handle_api_request("POST", "/api/tenant-a/members", "", {
+            "display_name": "Inactive Member",
+            "is_active": False,
+        }, repo, operator)
+
+        status, active = await handle_api_request("GET", "/api/tenant-a/members", "status=active", {}, repo, operator)
+        self.assertEqual(status, 200)
+        self.assertEqual([member["display_name"] for member in active["data"]], ["Active Member"])
+
+        status, inactive = await handle_api_request("GET", "/api/tenant-a/members", "status=inactive", {}, repo, operator)
+        self.assertEqual(status, 200)
+        self.assertEqual([member["display_name"] for member in inactive["data"]], ["Inactive Member"])
+
+    async def test_crud_write_registers_tenant_association(self):
+        repo = MemoryRepository()
+        operator = RequestContext(tenant_id="new-band", actor_id="operator-user", role="operator")
+        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
+
+        status, _ = await handle_api_request("POST", "/api/new-band/members", "", {
+            "display_name": "Morgan Example",
+        }, repo, operator)
+        status, body = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, platform_admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["data"][0]["tenant_id"], "new-band")
+        self.assertEqual(body["data"][0]["display_name"], "New Band")
+        self.assertEqual(body["data"][0]["meta"]["revision"], 1)
+
+    async def test_crud_write_preserves_existing_association_details(self):
+        repo = MemoryRepository()
+        repo.associations["tenant-a"] = {
+            "tenant_id": "tenant-a",
+            "display_name": "Curated Name",
+            "status": "paused",
+            "contact_ref": "board-roster",
+            "updated_at": "curated-time",
+        }
+        operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
+
+        status, _ = await handle_api_request("POST", "/api/tenant-a/members", "", {
+            "display_name": "Morgan Example",
+        }, repo, operator)
+
+        self.assertEqual(status, 201)
+        self.assertEqual(repo.associations["tenant-a"]["display_name"], "Curated Name")
+        self.assertEqual(repo.associations["tenant-a"]["status"], "paused")
+        self.assertEqual(repo.associations["tenant-a"]["updated_at"], "curated-time")
+
+    async def test_create_member_rejects_contact_pii(self):
+        repo = MemoryRepository()
+        operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
+
+        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", {
+            "display_name": "Private Member",
+            "contact_hint": "Call +41 44 000 00 00",
+        }, repo, operator)
+
+        self.assertEqual(status, 400)
+        self.assertIn("contact_hint must not contain phone numbers", body["error"])
+
+    async def test_crud_write_rejects_non_object_payload(self):
+        repo = MemoryRepository()
+        operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
+
+        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", [{
+            "display_name": "List Payload",
+        }], repo, operator)
+
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "request payload must be an object")
 
     async def test_write_accepts_matching_expected_revision(self):
         repo = MemoryRepository()
@@ -162,6 +252,167 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({record["tenant_id"] for record in records["instruments"]}, {"tenant-b"})
         self.assertEqual({record["tenant_id"] for record in records["members"]}, {"tenant-b"})
         self.assertEqual({record["tenant_id"] for record in records["rentals"]}, {"tenant-b"})
+        self.assertEqual({record["tenant_id"] for record in records["service_records"]}, {"tenant-b"})
+
+    async def test_tenant_import_without_metadata_preserves_association_details(self):
+        repo = MemoryRepository()
+        repo.associations["tenant-b"] = {
+            "tenant_id": "tenant-b",
+            "display_name": "Curated Association",
+            "status": "paused",
+            "contact_ref": "board-roster",
+            "updated_at": "curated-time",
+        }
+        source_admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+        target_admin = RequestContext(tenant_id="tenant-b", actor_id="admin-b", role="admin")
+        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, source_admin)
+        _, package = await handle_api_request("GET", "/api/tenant-a/export", "", {}, repo, source_admin)
+
+        status, _ = await handle_api_request("PUT", "/api/tenant-b/import", "", package, repo, target_admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(repo.associations["tenant-b"]["display_name"], "Curated Association")
+        self.assertEqual(repo.associations["tenant-b"]["status"], "paused")
+        self.assertEqual(repo.associations["tenant-b"]["updated_at"], "curated-time")
+
+    async def test_tenant_import_with_metadata_updates_association_display_name(self):
+        repo = MemoryRepository()
+        repo.associations["tenant-b"] = {
+            "tenant_id": "tenant-b",
+            "display_name": "Old Association Name",
+            "status": "active",
+        }
+        admin = RequestContext(tenant_id="tenant-b", actor_id="admin-b", role="admin")
+
+        status, _ = await handle_api_request("PUT", "/api/tenant-b/import", "", {
+            "association_name": "Imported Association Name",
+            "records": {
+                "instruments": [],
+                "members": [],
+                "rentals": [],
+                "service_records": [],
+                "history": [],
+            },
+        }, repo, admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(repo.associations["tenant-b"]["display_name"], "Imported Association Name")
+        self.assertEqual(repo.associations["tenant-b"]["status"], "active")
+
+    async def test_service_record_crud_is_tenant_scoped(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
+        records = await repo.load_tenant("tenant-a")
+        instrument_id = records["instruments"][0]["id"]
+
+        status, body = await handle_api_request("POST", "/api/tenant-a/service_records", "", {
+            "instrument_id": instrument_id,
+            "service_date": "2026-02-03",
+            "condition": "watch",
+            "next_service_date": "2027-08-03",
+            "job_type": "Checkup",
+            "note": "Action feels uneven",
+        }, repo, admin)
+
+        self.assertEqual(status, 201)
+        self.assertEqual(body["data"]["condition"], "watch")
+        self.assertEqual(body["data"]["next_service_date"], "2027-08-03")
+        self.assertEqual(body["meta"]["revision"], 2)
+        service_id = body["data"]["id"]
+        records = await repo.load_tenant("tenant-a")
+        self.assertEqual(records["history"][-1]["actor"], "admin-a")
+        self.assertEqual(records["history"][-1]["service_record_id"], service_id)
+        self.assertEqual(records["history"][-1]["service_condition"], "watch")
+
+        status, collection = await handle_api_request("GET", "/api/tenant-a/service_records", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(len(collection["data"]), 1)
+        hydrated_service = next(item for item in collection["data"] if item["id"] == service_id)
+        self.assertEqual(hydrated_service["instrument_id"], instrument_id)
+        self.assertIn("instrument_name", hydrated_service)
+        self.assertIn("instrument_serial", hydrated_service)
+        self.assertEqual(hydrated_service["service_due_status"], "ok")
+
+        status, detail = await handle_api_request("GET", f"/api/tenant-a/service_records/{service_id}", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual(detail["data"]["instrument_name"], hydrated_service["instrument_name"])
+        self.assertEqual(detail["data"]["service_due_status"], "ok")
+
+        status, service_filter = await handle_api_request("GET", "/api/tenant-a/service_records", "status=watch", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual([item["id"] for item in service_filter["data"]], [service_id])
+
+        status, instrument_filter = await handle_api_request("GET", "/api/tenant-a/instruments", "status=watch", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual([item["id"] for item in instrument_filter["data"]], [instrument_id])
+
+        status, summary_body = await handle_api_request("GET", "/api/tenant-a/summary", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(summary_body["service_attention"], 1)
+
+        status, body = await handle_api_request("DELETE", f"/api/tenant-a/service_records/{service_id}", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["deleted"], service_id)
+        records = await repo.load_tenant("tenant-a")
+        self.assertEqual(records["history"][-1]["action"], "deleted")
+        self.assertEqual(records["history"][-1]["actor"], "admin-a")
+        self.assertEqual(records["history"][-1]["service_record_id"], service_id)
+
+    async def test_service_record_api_rejects_contact_like_notes(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
+        records = await repo.load_tenant("tenant-a")
+        instrument_id = records["instruments"][0]["id"]
+
+        status, body = await handle_api_request("POST", "/api/tenant-a/service_records", "", {
+            "instrument_id": instrument_id,
+            "service_date": "2026-02-03",
+            "condition": "good",
+            "note": "Workshop phone +41 44 000 00 00",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertIn("note must not contain phone numbers", body["error"])
+
+    async def test_deleting_instrument_records_cascaded_service_deletions_in_history(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+        status, instrument = await handle_api_request("POST", "/api/tenant-a/instruments", "", {
+            "name": "Service-only Clarinet",
+            "serial": "CL-SVC-1",
+            "type": "Clarinet",
+        }, repo, admin)
+        self.assertEqual(status, 201)
+
+        status, service = await handle_api_request("POST", "/api/tenant-a/service_records", "", {
+            "instrument_id": instrument["data"]["id"],
+            "service_date": "2026-02-03",
+            "condition": "watch",
+            "job_type": "Pad check",
+        }, repo, admin, {"x-rental-expected-revision": "1"})
+        self.assertEqual(status, 201)
+
+        status, body = await handle_api_request(
+            "DELETE",
+            f"/api/tenant-a/instruments/{instrument['data']['id']}",
+            "",
+            {},
+            repo,
+            admin,
+            {"x-rental-expected-revision": "2"},
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["deleted"], instrument["data"]["id"])
+        records = await repo.load_tenant("tenant-a")
+        self.assertEqual(records["instruments"], [])
+        self.assertEqual(records["service_records"], [])
+        self.assertEqual(records["history"][-1]["action"], "deleted")
+        self.assertEqual(records["history"][-1]["actor"], "admin-a")
+        self.assertEqual(records["history"][-1]["service_record_id"], service["data"]["id"])
+        self.assertEqual(records["history"][-1]["instrument_name"], "Service-only Clarinet")
 
     async def test_import_rejects_blocked_pii_fields(self):
         repo = MemoryRepository()
@@ -179,6 +430,149 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 400)
         self.assertIn("blocked PII fields", body["error"])
 
+    async def test_import_rejects_contact_like_history_actor(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
+        status, package = await handle_api_request("GET", "/api/tenant-a/export", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        package["records"]["history"][0]["actor"] = "person@example.test"
+
+        status, body = await handle_api_request("PUT", "/api/tenant-a/import", "", package, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "actor must be opaque, not an email address")
+
+    async def test_hitobito_member_import_merges_low_pii_members(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+
+        status, body = await handle_api_request("PUT", "/api/tenant-a/members/import/hitobito", "", {
+            "data": [{
+                "id": "1001",
+                "attributes": {
+                    "first_name": "Lea",
+                    "last_name": "Example",
+                    "email": "lea@example.test",
+                },
+                "relationships": {
+                    "groups": {"data": [{"id": "orchestra"}]}
+                },
+            }]
+        }, repo, admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["summary"]["members"], 1)
+        self.assertEqual(body["report"]["created"], 1)
+        self.assertEqual(body["report"]["updated"], 0)
+        self.assertEqual(body["meta"]["revision"], 1)
+
+        records = await repo.load_tenant("tenant-a")
+        self.assertEqual(records["members"][0]["member_ref"], "hitobito:1001")
+        self.assertEqual(records["members"][0]["groups"], ["orchestra"])
+        self.assertNotIn("email", records["members"][0])
+
+        status, body = await handle_api_request("PUT", "/api/tenant-a/members/import/hitobito", "", {
+            "people": [{"id": "1001", "display_name": "Lea Updated", "groups": ["band"]}]
+        }, repo, admin, {"x-rental-expected-revision": "1"})
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["report"]["created"], 0)
+        self.assertEqual(body["report"]["updated"], 1)
+        records = await repo.load_tenant("tenant-a")
+        self.assertEqual(len(records["members"]), 1)
+        self.assertEqual(records["members"][0]["display_name"], "Lea Updated")
+        self.assertEqual(records["members"][0]["groups"], ["band"])
+
+    async def test_hitobito_member_import_requires_admin(self):
+        repo = MemoryRepository()
+        operator = RequestContext(tenant_id="tenant-a", actor_id="operator-a", role="operator")
+
+        status, body = await handle_api_request("PUT", "/api/tenant-a/members/import/hitobito", "", {
+            "people": [{"id": "1001", "display_name": "Operator Import"}]
+        }, repo, operator)
+
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"], "admin role required")
+
+    async def test_array_payloads_remain_supported_for_import_routes(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+
+        status, hitobito = await handle_api_request("PUT", "/api/tenant-a/members/import/hitobito", "", [{
+            "id": "1001",
+            "display_name": "Array Import Member",
+        }], repo, admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(hitobito["report"]["created"], 1)
+
+        status, instruments = await handle_api_request("PUT", "/api/tenant-a/instruments/import", "", [{
+            "name": "Array Import Clarinet",
+            "brand": "Buffet",
+            "type": "Clarinet",
+            "serial": "CL-ARRAY-1",
+        }], repo, admin, {"x-rental-expected-revision": "1"})
+
+        self.assertEqual(status, 200)
+        self.assertEqual(instruments["report"]["created"], 1)
+
+    async def test_instrument_inventory_export_and_import_merge(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
+
+        status, exported = await handle_api_request("GET", "/api/tenant-a/instruments/export", "", {}, repo, admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(exported["schema"], "association-rental-instruments")
+        self.assertEqual(exported["summary"]["instruments"], 2)
+        self.assertNotIn("members", exported["records"])
+        self.assertEqual(exported["meta"]["revision"], 1)
+
+        status, imported = await handle_api_request("PUT", "/api/tenant-a/instruments/import", "", {
+            "instruments": [
+                {"name": "Updated Piano", "brand": "Yamaha", "type": "Keyboard", "serial": "CP73-001"},
+                {"name": "Marching Snare", "brand": "Pearl", "type": "Drum", "serial": "SN-1"},
+            ]
+        }, repo, admin, {"x-rental-expected-revision": "1"})
+
+        self.assertEqual(status, 200)
+        self.assertEqual(imported["report"]["created"], 1)
+        self.assertEqual(imported["report"]["updated"], 1)
+        self.assertEqual(imported["summary"]["instruments"], 3)
+        self.assertEqual(imported["meta"]["revision"], 2)
+
+        records = await repo.load_tenant("tenant-a")
+        self.assertEqual([item for item in records["instruments"] if item["serial"] == "CP73-001"][0]["name"], "Updated Piano")
+        self.assertTrue(any(item["serial"] == "SN-1" for item in records["instruments"]))
+
+    async def test_instrument_inventory_import_requires_admin(self):
+        repo = MemoryRepository()
+        operator = RequestContext(tenant_id="tenant-a", actor_id="operator-a", role="operator")
+
+        status, body = await handle_api_request("PUT", "/api/tenant-a/instruments/import", "", {
+            "instruments": [{"name": "Operator Trumpet", "serial": "TR-1"}]
+        }, repo, operator)
+
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"], "admin role required")
+
+    async def test_instrument_inventory_import_rejects_contact_pii_fields(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
+
+        status, body = await handle_api_request("PUT", "/api/tenant-a/instruments/import", "", {
+            "instruments": [{
+                "name": "Private Donation Clarinet",
+                "serial": "CL-1",
+                "phone": "+41 44 000 00 00",
+            }]
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertIn("blocked PII fields", body["error"])
+
     async def test_context_endpoint_reports_capabilities(self):
         repo = MemoryRepository()
         viewer = RequestContext(tenant_id="tenant-a", actor_id="viewer-user", role="viewer", mode="header")
@@ -190,6 +584,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(body["tenant_locked"])
         self.assertFalse(body["capabilities"]["write"])
         self.assertFalse(body["capabilities"]["admin"])
+        self.assertFalse(body["capabilities"]["platform_admin"])
         self.assertEqual(body["meta"]["revision"], 0)
 
     async def test_context_endpoint_defaults_to_local_admin(self):
@@ -201,6 +596,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["tenant_id"], "demo-association")
         self.assertFalse(body["tenant_locked"])
         self.assertTrue(body["capabilities"]["admin"])
+        self.assertTrue(body["capabilities"]["platform_admin"])
 
     async def test_invalid_route_tenant_is_rejected(self):
         repo = MemoryRepository()
@@ -210,8 +606,165 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 404)
         self.assertIn("tenant id must use", body["error"])
 
+    async def test_bootstrap_registers_association_for_admin_center(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="band-one", actor_id="admin-user", role="admin")
+
+        await handle_api_request("POST", "/api/band-one/bootstrap", "", {}, repo, admin)
+        status, body = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["data"][0]["tenant_id"], "band-one")
+        self.assertEqual(body["data"][0]["status"], "active")
+        self.assertEqual(body["data"][0]["meta"]["revision"], 1)
+
+    async def test_admin_can_create_and_update_association_details(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
+
+        status, created = await handle_api_request("POST", "/api/admin/associations", "", {
+            "tenant_id": "music-club",
+            "display_name": "Music Club",
+            "short_name": "MC",
+            "region": "Bern",
+            "contact_ref": "board-roster",
+            "hitobito_group_ref": "hitobito-group-42",
+        }, repo, admin)
+
+        self.assertEqual(status, 201)
+        self.assertEqual(created["data"]["display_name"], "Music Club")
+        self.assertEqual(created["data"]["contact_ref"], "board-roster")
+        self.assertNotIn("email", created["data"])
+
+        status, updated = await handle_api_request("PUT", "/api/admin/associations/music-club", "", {
+            "display_name": "Music Club Updated",
+            "status": "paused",
+        }, repo, admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["data"]["display_name"], "Music Club Updated")
+        self.assertEqual(updated["data"]["status"], "paused")
+
+    async def test_non_admin_cannot_use_association_admin_center(self):
+        repo = MemoryRepository()
+        operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
+
+        status, body = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, operator)
+
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"], "admin role required")
+
+    async def test_signed_tenant_admin_cannot_use_association_admin_center(self):
+        repo = MemoryRepository()
+        tenant_admin = RequestContext(tenant_id="tenant-a", actor_id="tenant-admin", role="admin", mode="signed")
+
+        status, body = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, tenant_admin)
+
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"], "platform admin required")
+
+    async def test_signed_platform_admin_can_use_association_admin_center(self):
+        repo = MemoryRepository()
+        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="signed")
+
+        status, created = await handle_api_request("POST", "/api/admin/associations", "", {
+            "tenant_id": "music-club",
+            "display_name": "Music Club",
+        }, repo, platform_admin)
+
+        self.assertEqual(status, 201)
+        self.assertEqual(created["data"]["tenant_id"], "music-club")
+
+    async def test_admin_center_rejects_non_object_payload(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
+
+        status, body = await handle_api_request("POST", "/api/admin/associations", "", [{
+            "tenant_id": "music-club",
+            "display_name": "Music Club",
+        }], repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "request payload must be an object")
+
+    async def test_association_references_reject_contact_pii(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
+
+        status, body = await handle_api_request("POST", "/api/admin/associations", "", {
+            "tenant_id": "music-club",
+            "display_name": "Music Club",
+            "contact_ref": "board@example.test",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertIn("contact_ref must not contain email", body["error"])
+
+        status, body = await handle_api_request("POST", "/api/admin/associations", "", {
+            "tenant_id": "music-club",
+            "display_name": "Music Club",
+            "note": "Call +41 44 000 00 00 for onboarding",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertIn("note must not contain phone numbers", body["error"])
+
+    async def test_association_names_reject_contact_pii(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
+
+        status, body = await handle_api_request("POST", "/api/admin/associations", "", {
+            "tenant_id": "music-club",
+            "display_name": "board@example.test",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertIn("display_name must not contain email", body["error"])
+
+        status, body = await handle_api_request("POST", "/api/admin/associations", "", {
+            "tenant_id": "music-club",
+            "display_name": "Music Club",
+            "short_name": "+41 44 000 00 00",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertIn("short_name must not contain phone numbers", body["error"])
+
+    async def test_association_update_must_clean_existing_contact_name(self):
+        repo = MemoryRepository()
+        repo.associations["music-club"] = {
+            "tenant_id": "music-club",
+            "display_name": "board@example.test",
+            "status": "active",
+        }
+        admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
+
+        status, body = await handle_api_request("PUT", "/api/admin/associations/music-club", "", {
+            "status": "paused",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertIn("display_name must not contain email", body["error"])
+
+        status, body = await handle_api_request("PUT", "/api/admin/associations/music-club", "", {
+            "display_name": "Music Club",
+            "status": "paused",
+        }, repo, admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body["data"]["display_name"], "Music Club")
+
 
 class ContextTests(unittest.TestCase):
+    def test_api_request_path_distinguishes_static_and_api_boundaries(self):
+        self.assertTrue(is_api_request_path("/api"))
+        self.assertTrue(is_api_request_path("/api/"))
+        self.assertTrue(is_api_request_path("/api/tenant-a/summary"))
+        self.assertFalse(is_api_request_path("/app.js"))
+        self.assertFalse(is_api_request_path("/apiary"))
+        self.assertEqual(parse_api_path("/api"), [])
+        self.assertEqual(parse_api_path("/api/tenant-a/summary"), ["tenant-a", "summary"])
+
     def test_header_mode_requires_tenant_header(self):
         context, error = context_from_headers("tenant-a", {}, "header")
 
@@ -260,6 +813,15 @@ class ContextTests(unittest.TestCase):
         self.assertIsNone(context)
         self.assertEqual(error, "invalid role in tenant context")
 
+    def test_header_mode_rejects_contact_like_actor_id(self):
+        context, error = context_from_headers("tenant-a", {
+            "x-rental-tenant-id": "tenant-a",
+            "x-rental-actor-id": "person@example.test",
+        }, "header")
+
+        self.assertIsNone(context)
+        self.assertEqual(error, "actor_id must be opaque, not an email address")
+
     def test_local_mode_rejects_invalid_tenant_id(self):
         context, error = context_from_headers(None, {
             "x-rental-tenant-id": "../tenant",
@@ -284,6 +846,18 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(context.actor_id, "access-user-1")
         self.assertEqual(context.role, "operator")
         self.assertEqual(context.mode, "signed")
+
+    def test_signed_mode_rejects_contact_like_actor_id(self):
+        headers = signed_context_headers({
+            "tenant_id": "tenant-a",
+            "actor_id": "+41 44 000 00 00",
+            "role": "operator",
+        }, "test-secret")
+
+        context, error = context_from_headers("tenant-a", headers, "signed", "test-secret")
+
+        self.assertIsNone(context)
+        self.assertEqual(error, "actor_id must be opaque, not a phone number")
 
     def test_signed_mode_requires_secret(self):
         headers = signed_context_headers({"tenant_id": "tenant-a", "role": "viewer"}, "test-secret")

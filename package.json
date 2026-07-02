@@ -4,19 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --local --persist-to .wrangler/state",
+    "dev": "uv run pywrangler dev",
     "dev:frontdoor": "wrangler dev --config wrangler.frontdoor.toml",
     "dev:python": "python3 scripts/local_dev_server.py",
-    "deploy": "wrangler deploy",
+    "deploy": "uv run pywrangler deploy",
     "deploy:frontdoor": "wrangler deploy --config wrangler.frontdoor.toml",
+    "preflight": "python3 scripts/deploy_preflight.py --allow-placeholders",
+    "preflight:deploy": "python3 scripts/deploy_preflight.py",
+    "preflight:frontdoor": "python3 scripts/deploy_preflight.py --include-frontdoor",
     "kv:create": "wrangler kv namespace create RENTAL_KV",
     "kv:create-preview": "wrangler kv namespace create RENTAL_KV --preview",
     "kv:create-tenant-access": "wrangler kv namespace create TENANT_ACCESS_KV --config wrangler.frontdoor.toml",
     "kv:create-tenant-access-preview": "wrangler kv namespace create TENANT_ACCESS_KV --preview --config wrangler.frontdoor.toml",
+    "tenant-access": "python3 scripts/tenant_access_assignments.py",
     "test": "python3 -m unittest discover -s tests",
-    "smoke:python": "python3 scripts/smoke_local.py"
+    "smoke:python": "python3 scripts/smoke_local.py",
+    "smoke:signed": "python3 scripts/smoke_local.py --signed"
   },
   "devDependencies": {
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.105.0"
   }
 }

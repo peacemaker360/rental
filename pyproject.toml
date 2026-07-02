@@ -4,5 +4,10 @@ version = "0.1.0"
 description = "Cloudflare Python Worker backend for an association instrument rental app."
 requires-python = ">=3.12"
 
+[dependency-groups]
+dev = [
+    "workers-py>=0.2.0",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]

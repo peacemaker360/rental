@@ -11,20 +11,26 @@ ROOT = SCRIPT_DIR.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from worker.api_core import signed_context_headers
+from worker.api_core import signed_context_headers, validate_actor_id, validate_tenant_id
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Generate signed rental tenant context headers for debugging.")
     parser.add_argument("--tenant", required=True, help="Tenant slug, for example demo-association")
     parser.add_argument("--actor", default="debug-operator", help="Opaque actor id to include in history entries")
     parser.add_argument("--role", default="operator", choices=("viewer", "operator", "admin"))
     parser.add_argument("--secret", default=os.environ.get("RENTAL_CONTEXT_SECRET"))
     parser.add_argument("--no-issued-at", action="store_true", help="Omit the timestamp from the signed payload")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not args.secret:
         raise SystemExit("Set RENTAL_CONTEXT_SECRET or pass --secret")
+    tenant_error = validate_tenant_id(args.tenant)
+    if tenant_error:
+        raise SystemExit(tenant_error)
+    actor_error = validate_actor_id(args.actor)
+    if actor_error:
+        raise SystemExit(actor_error)
 
     payload = {
         "tenant_id": args.tenant,

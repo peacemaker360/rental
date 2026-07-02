@@ -22,6 +22,14 @@ def metadata_key(tenant_id: str) -> str:
     return tenant_key(tenant_id, "meta")
 
 
+def associations_index_key() -> str:
+    return "associations:index"
+
+
+def association_key(tenant_id: str) -> str:
+    return f"associations:{tenant_id}"
+
+
 def empty_metadata(tenant_id: str) -> dict[str, Any]:
     return {"tenant_id": tenant_id, "revision": 0, "updated_at": None}
 
@@ -76,5 +84,32 @@ class KVRepository:
         return metadata
 
     async def tenant_exists(self, tenant_id: str) -> bool:
-        value = await self.kv.get(index_key(tenant_id, "instruments"))
-        return value is not None
+        metadata = await self.kv.get(metadata_key(tenant_id))
+        if metadata is not None:
+            return True
+        for entity in ENTITY_TYPES:
+            value = await self.kv.get(index_key(tenant_id, entity))
+            if value is not None:
+                return True
+        return False
+
+    async def list_associations(self) -> list[dict[str, Any]]:
+        tenant_ids = await self._get_json(associations_index_key(), [])
+        associations = []
+        for tenant_id in tenant_ids:
+            association = await self.load_association(tenant_id)
+            if association is not None:
+                associations.append(association)
+        return associations
+
+    async def load_association(self, tenant_id: str) -> dict[str, Any] | None:
+        return await self._get_json(association_key(tenant_id))
+
+    async def save_association(self, tenant_id: str, association: dict[str, Any]) -> dict[str, Any]:
+        tenant_ids = await self._get_json(associations_index_key(), [])
+        if tenant_id not in tenant_ids:
+            tenant_ids.append(tenant_id)
+            tenant_ids.sort()
+            await self._put_json(associations_index_key(), tenant_ids)
+        await self._put_json(association_key(tenant_id), association)
+        return association

@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+    <meta name="referrer" content="no-referrer">
     <title>Rental Desk</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
@@ -21,7 +23,9 @@
           <button class="nav-item" data-view="instruments" data-i18n="views.instruments">Instruments</button>
           <button class="nav-item" data-view="members" data-i18n="views.members">Members</button>
           <button class="nav-item" data-view="rentals" data-i18n="views.rentals">Rentals</button>
+          <button class="nav-item" data-view="service_records" data-i18n="views.service_records">Service</button>
           <button class="nav-item" data-view="history" data-i18n="views.history">History</button>
+          <button class="nav-item" data-view="admin" data-i18n="views.admin">Admin</button>
         </nav>
         <div class="tenant-box">
           <label for="tenantInput" data-i18n="labels.tenant">Tenant</label>
@@ -53,6 +57,7 @@
             <button id="seedButton" class="ghost-button" data-i18n="actions.load_demo">Load Demo</button>
             <button id="exportButton" class="ghost-button" data-i18n="actions.export">Export</button>
             <button id="importButton" class="ghost-button" data-i18n="actions.import">Import</button>
+            <button id="hitobitoImportButton" class="ghost-button" data-i18n="actions.import_hitobito">Hitobito</button>
             <button id="refreshButton" class="icon-button" title="Refresh" aria-label="Refresh" data-i18n-title="actions.refresh" data-i18n-aria-label="actions.refresh">↻</button>
             <button id="primaryAction" class="primary-button">New Rental</button>
           </div>
@@ -61,6 +66,8 @@
         <section id="message" class="message" hidden></section>
         <section id="view" class="view"></section>
         <input id="importFile" type="file" accept="application/json,.json" hidden>
+        <input id="hitobitoFile" type="file" accept="application/json,.json" hidden>
+        <input id="instrumentFile" type="file" accept="application/json,.json" hidden>
       </main>
     </div>
 

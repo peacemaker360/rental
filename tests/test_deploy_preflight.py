@@ -1,0 +1,208 @@
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from scripts.deploy_preflight import validate_ci_workflow, validate_frontend_assets, validate_gitignore, validate_no_legacy_runtime_dependencies, validate_project
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class DeployPreflightTests(unittest.TestCase):
+    def test_local_refactor_preflight_passes_with_placeholders(self):
+        errors, warnings = validate_project(ROOT, allow_placeholders=True)
+
+        self.assertEqual(errors, [])
+        self.assertTrue(any("placeholder Cloudflare ids allowed" in warning for warning in warnings))
+
+    def test_strict_backend_preflight_rejects_placeholder_kv_ids(self):
+        errors, _ = validate_project(ROOT)
+
+        self.assertTrue(any("RENTAL_KV id still uses a placeholder" in error for error in errors))
+        self.assertTrue(any("RENTAL_KV preview_id still uses a placeholder" in error for error in errors))
+
+    def test_preflight_rejects_removed_azure_workflows(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "public").mkdir()
+            (root / "worker").mkdir()
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / ".github" / "workflows" / "cloudflare_refactor_ci.yml").write_text(
+                "run: python3 -m unittest discover -s tests\n"
+                "run: python3 scripts/smoke_local.py --signed\n"
+                "run: python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor\n"
+                "run: node --check public/app.js\n"
+                "run: npm ci\n",
+                encoding="utf-8",
+            )
+            (root / ".github" / "workflows" / "master_mgwrent.yml").write_text("uses: azure/webapps-deploy@v3\n", encoding="utf-8")
+            (root / "public" / "index.html").write_text(
+                '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; connect-src \'self\'; object-src \'none\'; base-uri \'none\'">'
+                '<meta name="referrer" content="no-referrer">'
+                '<script src="/app.js"></script><link href="/styles.css"><section id="view"></section>',
+                encoding="utf-8",
+            )
+            (root / "public" / "app.js").write_text("", encoding="utf-8")
+            (root / "public" / "styles.css").write_text("", encoding="utf-8")
+            (root / "worker" / "worker.py").write_text("", encoding="utf-8")
+            (root / "worker" / "api_core.py").write_text("", encoding="utf-8")
+            (root / "worker" / "domain.py").write_text("", encoding="utf-8")
+            (root / "worker" / "storage.py").write_text("", encoding="utf-8")
+            (root / ".gitignore").write_text("**/__pycache__\nnode_modules/\n.wrangler/\n.data/local-kv/\n.env\n", encoding="utf-8")
+            (root / "package.json").write_text('{"scripts": {}}', encoding="utf-8")
+            (root / "pyproject.toml").write_text("", encoding="utf-8")
+            (root / "wrangler.toml").write_text("", encoding="utf-8")
+
+            errors, _ = validate_project(root, allow_placeholders=True)
+
+        self.assertTrue(any("legacy path should be removed: .github/workflows/master_mgwrent.yml" in error for error in errors))
+
+    def test_preflight_rejects_hidden_legacy_diagrams(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "public").mkdir()
+            (root / "worker").mkdir()
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / ".docs" / "digramms").mkdir(parents=True)
+            (root / ".docs" / "digramms" / "erDiagram.md").write_text(
+                "Customer { string email string phone }\n",
+                encoding="utf-8",
+            )
+            (root / ".github" / "workflows" / "cloudflare_refactor_ci.yml").write_text(
+                "run: python3 -m unittest discover -s tests\n"
+                "run: python3 scripts/smoke_local.py --signed\n"
+                "run: python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor\n"
+                "run: node --check public/app.js\n"
+                "run: npm ci\n",
+                encoding="utf-8",
+            )
+            (root / "public" / "index.html").write_text(
+                '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; connect-src \'self\'; object-src \'none\'; base-uri \'none\'">'
+                '<meta name="referrer" content="no-referrer">'
+                '<script src="/app.js"></script><link href="/styles.css"><section id="view"></section>',
+                encoding="utf-8",
+            )
+            (root / "public" / "app.js").write_text("", encoding="utf-8")
+            (root / "public" / "styles.css").write_text("", encoding="utf-8")
+            (root / "worker" / "worker.py").write_text("", encoding="utf-8")
+            (root / "worker" / "api_core.py").write_text("", encoding="utf-8")
+            (root / "worker" / "domain.py").write_text("", encoding="utf-8")
+            (root / "worker" / "storage.py").write_text("", encoding="utf-8")
+            (root / ".gitignore").write_text("**/__pycache__\nnode_modules/\n.wrangler/\n.data/local-kv/\n.env\n", encoding="utf-8")
+            (root / "package.json").write_text('{"scripts": {}}', encoding="utf-8")
+            (root / "pyproject.toml").write_text("", encoding="utf-8")
+            (root / "wrangler.toml").write_text("", encoding="utf-8")
+
+            errors, _ = validate_project(root, allow_placeholders=True)
+
+        self.assertTrue(any("legacy path should be removed: .docs" in error for error in errors))
+
+    def test_strict_frontdoor_preflight_rejects_placeholder_access_values(self):
+        errors, _ = validate_project(ROOT, include_frontdoor=True)
+
+        self.assertTrue(any("TENANT_ACCESS_KV id still uses a placeholder" in error for error in errors))
+        self.assertTrue(any("vars.CF_ACCESS_TEAM_DOMAIN still uses a placeholder" in error for error in errors))
+        self.assertTrue(any("vars.CF_ACCESS_AUD still uses a placeholder" in error for error in errors))
+
+    def test_frontdoor_preflight_passes_when_placeholders_are_allowed(self):
+        errors, warnings = validate_project(ROOT, allow_placeholders=True, include_frontdoor=True)
+
+        self.assertEqual(errors, [])
+        self.assertTrue(any("RENTAL_CONTEXT_SECRET" in warning for warning in warnings))
+
+    def test_runtime_dependency_guard_rejects_legacy_imports_and_dependencies(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "worker").mkdir()
+            (root / "frontdoor").mkdir()
+            (root / "worker" / "bad.py").write_text("from flask import Flask\nimport sqlalchemy\n", encoding="utf-8")
+            (root / "frontdoor" / "bad.js").write_text("const azure = require('azure-storage');\n", encoding="utf-8")
+            (root / "pyproject.toml").write_text('dependencies = ["alembic>=1.0"]\n', encoding="utf-8")
+
+            errors: list[str] = []
+            validate_no_legacy_runtime_dependencies(root, errors)
+
+        self.assertTrue(any("legacy runtime dependency 'flask' found in worker/bad.py:1" in error for error in errors))
+        self.assertTrue(any("legacy runtime dependency 'sqlalchemy' found in worker/bad.py:2" in error for error in errors))
+        self.assertTrue(any("legacy runtime dependency 'azure-storage' found in frontdoor/bad.js:1" in error for error in errors))
+        self.assertTrue(any("legacy runtime dependency 'alembic' found in pyproject.toml:1" in error for error in errors))
+
+    def test_runtime_dependency_guard_allows_migration_text(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "scripts").mkdir()
+            (root / "scripts" / "migrate_legacy.py").write_text(
+                'description = "Transform legacy Flask rental exports into the KV JSON package."\n',
+                encoding="utf-8",
+            )
+
+            errors: list[str] = []
+            validate_no_legacy_runtime_dependencies(root, errors)
+
+        self.assertEqual(errors, [])
+
+    def test_gitignore_guard_requires_local_artifact_patterns(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".gitignore").write_text("node_modules/\n.env\n", encoding="utf-8")
+
+            errors: list[str] = []
+            validate_gitignore(root, errors)
+
+        self.assertTrue(any("**/__pycache__" in error for error in errors))
+        self.assertTrue(any(".wrangler/" in error for error in errors))
+        self.assertTrue(any(".data/local-kv/" in error for error in errors))
+
+    def test_gitignore_guard_accepts_refactor_local_artifact_patterns(self):
+        errors: list[str] = []
+        validate_gitignore(ROOT, errors)
+
+        self.assertEqual(errors, [])
+
+    def test_frontend_asset_guard_requires_security_metadata(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "public").mkdir()
+            (root / "public" / "index.html").write_text(
+                '<script src="/app.js"></script><link href="/styles.css"><section id="view"></section>',
+                encoding="utf-8",
+            )
+
+            errors: list[str] = []
+            validate_frontend_assets(root, errors)
+
+        self.assertTrue(any("Content-Security-Policy" in error for error in errors))
+        self.assertTrue(any("no-referrer" in error for error in errors))
+
+    def test_local_debug_server_uses_pathlib_static_containment(self):
+        source = (ROOT / "scripts" / "local_dev_server.py").read_text(encoding="utf-8")
+
+        self.assertIn("def static_path_for", source)
+        self.assertIn("candidate.is_relative_to(public_root)", source)
+        self.assertNotIn("startswith(str(PUBLIC_DIR.resolve()))", source)
+
+    def test_ci_workflow_guard_rejects_legacy_or_incomplete_workflow(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".github" / "workflows").mkdir(parents=True)
+            (root / ".github" / "workflows" / "cloudflare_refactor_ci.yml").write_text(
+                "run: pip install -r requirements.txt\nuses: azure/webapps-deploy@v3\n",
+                encoding="utf-8",
+            )
+
+            errors: list[str] = []
+            validate_ci_workflow(root, errors)
+
+        self.assertTrue(any("must run 'python3 -m unittest discover -s tests'" in error for error in errors))
+        self.assertTrue(any("legacy deployment reference 'azure/'" in error for error in errors))
+        self.assertTrue(any("legacy deployment reference 'requirements.txt'" in error for error in errors))
+
+    def test_ci_workflow_guard_accepts_cloudflare_refactor_workflow(self):
+        errors: list[str] = []
+        validate_ci_workflow(ROOT, errors)
+
+        self.assertEqual(errors, [])
+
+
+if __name__ == "__main__":
+    unittest.main()

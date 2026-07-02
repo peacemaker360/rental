@@ -52,6 +52,46 @@ Value:
 `access:{hash}` value from the Access subject. Roles must be `viewer`,
 `operator`, or `admin`.
 
+Prepare assignments from a low-PII JSON file:
+
+```json
+{
+  "assignments": [
+    {
+      "access_sub": "cloudflare-access-subject-id",
+      "tenant_id": "demo-association",
+      "role": "operator",
+      "actor_id": "member-system-user-42"
+    }
+  ]
+}
+```
+
+Render a summary before importing:
+
+```bash
+npm run tenant-access -- assignments.json --format summary
+```
+
+Render a KV bulk file:
+
+```bash
+npm run tenant-access -- assignments.json \
+  --format kv-bulk \
+  --output /tmp/tenant-access-kv.json
+```
+
+Or render explicit Wrangler commands:
+
+```bash
+npm run tenant-access -- assignments.json --format commands
+```
+
+The helper intentionally rejects email, name, phone, and address fields. Use the
+opaque Cloudflare Access `sub` claim as `access_sub`; do not use email addresses
+or phone-like values as keys. Optional `actor_id` values must also be opaque
+because they can be written into rental and service history.
+
 ## Configure
 
 Create the assignment KV namespace:
