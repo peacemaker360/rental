@@ -2,7 +2,16 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from scripts.deploy_preflight import validate_ci_workflow, validate_frontend_assets, validate_gitignore, validate_no_legacy_runtime_dependencies, validate_project
+from scripts.deploy_preflight import (
+    validate_ci_workflow,
+    validate_backend_wrangler,
+    validate_frontend_assets,
+    validate_gitignore,
+    validate_no_legacy_runtime_dependencies,
+    validate_no_wildcard_cors,
+    validate_project,
+    validate_uv_lock,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,10 +25,47 @@ class DeployPreflightTests(unittest.TestCase):
         self.assertTrue(any("placeholder Cloudflare ids allowed" in warning for warning in warnings))
 
     def test_strict_backend_preflight_rejects_placeholder_kv_ids(self):
-        errors, _ = validate_project(ROOT)
+        errors = []
+        validate_backend_wrangler({
+            "main": "worker/worker.py",
+            "compatibility_flags": ["python_workers"],
+            "kv_namespaces": [{
+                "binding": "RENTAL_KV",
+                "id": "replace-with-kv-id",
+                "preview_id": "replace-with-preview-kv-id",
+            }],
+            "vars": {"RENTAL_AUTH_MODE": "auto"},
+            "assets": {
+                "directory": "./public",
+                "binding": "ASSETS",
+                "run_worker_first": ["/api/*"],
+            },
+        }, False, errors)
 
         self.assertTrue(any("RENTAL_KV id still uses a placeholder" in error for error in errors))
         self.assertTrue(any("RENTAL_KV preview_id still uses a placeholder" in error for error in errors))
+
+    def test_uv_lock_guard_requires_valid_lockfile(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            errors: list[str] = []
+            validate_uv_lock(root, errors)
+            self.assertTrue(any("uv.lock is required" in error for error in errors))
+
+            (root / "uv.lock").write_text("not a lock\n", encoding="utf-8")
+            errors = []
+            validate_uv_lock(root, errors)
+            self.assertTrue(any("uv.lock must be a valid uv lockfile" in error for error in errors))
+
+            (root / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+            errors = []
+            validate_uv_lock(root, errors)
+            self.assertTrue(any("uv.lock must lock workers-py" in error for error in errors))
+
+            (root / "uv.lock").write_text('version = 1\n\n[[package]]\nname = "workers-py"\n', encoding="utf-8")
+            errors = []
+            validate_uv_lock(root, errors)
+            self.assertEqual(errors, [])
 
     def test_preflight_rejects_removed_azure_workflows(self):
         with TemporaryDirectory() as directory:
@@ -31,7 +77,7 @@ class DeployPreflightTests(unittest.TestCase):
                 "run: python3 -m unittest discover -s tests\n"
                 "run: python3 scripts/smoke_local.py --signed\n"
                 "run: python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor\n"
-                "run: node --check public/app.js\n"
+                "run: npm run check:js\n"
                 "run: npm ci\n",
                 encoding="utf-8",
             )
@@ -48,7 +94,7 @@ class DeployPreflightTests(unittest.TestCase):
             (root / "worker" / "api_core.py").write_text("", encoding="utf-8")
             (root / "worker" / "domain.py").write_text("", encoding="utf-8")
             (root / "worker" / "storage.py").write_text("", encoding="utf-8")
-            (root / ".gitignore").write_text("**/__pycache__\nnode_modules/\n.wrangler/\n.data/local-kv/\n.env\n", encoding="utf-8")
+            (root / ".gitignore").write_text("**/__pycache__\nnode_modules/\n.venv/\n.venv-workers/\n.wrangler/\n.data/local-kv/\n.env\n", encoding="utf-8")
             (root / "package.json").write_text('{"scripts": {}}', encoding="utf-8")
             (root / "pyproject.toml").write_text("", encoding="utf-8")
             (root / "wrangler.toml").write_text("", encoding="utf-8")
@@ -72,7 +118,7 @@ class DeployPreflightTests(unittest.TestCase):
                 "run: python3 -m unittest discover -s tests\n"
                 "run: python3 scripts/smoke_local.py --signed\n"
                 "run: python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor\n"
-                "run: node --check public/app.js\n"
+                "run: npm run check:js\n"
                 "run: npm ci\n",
                 encoding="utf-8",
             )
@@ -88,7 +134,7 @@ class DeployPreflightTests(unittest.TestCase):
             (root / "worker" / "api_core.py").write_text("", encoding="utf-8")
             (root / "worker" / "domain.py").write_text("", encoding="utf-8")
             (root / "worker" / "storage.py").write_text("", encoding="utf-8")
-            (root / ".gitignore").write_text("**/__pycache__\nnode_modules/\n.wrangler/\n.data/local-kv/\n.env\n", encoding="utf-8")
+            (root / ".gitignore").write_text("**/__pycache__\nnode_modules/\n.venv/\n.venv-workers/\n.wrangler/\n.data/local-kv/\n.env\n", encoding="utf-8")
             (root / "package.json").write_text('{"scripts": {}}', encoding="utf-8")
             (root / "pyproject.toml").write_text("", encoding="utf-8")
             (root / "wrangler.toml").write_text("", encoding="utf-8")
@@ -141,6 +187,26 @@ class DeployPreflightTests(unittest.TestCase):
 
         self.assertEqual(errors, [])
 
+    def test_wildcard_cors_guard_rejects_runtime_headers(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "worker").mkdir()
+            (root / "worker" / "bad.py").write_text(
+                'JSON_HEADERS = {"access-control-allow-origin": "*"}\n',
+                encoding="utf-8",
+            )
+
+            errors: list[str] = []
+            validate_no_wildcard_cors(root, errors)
+
+        self.assertTrue(any("wildcard CORS origin found in worker/bad.py:1" in error for error in errors))
+
+    def test_wildcard_cors_guard_accepts_same_origin_headers(self):
+        errors: list[str] = []
+        validate_no_wildcard_cors(ROOT, errors)
+
+        self.assertEqual(errors, [])
+
     def test_gitignore_guard_requires_local_artifact_patterns(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -150,6 +216,8 @@ class DeployPreflightTests(unittest.TestCase):
             validate_gitignore(root, errors)
 
         self.assertTrue(any("**/__pycache__" in error for error in errors))
+        self.assertTrue(any(".venv/" in error for error in errors))
+        self.assertTrue(any(".venv-workers/" in error for error in errors))
         self.assertTrue(any(".wrangler/" in error for error in errors))
         self.assertTrue(any(".data/local-kv/" in error for error in errors))
 

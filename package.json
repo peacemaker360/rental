@@ -12,6 +12,7 @@
     "preflight": "python3 scripts/deploy_preflight.py --allow-placeholders",
     "preflight:deploy": "python3 scripts/deploy_preflight.py",
     "preflight:frontdoor": "python3 scripts/deploy_preflight.py --include-frontdoor",
+    "check:js": "node --check public/app.js && node --check frontdoor/access_context_worker.js",
     "kv:create": "wrangler kv namespace create RENTAL_KV",
     "kv:create-preview": "wrangler kv namespace create RENTAL_KV --preview",
     "kv:create-tenant-access": "wrangler kv namespace create TENANT_ACCESS_KV --config wrangler.frontdoor.toml",
@@ -22,6 +23,6 @@
     "smoke:signed": "python3 scripts/smoke_local.py --signed"
   },
   "devDependencies": {
-    "wrangler": "^4.105.0"
+    "wrangler": "^4.107.0"
   }
 }

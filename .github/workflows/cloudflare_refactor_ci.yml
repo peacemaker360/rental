@@ -40,5 +40,5 @@ jobs:
       - name: Validate Cloudflare deployment shape
         run: python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor
 
-      - name: Check frontend JavaScript syntax
-        run: node --check public/app.js
+      - name: Check JavaScript syntax
+        run: npm run check:js

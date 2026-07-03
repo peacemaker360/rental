@@ -338,6 +338,11 @@ h3 {
   gap: 16px;
 }
 
+.admin-stack {
+  display: grid;
+  gap: 16px;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -495,9 +500,37 @@ tr:last-child td {
   color: #555555;
 }
 
+.pill.disabled {
+  background: #eeeeee;
+  color: #555555;
+}
+
 .pill.overdue {
   background: #fff0da;
   color: var(--warn);
+}
+
+.pill.role-none,
+.pill.profile-basic {
+  background: #eeeeee;
+  color: #555555;
+}
+
+.pill.role-reader,
+.pill.profile-full {
+  background: #e1edf7;
+  color: var(--blue);
+}
+
+.pill.role-operator,
+.pill.role-admin {
+  background: #dff1df;
+  color: #285c29;
+}
+
+.pill.role-platform_admin {
+  background: #ffe9d7;
+  color: #8a4612;
 }
 
 .pill.service-ok {
@@ -661,12 +694,15 @@ tr:last-child td {
 }
 
 .journey-stop.condition-watch .journey-marker,
-.journey-stop.overdue .journey-marker {
+.journey-stop.overdue .journey-marker,
+.journey-stop.reader .journey-marker {
   background: var(--warn);
 }
 
 .journey-stop.condition-needs_service .journey-marker,
-.journey-stop.condition-in_service .journey-marker {
+.journey-stop.condition-in_service .journey-marker,
+.journey-stop.operator .journey-marker,
+.journey-stop.admin .journey-marker {
   background: var(--danger);
 }
 

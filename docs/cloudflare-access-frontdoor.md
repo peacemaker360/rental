@@ -16,8 +16,8 @@ browser
 
 The front door validates the Cloudflare Access JWT from
 `Cf-Access-Jwt-Assertion` or the `CF_Authorization` cookie, checks issuer,
-audience, expiry, and the Access JWKS signature, then loads a tenant assignment
-from `TENANT_ACCESS_KV`.
+audience, expiry, and the Access JWKS signature, then loads a user access
+profile from `TENANT_ACCESS_KV` using the JWT email claim.
 
 It forwards only an opaque signed context to the backend:
 
@@ -29,16 +29,46 @@ x-rental-context-signature
 It strips Access headers, cookies, authorization headers, and any incoming
 `x-rental-*` headers before forwarding the request.
 
-## Tenant Assignment KV
+## User Access KV
 
-Use the Access JWT subject as the key so the assignment store does not need
-email addresses:
+Use the normalized Cloudflare Access email claim as the user-profile key:
+
+```text
+user:{email}
+```
+
+Value:
+
+```json
+{
+  "email": "person@example.org",
+  "status": "active",
+  "global_role": "none",
+  "access_profile": "basic",
+  "tenant_roles": [
+    {"tenant_id": "demo-association", "role": "reader"}
+  ],
+  "member_links": [
+    {"tenant_id": "demo-association", "member_id": "mem_123"}
+  ]
+}
+```
+
+`global_role` can be `none`, `reader`, `operator`, `admin`, or
+`platform_admin`. Per-tenant roles can be `reader`, `operator`, or `admin`; the
+front door maps `reader` to the backend read-only role. `access_profile=basic`
+is read-only and includes the linked `member_id` in the signed context so the
+backend only returns that member's related rentals and instruments.
+Malformed profile rows fail closed before any tenant context is signed: the
+front door validates status, global role, access profile, default tenant, and
+that tenant roles and member links are lists. Member-link ids must be opaque
+local member identifiers, not emails or phone numbers.
+
+Legacy subject assignments are still accepted as a migration fallback:
 
 ```text
 principal:{access_jwt_sub}
 ```
-
-Value:
 
 ```json
 {
@@ -48,9 +78,9 @@ Value:
 }
 ```
 
-`actor_id` is optional. If it is absent, the front door derives an opaque
-`access:{hash}` value from the Access subject. Roles must be `viewer`,
-`operator`, or `admin`.
+If `actor_id` is absent for a legacy assignment, the front door derives an
+opaque `access:{hash}` value from the Access subject. Legacy roles must be
+`viewer`, `operator`, or `admin`.
 
 Prepare assignments from a low-PII JSON file:
 
@@ -58,10 +88,15 @@ Prepare assignments from a low-PII JSON file:
 {
   "assignments": [
     {
-      "access_sub": "cloudflare-access-subject-id",
-      "tenant_id": "demo-association",
-      "role": "operator",
-      "actor_id": "member-system-user-42"
+      "email": "person@example.org",
+      "global_role": "none",
+      "access_profile": "basic",
+      "tenant_roles": [
+        {"tenant_id": "demo-association", "role": "reader"}
+      ],
+      "member_links": [
+        {"tenant_id": "demo-association", "member_id": "mem_123"}
+      ]
     }
   ]
 }
@@ -81,15 +116,23 @@ npm run tenant-access -- assignments.json \
   --output /tmp/tenant-access-kv.json
 ```
 
+Platform admins can also export the same KV bulk shape directly from the app
+after editing users in the Admin Center:
+
+```text
+GET /api/admin/users/export/tenant-access
+```
+
 Or render explicit Wrangler commands:
 
 ```bash
 npm run tenant-access -- assignments.json --format commands
 ```
 
-The helper intentionally rejects email, name, phone, and address fields. Use the
-opaque Cloudflare Access `sub` claim as `access_sub`; do not use email addresses
-or phone-like values as keys. Optional `actor_id` values must also be opaque
+For user-profile rows, the email is intentional auth metadata and is not copied
+into tenant rental records. For legacy subject rows, the helper still rejects
+email, name, phone, and address fields; use the opaque Cloudflare Access `sub`
+claim as `access_sub`. Optional legacy `actor_id` values must also be opaque
 because they can be written into rental and service history.
 
 ## Configure

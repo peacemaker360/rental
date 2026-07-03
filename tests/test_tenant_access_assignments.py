@@ -29,14 +29,32 @@ class TenantAccessAssignmentTests(unittest.TestCase):
                 "access_sub": "access-user-123",
                 "tenant_id": "music-club",
                 "role": "viewer",
-                "email": "person@example.test",
-            })
-        with self.assertRaisesRegex(ValueError, "PII-like fields"):
-            normalize_assignment({
-                "access_sub": "access-user-123",
-                "tenant_id": "music-club",
-                "role": "viewer",
                 "given_name": "Private",
+            })
+
+    def test_normalize_user_profile_uses_email_key(self):
+        assignment = normalize_assignment({
+            "email": "Member@Example.TEST",
+            "global_role": "none",
+            "access_profile": "basic",
+            "tenant_roles": [{"tenant_id": "music-club", "role": "reader"}],
+            "member_links": [{"tenant_id": "music-club", "member_id": "mem_123"}],
+            "default_tenant": "music-club",
+        })
+
+        self.assertEqual(assignment["key"], "user:member@example.test")
+        self.assertEqual(assignment["value"]["email"], "member@example.test")
+        self.assertEqual(assignment["value"]["access_profile"], "basic")
+        self.assertEqual(assignment["value"]["tenant_roles"], [{"tenant_id": "music-club", "role": "reader"}])
+        self.assertEqual(assignment["value"]["member_links"], [{"tenant_id": "music-club", "member_id": "mem_123"}])
+
+    def test_user_profile_rejects_unnecessary_pii_like_fields(self):
+        with self.assertRaisesRegex(ValueError, "unnecessary PII-like fields"):
+            normalize_assignment({
+                "email": "member@example.test",
+                "name": "Private Person",
+                "phone": "+41 44 000 00 00",
+                "tenant_roles": [{"tenant_id": "music-club", "role": "reader"}],
             })
 
     def test_assignment_rejects_email_principal_and_actor(self):

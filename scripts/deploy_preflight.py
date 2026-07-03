@@ -67,7 +67,7 @@ CI_REQUIRED_SNIPPETS = (
     "python3 -m unittest discover -s tests",
     "python3 scripts/smoke_local.py --signed",
     "python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor",
-    "node --check public/app.js",
+    "npm run check:js",
     "npm ci",
 )
 CI_FORBIDDEN_SNIPPETS = (
@@ -102,12 +102,14 @@ def validate_project(
         validate_package(package, errors)
     if pyproject:
         validate_pyproject(pyproject, errors)
+    validate_uv_lock(root, errors)
     if backend:
         validate_backend_wrangler(backend, allow_placeholders, errors)
     validate_ci_workflow(root, errors)
     validate_frontend_assets(root, errors)
     validate_gitignore(root, errors)
     validate_no_legacy_runtime_dependencies(root, errors)
+    validate_no_wildcard_cors(root, errors)
 
     if include_frontdoor:
         require_path(root, "frontdoor/access_context_worker.js", errors)
@@ -134,6 +136,7 @@ def validate_package(package: dict[str, Any], errors: list[str]) -> None:
         "smoke:python": "python3 scripts/smoke_local.py",
         "smoke:signed": "python3 scripts/smoke_local.py --signed",
         "tenant-access": "python3 scripts/tenant_access_assignments.py",
+        "check:js": "node --check public/app.js && node --check frontdoor/access_context_worker.js",
     }
     for name, command in expected.items():
         if scripts.get(name) != command:
@@ -149,6 +152,23 @@ def validate_pyproject(pyproject: dict[str, Any], errors: list[str]) -> None:
     dev_dependencies = pyproject.get("dependency-groups", {}).get("dev", [])
     if "workers-py>=0.2.0" not in dev_dependencies:
         errors.append("pyproject.toml dev dependency group must include workers-py>=0.2.0")
+
+
+def validate_uv_lock(root: Path, errors: list[str]) -> None:
+    path = root / "uv.lock"
+    if not path.exists():
+        errors.append("uv.lock is required for reproducible Python Worker tooling")
+        return
+    try:
+        source = path.read_text(encoding="utf-8")
+        first_line = source.splitlines()[0]
+    except (OSError, IndexError) as exc:
+        errors.append(f"could not read uv.lock: {exc}")
+        return
+    if first_line.strip() != "version = 1":
+        errors.append("uv.lock must be a valid uv lockfile")
+    if 'name = "workers-py"' not in source:
+        errors.append("uv.lock must lock workers-py for Python Worker tooling")
 
 
 def validate_backend_wrangler(config: dict[str, Any], allow_placeholders: bool, errors: list[str]) -> None:
@@ -257,6 +277,8 @@ def validate_gitignore(root: Path, errors: list[str]) -> None:
     required = {
         "**/__pycache__": "Python bytecode caches",
         "node_modules/": "installed Node packages",
+        ".venv/": "local Python virtual environment",
+        ".venv-workers/": "local Python Worker virtual environment",
         ".wrangler/": "Wrangler local state",
         ".data/local-kv/": "local JSON KV debug data",
         ".env": "local secrets",
@@ -279,6 +301,21 @@ def validate_no_legacy_runtime_dependencies(root: Path, errors: list[str]) -> No
                 errors.append(
                     f"legacy runtime dependency {legacy!r} found in {path.relative_to(root)}:{lineno}"
                 )
+
+
+def validate_no_wildcard_cors(root: Path, errors: list[str]) -> None:
+    for path in iter_runtime_files(root):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError as exc:
+            errors.append(f"could not scan {path.relative_to(root)} for wildcard CORS: {exc}")
+            continue
+        for lineno, line in enumerate(lines, start=1):
+            lowered = line.lower()
+            has_cors_origin = "access-control-allow-origin" in lowered
+            has_wildcard = '"*"' in line or "'*'" in line
+            if has_cors_origin and has_wildcard:
+                errors.append(f"wildcard CORS origin found in {path.relative_to(root)}:{lineno}")
 
 
 def iter_runtime_files(root: Path) -> list[Path]:

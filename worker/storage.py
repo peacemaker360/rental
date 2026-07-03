@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .domain import ENTITY_TYPES, empty_records, utc_now
+from domain import ENTITY_TYPES, empty_records, utc_now
 
 
 def tenant_key(tenant_id: str, suffix: str) -> str:
@@ -28,6 +28,14 @@ def associations_index_key() -> str:
 
 def association_key(tenant_id: str) -> str:
     return f"associations:{tenant_id}"
+
+
+def users_index_key() -> str:
+    return "users:index"
+
+
+def user_key(user_id: str) -> str:
+    return f"users:{user_id}"
 
 
 def empty_metadata(tenant_id: str) -> dict[str, Any]:
@@ -100,7 +108,7 @@ class KVRepository:
             association = await self.load_association(tenant_id)
             if association is not None:
                 associations.append(association)
-        return associations
+        return sorted(associations, key=lambda item: item.get("display_name", item.get("tenant_id", "")))
 
     async def load_association(self, tenant_id: str) -> dict[str, Any] | None:
         return await self._get_json(association_key(tenant_id))
@@ -113,3 +121,33 @@ class KVRepository:
             await self._put_json(associations_index_key(), tenant_ids)
         await self._put_json(association_key(tenant_id), association)
         return association
+
+    async def list_users(self) -> list[dict[str, Any]]:
+        user_ids = await self._get_json(users_index_key(), [])
+        users = []
+        for user_id in user_ids:
+            user = await self.load_user(user_id)
+            if user is not None:
+                users.append(user)
+        return sorted(users, key=lambda item: item.get("email", item.get("id", "")))
+
+    async def load_user(self, user_id: str) -> dict[str, Any] | None:
+        return await self._get_json(user_key(user_id))
+
+    async def save_user(self, user_id: str, user: dict[str, Any]) -> dict[str, Any]:
+        user_ids = await self._get_json(users_index_key(), [])
+        if user_id not in user_ids:
+            user_ids.append(user_id)
+            user_ids.sort()
+            await self._put_json(users_index_key(), user_ids)
+        await self._put_json(user_key(user_id), user)
+        return user
+
+    async def delete_user(self, user_id: str) -> dict[str, Any] | None:
+        user = await self.load_user(user_id)
+        if user is None:
+            return None
+        user_ids = [item for item in await self._get_json(users_index_key(), []) if item != user_id]
+        await self._put_json(users_index_key(), user_ids)
+        await self._delete(user_key(user_id))
+        return user

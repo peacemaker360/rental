@@ -6,7 +6,8 @@ requires-python = ">=3.12"
 
 [dependency-groups]
 dev = [
-    "workers-py>=0.2.0",
+    "workers-py>=1.14.0",
+    "workers-runtime-sdk"
 ]
 
 [tool.pytest.ini_options]

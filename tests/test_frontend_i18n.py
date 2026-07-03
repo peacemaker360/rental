@@ -89,7 +89,7 @@ class FrontendI18nTests(unittest.TestCase):
     def test_tenant_and_instrument_imports_have_client_pii_preflight(self):
         self.assertIn('const blockedImportPiiFields = new Set(["email", "phone", "telephone", "mobile", "address", "birthday", "birthdate"])', self.app_js)
         self.assertIn('const emailLikeImportValueFields = new Set(["display_name", "given_name", "family_name", "member_ref", "contact_hint", "description", "note", "provider", "actor", "contact_ref", "hitobito_group_ref", "inventory_ref"])', self.app_js)
-        self.assertIn('const phoneLikeImportValueFields = new Set(["contact_hint", "description", "note", "provider", "actor", "contact_ref", "hitobito_group_ref", "inventory_ref"])', self.app_js)
+        self.assertIn('const phoneLikeImportValueFields = new Set(["display_name", "contact_hint", "description", "note", "provider", "actor", "contact_ref", "hitobito_group_ref", "inventory_ref"])', self.app_js)
         self.assertIn("importEmailPattern.test(child)", self.app_js)
         self.assertIn("importPhonePattern.test(child)", self.app_js)
         self.assertIn('function assertLowPiiImport(payload)', self.app_js)
@@ -107,11 +107,12 @@ class FrontendI18nTests(unittest.TestCase):
     def test_crud_forms_have_client_pii_preflight(self):
         self.assertIn('"messages.write_blocked_pii": "Remove contact details before saving ({fields})"', self.app_js)
         self.assertIn('"messages.write_blocked_pii": "Kontaktdaten vor dem Speichern entfernen ({fields})"', self.app_js)
-        self.assertIn("function assertLowPiiWrite(payload)", self.app_js)
+        self.assertIn("function assertLowPiiWrite(payload, entity)", self.app_js)
         submit_handler = re.search(r'recordForm\.addEventListener\("submit".{0,420}', self.app_js, re.DOTALL)
 
         self.assertIsNotNone(submit_handler)
-        self.assertIn("assertLowPiiWrite(payload)", submit_handler.group(0))
+        self.assertIn("assertLowPiiWrite(payload, entity)", submit_handler.group(0))
+        self.assertIn('const allowedFields = entity === "user_access" ? new Set(["email"]) : new Set()', self.app_js)
 
     def test_import_handlers_use_localized_json_parse_error(self):
         self.assertIn('"messages.import_invalid_json": "Import blocked: choose a valid JSON file"', self.app_js)
@@ -165,8 +166,46 @@ class FrontendI18nTests(unittest.TestCase):
     def test_admin_center_uses_platform_admin_capability(self):
         self.assertIn("platform_admin", self.app_js)
         self.assertIn('capabilities().platform_admin ? adminApi("/associations")', self.app_js)
+        self.assertIn('capabilities().platform_admin ? adminApi("/users")', self.app_js)
         self.assertIn('button.hidden = !caps.platform_admin', self.app_js)
         self.assertIn('if (state.view === "admin" && !caps.platform_admin)', self.app_js)
+
+    def test_admin_center_exposes_user_management(self):
+        self.assertIn('"actions.new_user": "New User"', self.app_js)
+        self.assertIn('"actions.new_user": "Neuer Benutzer"', self.app_js)
+        self.assertIn('"actions.export_tenant_access": "Export Access KV"', self.app_js)
+        self.assertIn('"actions.export_tenant_access": "Access-KV exportieren"', self.app_js)
+        self.assertIn('"sections.users": "Users"', self.app_js)
+        self.assertIn('"sections.users": "Benutzer"', self.app_js)
+        self.assertIn("users: []", self.app_js)
+        self.assertIn("function renderUserTable(items)", self.app_js)
+        self.assertIn("function renderUserDetail(userId)", self.app_js)
+        self.assertIn('data-new-user', self.app_js)
+        self.assertIn("data-edit-user", self.app_js)
+        self.assertIn("data-delete-user", self.app_js)
+        self.assertIn("data-export-tenant-access", self.app_js)
+        self.assertIn('data-open="user_access"', self.app_js)
+        self.assertIn('["email", "fields.email", "email", true]', self.app_js)
+        self.assertIn('["tenant_roles", "fields.tenant_roles", "json", false, "full"]', self.app_js)
+        self.assertIn('await adminApi("/users", {method: "POST"', self.app_js)
+        self.assertIn('await adminApi(`/users/${id}`, {method: "PUT"', self.app_js)
+        self.assertIn('await adminApi(`/users/${id}`, {method: "DELETE"', self.app_js)
+        self.assertIn('adminApi("/users/export/tenant-access")', self.app_js)
+        self.assertIn('state.detail.entity === "user_access"', self.app_js)
+        self.assertIn("function globalRolePill(role)", self.app_js)
+        self.assertIn("function accessProfilePill(profile)", self.app_js)
+
+    def test_row_action_buttons_do_not_trigger_drilldown_clicks(self):
+        self.assertIn('const target = event.target.closest("button");', self.app_js)
+        self.assertIn("event.stopPropagation();", self.app_js)
+        self.assertIn('const row = event.target.closest("[data-open]");', self.app_js)
+
+    def test_data_refresh_clears_missing_detail_selection(self):
+        self.assertIn("reconcileDetailSelection();", self.app_js)
+        self.assertIn("function reconcileDetailSelection()", self.app_js)
+        self.assertIn('state.detail.entity === "associations"', self.app_js)
+        self.assertIn("state.associations.some((item) => item.tenant_id === state.detail.id)", self.app_js)
+        self.assertIn("records.some((item) => item.id === state.detail.id)", self.app_js)
 
 
 if __name__ == "__main__":

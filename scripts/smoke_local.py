@@ -158,6 +158,53 @@ def run_smoke(verbose: bool = False) -> None:
             assert association["data"]["display_name"] == "Smoke Association"
             assert association["data"]["status"] == "paused"
 
+            status, user = request_json(
+                base_url,
+                "/api/admin/users",
+                "POST",
+                {
+                    "email": "smoke-user@example.test",
+                    "display_name": "Smoke User",
+                    "global_role": "none",
+                    "access_profile": "basic",
+                    "tenant_roles": [{"tenant_id": "smoke-tenant", "role": "reader"}],
+                    "member_links": [{"tenant_id": "smoke-tenant", "member_id": "mem_smoke"}],
+                },
+            )
+            assert status == 201
+            assert user["data"]["email"] == "smoke-user@example.test"
+            assert user["data"]["access_profile"] == "basic"
+            user_id = user["data"]["id"]
+
+            status, user_update = request_json(
+                base_url,
+                f"/api/admin/users/{user_id}",
+                "PUT",
+                {"global_role": "reader", "tenant_roles": [], "member_links": []},
+            )
+            assert status == 200
+            assert user_update["data"]["global_role"] == "reader"
+
+            status, users = request_json(base_url, "/api/admin/users")
+            assert status == 200
+            assert any(item["id"] == user_id and item["email"] == "smoke-user@example.test" for item in users["data"])
+
+            status, access_export = request_json(base_url, "/api/admin/users/export/tenant-access")
+            assert status == 200
+            assert access_export["schema"] == "tenant-access-kv-bulk"
+            assert access_export["summary"]["users"] == 1
+            assert access_export["data"][0]["key"] == "user:smoke-user@example.test"
+            assert '"access_profile":"basic"' in access_export["data"][0]["value"]
+
+            status, deleted_user = request_json(base_url, f"/api/admin/users/{user_id}", "DELETE", {})
+            assert status == 200
+            assert deleted_user["deleted"] == user_id
+            assert deleted_user["data"]["email"] == "smoke-user@example.test"
+
+            status, users = request_json(base_url, "/api/admin/users")
+            assert status == 200
+            assert not any(item["id"] == user_id for item in users["data"])
+
             status, exported = request_json(base_url, "/api/smoke-tenant/export")
             assert status == 200 and exported["summary"]["instruments"] == 2
             assert exported["meta"]["revision"] == 1
@@ -282,6 +329,8 @@ def run_smoke(verbose: bool = False) -> None:
 
             status, service_delete = request_json(base_url, f"/api/smoke-import/service_records/{service_id}", "DELETE", {})
             assert status == 200 and service_delete["deleted"] == service_id
+            assert service_delete["data"]["id"] == service_id
+            assert service_delete["data"]["condition"] == "in_service"
 
             status, history = request_json(base_url, "/api/smoke-import/history")
             assert status == 200
@@ -306,11 +355,17 @@ def run_smoke(verbose: bool = False) -> None:
             thread.join(timeout=5)
 
 
-def signed_headers(tenant_id: str, role: str = "admin", actor_id: str = "smoke-signed-user") -> dict[str, str]:
+def signed_headers(
+    tenant_id: str,
+    role: str = "admin",
+    actor_id: str = "smoke-signed-user",
+    extra: dict | None = None,
+) -> dict[str, str]:
     return signed_context_headers({
         "tenant_id": tenant_id,
         "actor_id": actor_id,
         "role": role,
+        **(extra or {}),
     }, "dev-smoke-secret")
 
 
@@ -351,6 +406,43 @@ def run_signed_smoke(verbose: bool = False) -> None:
             assert status == 200
             assert summary["instruments"] == 2
             assert summary["meta"]["revision"] == 1
+
+            status, members = request_json(base_url, "/api/signed-tenant/members", headers=headers)
+            assert status == 200 and members["data"]
+            member_id = members["data"][0]["id"]
+
+            basic_headers = signed_headers(
+                "signed-tenant",
+                role="viewer",
+                actor_id="basic-smoke-user",
+                extra={
+                    "access_profile": "basic",
+                    "member_id": member_id,
+                    "user_email": "basic-smoke@example.test",
+                },
+            )
+            status, basic_context = request_json(base_url, "/api/context", headers=basic_headers)
+            assert status == 200
+            assert basic_context["capabilities"]["write"] is False
+            assert basic_context["capabilities"]["access_profile"] == "basic"
+
+            status, basic_members = request_json(base_url, "/api/signed-tenant/members", headers=basic_headers)
+            assert status == 200
+            assert [item["id"] for item in basic_members["data"]] == [member_id]
+
+            status, basic_rentals = request_json(base_url, "/api/signed-tenant/rentals", headers=basic_headers)
+            assert status == 200
+            assert all(item["member_id"] == member_id for item in basic_rentals["data"])
+
+            expect_http_error(
+                base_url,
+                "/api/signed-tenant/members",
+                "POST",
+                {"display_name": "Blocked Basic User"},
+                403,
+                "operator role required",
+                basic_headers,
+            )
 
             expect_http_error(
                 base_url,

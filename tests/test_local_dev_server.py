@@ -24,6 +24,13 @@ class LocalDevServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(JSON_HEADERS["x-content-type-options"], "nosniff")
         self.assertNotIn("access-control-allow-origin", JSON_HEADERS)
 
+    def test_local_api_cors_allows_trusted_access_profile_headers(self):
+        allowed = JSON_HEADERS["access-control-allow-headers"]
+
+        self.assertIn("x-rental-access-profile", allowed)
+        self.assertIn("x-rental-member-id", allowed)
+        self.assertIn("x-rental-user-email", allowed)
+
     def test_empty_api_path_stays_in_json_api_boundary(self):
         source = (Path(__file__).resolve().parents[1] / "scripts" / "local_dev_server.py").read_text(encoding="utf-8")
 
@@ -174,6 +181,22 @@ class LocalDevServerTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual((await repo.load_association("tenant-one"))["display_name"], "Tenant One")
             self.assertEqual((await repo.list_associations())[0]["status"], "paused")
+
+    async def test_user_registry_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = JsonFileRepository(Path(tmp))
+
+            await repo.save_user("user_abc123", {
+                "id": "user_abc123",
+                "email": "reader@example.test",
+                "global_role": "reader",
+            })
+
+            self.assertEqual((await repo.load_user("user_abc123"))["email"], "reader@example.test")
+            self.assertEqual([item["id"] for item in await repo.list_users()], ["user_abc123"])
+            self.assertEqual((await repo.delete_user("user_abc123"))["email"], "reader@example.test")
+            self.assertIsNone(await repo.load_user("user_abc123"))
+            self.assertEqual(await repo.list_users(), [])
 
 
 if __name__ == "__main__":

@@ -4,6 +4,9 @@ const CONTEXT_HEADER = "x-rental-context";
 const CONTEXT_SIGNATURE_HEADER = "x-rental-context-signature";
 const RENTAL_HEADER_PREFIX = "x-rental-";
 const ALLOWED_ROLES = new Set(["viewer", "operator", "admin"]);
+const GLOBAL_ROLES = new Set(["none", "reader", "operator", "admin", "platform_admin"]);
+const TENANT_ROLES = new Set(["reader", "operator", "admin"]);
+const ACCESS_PROFILES = new Set(["full", "basic"]);
 
 let cachedJwks = null;
 let cachedJwksUntil = 0;
@@ -22,12 +25,15 @@ export default {
       }
 
       const claims = await verifyAccessJwt(accessJwt, env);
-      const assignment = await loadTenantAssignment(claims, env);
+      const assignment = await loadTenantAssignment(claims, env, url);
       const context = {
-        actor_id: assignment.actor_id || `access:${await shortDigest(claims.sub || claims.email || "unknown")}`,
+        access_profile: assignment.access_profile || "full",
+        actor_id: assignment.actor_id || `access:${await shortDigest(assignment.email || claims.sub || "unknown")}`,
         issued_at: Date.now() / 1000,
+        member_id: assignment.member_id,
         role: assignment.role,
-        tenant_id: assignment.tenant_id
+        tenant_id: assignment.tenant_id,
+        user_email: assignment.email
       };
       const signedHeaders = await signedContextHeaders(context, env.RENTAL_CONTEXT_SECRET);
       return forwardToBackend(request, env, signedHeaders);
@@ -107,20 +113,108 @@ function audienceMatches(actual, expected) {
   return Array.isArray(actual) ? actual.includes(expected) : actual === expected;
 }
 
-async function loadTenantAssignment(claims, env) {
+async function loadTenantAssignment(claims, env, url) {
   if (!env.TENANT_ACCESS_KV) throw new Error("TENANT_ACCESS_KV binding is required");
-  const principal = claims.sub || "";
-  if (!principal) throw new Error("Cloudflare Access token is missing subject");
+  const email = String(claims.email || "").trim().toLowerCase();
+  if (!email) throw new Error("Cloudflare Access token is missing email");
+  if (!validEmail(email)) throw new Error("Cloudflare Access token email is invalid");
 
-  const assignment = await env.TENANT_ACCESS_KV.get(`principal:${principal}`, {type: "json"});
-  if (!assignment) throw new Error("no tenant assignment for authenticated principal");
-  if (!/^[a-z0-9][a-z0-9_-]{1,62}$/.test(assignment.tenant_id || "")) {
-    throw new Error("tenant assignment has invalid tenant id");
+  const user = await env.TENANT_ACCESS_KV.get(`user:${email}`, {type: "json"});
+  if (user) return resolveUserAssignment(user, email, url);
+
+  const principal = claims.sub || "";
+  if (principal) {
+    const assignment = await env.TENANT_ACCESS_KV.get(`principal:${principal}`, {type: "json"});
+    if (assignment) return resolveLegacyAssignment(assignment, email);
   }
+
+  throw new Error("no user access profile for authenticated email");
+}
+
+function resolveLegacyAssignment(assignment, email) {
+  if (!validTenantId(assignment.tenant_id || "")) throw new Error("tenant assignment has invalid tenant id");
   if (!ALLOWED_ROLES.has(assignment.role)) {
     throw new Error("tenant assignment has invalid role");
   }
-  return assignment;
+  return {...assignment, email};
+}
+
+function resolveUserAssignment(user, email, url) {
+  validateUserProfile(user);
+  if (user.status && user.status !== "active") throw new Error("user access profile is disabled");
+  const requestedTenant = routeTenant(url);
+  const defaultTenant = user.default_tenant || firstTenantRole(user)?.tenant_id;
+  const tenantId = requestedTenant || defaultTenant || (user.global_role === "platform_admin" ? "platform-admin" : "");
+  if (!validTenantId(tenantId)) throw new Error("user access profile has no tenant for this route");
+
+  const role = roleForTenant(user, tenantId, url.pathname.startsWith("/api/admin"));
+  const memberLink = (user.member_links || []).find((item) => item.tenant_id === tenantId);
+  return {
+    access_profile: user.access_profile || "full",
+    email,
+    member_id: memberLink?.member_id,
+    role,
+    tenant_id: tenantId
+  };
+}
+
+function validateUserProfile(user) {
+  if (user.status && !["active", "disabled"].includes(user.status)) {
+    throw new Error("user access profile has invalid status");
+  }
+  const globalRole = user.global_role || "none";
+  if (!GLOBAL_ROLES.has(globalRole)) throw new Error("user access profile has invalid global role");
+  const accessProfile = user.access_profile || "full";
+  if (!ACCESS_PROFILES.has(accessProfile)) throw new Error("user access profile has invalid access profile");
+  if (user.default_tenant && !validTenantId(user.default_tenant)) {
+    throw new Error("user access profile has invalid default tenant");
+  }
+  if (user.tenant_roles && !Array.isArray(user.tenant_roles)) {
+    throw new Error("user access profile tenant roles must be a list");
+  }
+  if (user.member_links && !Array.isArray(user.member_links)) {
+    throw new Error("user access profile member links must be a list");
+  }
+  for (const item of user.member_links || []) {
+    if (!validTenantId(item.tenant_id)) throw new Error("user access profile has invalid member-link tenant");
+    if (!opaqueMemberId(item.member_id)) throw new Error("user access profile has invalid member id");
+  }
+}
+
+function roleForTenant(user, tenantId, adminRoute) {
+  const globalRole = user.global_role || "none";
+  if (globalRole === "platform_admin" && adminRoute) return "admin";
+  if (globalRole === "admin") return "admin";
+  if (globalRole === "operator") return "operator";
+  if (globalRole === "reader") return "viewer";
+
+  const tenantRole = (user.tenant_roles || []).find((item) => item.tenant_id === tenantId)?.role;
+  if (!tenantRole) throw new Error("user is not allowed for this tenant");
+  if (!TENANT_ROLES.has(tenantRole)) throw new Error("user access profile has invalid tenant role");
+  return tenantRole === "reader" ? "viewer" : tenantRole;
+}
+
+function firstTenantRole(user) {
+  return (user.tenant_roles || []).find((item) => validTenantId(item.tenant_id));
+}
+
+function routeTenant(url) {
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (parts[0] !== "api") return null;
+  if (!parts[1] || parts[1] === "context" || parts[1] === "health" || parts[1] === "admin") return null;
+  return parts[1];
+}
+
+function validTenantId(value) {
+  return /^[a-z0-9][a-z0-9_-]{1,62}$/.test(value || "");
+}
+
+function validEmail(value) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value || "");
+}
+
+function opaqueMemberId(value) {
+  return Boolean(value) && !validEmail(value) && !/(?=(?:\D*\d){7,})\+?[\d][\d\s()./-]{6,}\d/.test(value);
 }
 
 async function signedContextHeaders(context, secret) {

@@ -6,6 +6,8 @@ Lib
 Scripts
 Include
 .env
+.venv/
+.venv-workers/
 .data/hitobito.json
 node_modules/
 .wrangler/

@@ -29,7 +29,7 @@ JSON_HEADERS = {
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
     "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "access-control-allow-headers": "content-type,authorization,x-rental-context,x-rental-context-signature,x-rental-expected-revision,x-rental-tenant-id,x-rental-actor-id,x-rental-role",
+    "access-control-allow-headers": "content-type,authorization,x-rental-context,x-rental-context-signature,x-rental-expected-revision,x-rental-tenant-id,x-rental-actor-id,x-rental-role,x-rental-access-profile,x-rental-member-id,x-rental-user-email",
 }
 
 
@@ -59,6 +59,9 @@ class JsonFileRepository:
 
     def associations_file(self) -> Path:
         return self.data_dir / "_associations.json"
+
+    def users_file(self) -> Path:
+        return self.data_dir / "_users.json"
 
     async def load_tenant(self, tenant_id: str) -> dict[str, list[dict[str, Any]]]:
         path = self.tenant_file(tenant_id)
@@ -134,6 +137,44 @@ class JsonFileRepository:
             json.dump({"associations": associations}, handle, indent=2, sort_keys=True)
         temp_path.replace(path)
         return association
+
+    async def list_users(self) -> list[dict[str, Any]]:
+        path = self.users_file()
+        if not path.exists():
+            return []
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        users = data.get("users", []) if isinstance(data, dict) else []
+        return sorted(users, key=lambda item: item.get("email", item.get("id", "")))
+
+    async def load_user(self, user_id: str) -> dict[str, Any] | None:
+        for user in await self.list_users():
+            if user.get("id") == user_id:
+                return user
+        return None
+
+    async def save_user(self, user_id: str, user: dict[str, Any]) -> dict[str, Any]:
+        path = self.users_file()
+        users = [item for item in await self.list_users() if item.get("id") != user_id]
+        users.append(user)
+        users.sort(key=lambda item: item.get("email", item.get("id", "")))
+        temp_path = path.with_suffix(".json.tmp")
+        with temp_path.open("w", encoding="utf-8") as handle:
+            json.dump({"users": users}, handle, indent=2, sort_keys=True)
+        temp_path.replace(path)
+        return user
+
+    async def delete_user(self, user_id: str) -> dict[str, Any] | None:
+        path = self.users_file()
+        existing = await self.load_user(user_id)
+        if existing is None:
+            return None
+        users = [item for item in await self.list_users() if item.get("id") != user_id]
+        temp_path = path.with_suffix(".json.tmp")
+        with temp_path.open("w", encoding="utf-8") as handle:
+            json.dump({"users": users}, handle, indent=2, sort_keys=True)
+        temp_path.replace(path)
+        return existing
 
 
 class RentalDevHandler(BaseHTTPRequestHandler):

@@ -4,7 +4,7 @@ compatibility_date = "2026-06-26"
 compatibility_flags = ["python_workers"]
 
 kv_namespaces = [
-  { binding = "RENTAL_KV", id = "replace-with-production-kv-id", preview_id = "replace-with-preview-kv-id" }
+  { binding = "RENTAL_KV", id = "e6b20c66b9144d03ad713fdb3a00cfd9", preview_id = "5c483cc38f7b49e1b5d9baaf98b52680" }
 ]
 
 [vars]

@@ -10,6 +10,7 @@ class MemoryRepository:
         self.tenants = {}
         self.meta = {}
         self.associations = {}
+        self.users = {}
 
     async def load_tenant(self, tenant_id):
         return self.tenants.get(tenant_id, empty_records())
@@ -32,6 +33,24 @@ class MemoryRepository:
     async def save_association(self, tenant_id, association):
         self.associations[tenant_id] = association
         return association
+
+    async def list_users(self):
+        return sorted(self.users.values(), key=lambda item: item["email"])
+
+    async def load_user(self, user_id):
+        return self.users.get(user_id)
+
+    async def save_user(self, user_id, user):
+        self.users[user_id] = user
+        return user
+
+    async def delete_user(self, user_id):
+        return self.users.pop(user_id, None)
+
+
+class FailingRepository(MemoryRepository):
+    async def load_tenant(self, tenant_id):
+        raise RuntimeError("secret internal storage path /tmp/private")
 
 
 class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
@@ -90,6 +109,65 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 200)
         self.assertEqual([member["display_name"] for member in inactive["data"]], ["Inactive Member"])
 
+    async def test_basic_access_profile_sees_only_related_records(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", actor_id="admin-user", role="admin")
+        status, member_a = await handle_api_request("POST", "/api/tenant-a/members", "", {
+            "display_name": "Member A",
+        }, repo, admin)
+        self.assertEqual(status, 201)
+        status, member_b = await handle_api_request("POST", "/api/tenant-a/members", "", {
+            "display_name": "Member B",
+        }, repo, admin)
+        self.assertEqual(status, 201)
+        status, inst_a = await handle_api_request("POST", "/api/tenant-a/instruments", "", {
+            "name": "Clarinet A",
+            "serial": "A-1",
+        }, repo, admin)
+        self.assertEqual(status, 201)
+        status, inst_b = await handle_api_request("POST", "/api/tenant-a/instruments", "", {
+            "name": "Clarinet B",
+            "serial": "B-1",
+        }, repo, admin)
+        self.assertEqual(status, 201)
+        await handle_api_request("POST", "/api/tenant-a/rentals", "", {
+            "instrument_id": inst_a["data"]["id"],
+            "member_id": member_a["data"]["id"],
+            "start_date": "2026-01-01",
+        }, repo, admin)
+        await handle_api_request("POST", "/api/tenant-a/rentals", "", {
+            "instrument_id": inst_b["data"]["id"],
+            "member_id": member_b["data"]["id"],
+            "start_date": "2026-01-01",
+        }, repo, admin)
+        basic = RequestContext(
+            tenant_id="tenant-a",
+            actor_id="access-user",
+            role="viewer",
+            mode="signed",
+            access_profile="basic",
+            member_id=member_a["data"]["id"],
+            user_email="member-a@example.test",
+        )
+
+        status, members = await handle_api_request("GET", "/api/tenant-a/members", "", {}, repo, basic)
+        self.assertEqual(status, 200)
+        self.assertEqual([item["id"] for item in members["data"]], [member_a["data"]["id"]])
+
+        status, instruments = await handle_api_request("GET", "/api/tenant-a/instruments", "", {}, repo, basic)
+        self.assertEqual(status, 200)
+        self.assertEqual([item["id"] for item in instruments["data"]], [inst_a["data"]["id"]])
+
+        status, hidden = await handle_api_request("GET", f"/api/tenant-a/instruments/{inst_b['data']['id']}", "", {}, repo, basic)
+        self.assertEqual(status, 404)
+        self.assertEqual(hidden["error"], "record not found")
+
+        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", {
+            "display_name": "Should Not Write",
+        }, repo, basic)
+        self.assertEqual(status, 403)
+        self.assertEqual(body["error"], "operator role required")
+
     async def test_crud_write_registers_tenant_association(self):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="new-band", actor_id="operator-user", role="operator")
@@ -147,6 +225,16 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status, 400)
         self.assertEqual(body["error"], "request payload must be an object")
+
+    async def test_unexpected_errors_do_not_leak_internal_details(self):
+        repo = FailingRepository()
+        operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
+
+        status, body = await handle_api_request("GET", "/api/tenant-a/members", "", {}, repo, operator)
+
+        self.assertEqual(status, 500)
+        self.assertEqual(body["error"], "unexpected error")
+        self.assertNotIn("secret internal", body["error"])
 
     async def test_write_accepts_matching_expected_revision(self):
         repo = MemoryRepository()
@@ -354,6 +442,8 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         status, body = await handle_api_request("DELETE", f"/api/tenant-a/service_records/{service_id}", "", {}, repo, admin)
         self.assertEqual(status, 200)
         self.assertEqual(body["deleted"], service_id)
+        self.assertEqual(body["data"]["id"], service_id)
+        self.assertEqual(body["data"]["condition"], "watch")
         records = await repo.load_tenant("tenant-a")
         self.assertEqual(records["history"][-1]["action"], "deleted")
         self.assertEqual(records["history"][-1]["actor"], "admin-a")
@@ -406,6 +496,8 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status, 200)
         self.assertEqual(body["deleted"], instrument["data"]["id"])
+        self.assertEqual(body["data"]["name"], "Service-only Clarinet")
+        self.assertEqual([item["id"] for item in body["cascaded"]["service_records"]], [service["data"]["id"]])
         records = await repo.load_tenant("tenant-a")
         self.assertEqual(records["instruments"], [])
         self.assertEqual(records["service_records"], [])
@@ -645,6 +737,110 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated["data"]["display_name"], "Music Club Updated")
         self.assertEqual(updated["data"]["status"], "paused")
 
+    async def test_platform_admin_can_manage_user_access(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
+
+        status, created = await handle_api_request("POST", "/api/admin/users", "", {
+            "email": "Operator@Example.TEST",
+            "display_name": "Ops User",
+            "global_role": "none",
+            "access_profile": "basic",
+            "tenant_roles": [{"tenant_id": "tenant-a", "role": "operator"}],
+            "member_links": [{"tenant_id": "tenant-a", "member_id": "mem_123"}],
+        }, repo, admin)
+
+        self.assertEqual(status, 201)
+        self.assertEqual(created["data"]["email"], "operator@example.test")
+        self.assertEqual(created["data"]["access_profile"], "basic")
+        self.assertEqual(created["data"]["tenant_roles"], [{"tenant_id": "tenant-a", "role": "operator"}])
+        self.assertEqual(created["data"]["member_links"], [{"tenant_id": "tenant-a", "member_id": "mem_123"}])
+        user_id = created["data"]["id"]
+
+        status, users = await handle_api_request("GET", "/api/admin/users", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual([item["id"] for item in users["data"]], [user_id])
+
+        status, export = await handle_api_request("GET", "/api/admin/users/export/tenant-access", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual(export["schema"], "tenant-access-kv-bulk")
+        self.assertEqual(export["summary"]["users"], 1)
+        self.assertEqual(export["data"][0]["key"], "user:operator@example.test")
+        self.assertIn('"tenant_roles":[{"role":"operator","tenant_id":"tenant-a"}]', export["data"][0]["value"])
+
+        status, updated = await handle_api_request("PUT", f"/api/admin/users/{user_id}", "", {
+            "global_role": "reader",
+            "tenant_roles": [],
+            "member_links": [],
+        }, repo, admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["data"]["global_role"], "reader")
+
+        status, deleted = await handle_api_request("DELETE", f"/api/admin/users/{user_id}", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual(deleted["deleted"], user_id)
+        self.assertEqual(deleted["data"]["email"], "operator@example.test")
+
+        status, users = await handle_api_request("GET", "/api/admin/users", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual(users["data"], [])
+
+    async def test_user_access_rejects_invalid_roles_and_email_change(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
+
+        status, body = await handle_api_request("POST", "/api/admin/users", "", {
+            "email": "bad-email",
+            "global_role": "reader",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "email must be a valid email address")
+
+        status, body = await handle_api_request("POST", "/api/admin/users", "", {
+            "email": "reader@example.test",
+            "display_name": "Call +41 44 000 00 00",
+            "global_role": "reader",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "display_name must not contain phone numbers")
+
+        status, body = await handle_api_request("POST", "/api/admin/users", "", {
+            "email": "reader@example.test",
+            "tenant_roles": [{"tenant_id": "tenant-a", "role": "owner"}],
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "tenant role must be reader, operator, or admin")
+
+        status, body = await handle_api_request("POST", "/api/admin/users", "", {
+            "email": "reader@example.test",
+            "member_links": [{"tenant_id": "tenant-a", "member_id": "reader@example.test"}],
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "member_id must be opaque, not an email address")
+
+        status, created = await handle_api_request("POST", "/api/admin/users", "", {
+            "email": "reader@example.test",
+            "global_role": "reader",
+        }, repo, admin)
+        self.assertEqual(status, 201)
+
+        status, body = await handle_api_request("PUT", f"/api/admin/users/{created['data']['id']}", "", {
+            "email": "other@example.test",
+        }, repo, admin)
+
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "email cannot be changed for an existing user")
+
+        status, body = await handle_api_request("DELETE", "/api/admin/users/user_0000000000000000", "", {}, repo, admin)
+
+        self.assertEqual(status, 404)
+        self.assertEqual(body["error"], "user not found")
+
     async def test_non_admin_cannot_use_association_admin_center(self):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
@@ -789,12 +985,14 @@ class ContextTests(unittest.TestCase):
             "x-rental-tenant-id": "tenant-a",
             "x-rental-role": "operator",
             "x-rental-actor-id": "edge-user",
+            "x-rental-user-email": "Edge.User@Example.TEST",
         }, "header")
 
         self.assertIsNone(error)
         self.assertEqual(context.tenant_id, "tenant-a")
         self.assertEqual(context.actor_id, "edge-user")
         self.assertEqual(context.role, "operator")
+        self.assertEqual(context.user_email, "edge.user@example.test")
 
     def test_header_mode_rejects_invalid_tenant_id(self):
         context, error = context_from_headers("tenant-a", {
@@ -822,6 +1020,24 @@ class ContextTests(unittest.TestCase):
         self.assertIsNone(context)
         self.assertEqual(error, "actor_id must be opaque, not an email address")
 
+    def test_header_mode_rejects_invalid_user_email(self):
+        context, error = context_from_headers("tenant-a", {
+            "x-rental-tenant-id": "tenant-a",
+            "x-rental-user-email": "not-an-email",
+        }, "header")
+
+        self.assertIsNone(context)
+        self.assertEqual(error, "invalid user email in tenant context")
+
+    def test_header_mode_rejects_contact_like_member_id(self):
+        context, error = context_from_headers("tenant-a", {
+            "x-rental-tenant-id": "tenant-a",
+            "x-rental-member-id": "+41 44 000 00 00",
+        }, "header")
+
+        self.assertIsNone(context)
+        self.assertEqual(error, "member_id must be opaque, not a phone number")
+
     def test_local_mode_rejects_invalid_tenant_id(self):
         context, error = context_from_headers(None, {
             "x-rental-tenant-id": "../tenant",
@@ -830,6 +1046,14 @@ class ContextTests(unittest.TestCase):
         self.assertIsNone(context)
         self.assertIn("tenant id must use", error)
 
+    def test_local_mode_rejects_invalid_role(self):
+        context, error = context_from_headers("tenant-a", {
+            "x-rental-role": "owner",
+        }, "local")
+
+        self.assertIsNone(context)
+        self.assertEqual(error, "invalid role in tenant context")
+
     def test_signed_mode_accepts_signed_context(self):
         secret = "test-secret"
         headers = signed_context_headers({
@@ -837,6 +1061,7 @@ class ContextTests(unittest.TestCase):
             "actor_id": "access-user-1",
             "role": "operator",
             "issued_at": time.time(),
+            "user_email": "Signed.User@Example.TEST",
         }, secret)
 
         context, error = context_from_headers("tenant-a", headers, "signed", secret)
@@ -846,6 +1071,34 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(context.actor_id, "access-user-1")
         self.assertEqual(context.role, "operator")
         self.assertEqual(context.mode, "signed")
+        self.assertEqual(context.user_email, "signed.user@example.test")
+
+    def test_signed_mode_rejects_invalid_user_email(self):
+        headers = signed_context_headers({
+            "tenant_id": "tenant-a",
+            "actor_id": "access-user-1",
+            "role": "operator",
+            "user_email": "not-an-email",
+        }, "test-secret")
+
+        context, error = context_from_headers("tenant-a", headers, "signed", "test-secret")
+
+        self.assertIsNone(context)
+        self.assertEqual(error, "invalid user email in signed tenant context")
+
+    def test_signed_mode_rejects_contact_like_member_id(self):
+        headers = signed_context_headers({
+            "tenant_id": "tenant-a",
+            "actor_id": "access-user-1",
+            "role": "viewer",
+            "access_profile": "basic",
+            "member_id": "member@example.test",
+        }, "test-secret")
+
+        context, error = context_from_headers("tenant-a", headers, "signed", "test-secret")
+
+        self.assertIsNone(context)
+        self.assertEqual(error, "member_id must be opaque, not an email address")
 
     def test_signed_mode_rejects_contact_like_actor_id(self):
         headers = signed_context_headers({

@@ -5,8 +5,14 @@ from urllib.parse import urlparse
 
 from workers import Response, WorkerEntrypoint
 
-from .api_core import context_from_headers, handle_api_request, is_api_request_path, parse_api_path
-from .storage import KVRepository
+# from .api_core import context_from_headers, handle_api_request, is_api_request_path, parse_api_path
+from api_core import (
+    context_from_headers,
+    handle_api_request,
+    is_api_request_path,
+    parse_api_path,
+)
+from storage import KVRepository
 
 
 JSON_HEADERS = {
@@ -16,7 +22,7 @@ JSON_HEADERS = {
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
     "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "access-control-allow-headers": "content-type,authorization,x-rental-context,x-rental-context-signature,x-rental-expected-revision,x-rental-tenant-id,x-rental-actor-id,x-rental-role",
+    "access-control-allow-headers": "content-type,authorization,x-rental-context,x-rental-context-signature,x-rental-expected-revision,x-rental-tenant-id,x-rental-actor-id,x-rental-role,x-rental-access-profile,x-rental-member-id,x-rental-user-email",
 }
 
 

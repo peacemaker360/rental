@@ -58,6 +58,9 @@ Collection reads accept `search=` and `status=` query parameters. Instrument and
 service-record collections share the UI's service filter semantics, so direct
 API callers can filter by conditions such as `watch` or `needs_service` as well
 as normal rental/member statuses.
+Delete responses return both the compatibility `deleted` id and the deleted
+record as `data`. When deleting an instrument cascades service records, the
+response includes those removed service records under `cascaded.service_records`.
 
 ## Backup And Import
 
@@ -251,20 +254,24 @@ x-rental-context-signature
 ```
 
 `x-rental-context` is base64url JSON with `tenant_id`, `actor_id`, `role`, and
-optionally `issued_at`. `x-rental-context-signature` is an HMAC-SHA256 signature
-over that encoded context using the `RENTAL_CONTEXT_SECRET` Worker secret.
-The API rejects requests when the signed tenant does not match the tenant in the
-route, when the role is not `viewer`, `operator`, or `admin`, or when an
-`issued_at` timestamp is older than one hour. `actor_id` is copied into rental
-and service history, so it must be opaque and must not look like an email
-address or phone number. Write operations require `operator` or `admin`; demo
-bootstrap and delete operations require `admin`.
+optionally `issued_at`, `user_email`, `member_id`, and `access_profile`.
+`x-rental-context-signature` is an HMAC-SHA256 signature over that encoded
+context using the `RENTAL_CONTEXT_SECRET` Worker secret. The API rejects
+requests when the signed tenant does not match the tenant in the route, when the
+role is not `viewer`, `operator`, or `admin`, or when an `issued_at` timestamp
+is older than one hour. `actor_id` is copied into rental and service history, so
+it must be opaque and must not look like an email address or phone number. Write
+operations require `operator` or `admin`; demo bootstrap and delete operations
+require `admin`. `access_profile=basic` is always read-only and scopes list and
+detail reads to the user's linked member record, rentals, and rented
+instruments.
 
 `frontdoor/access_context_worker.js` is a deployable Cloudflare Access front
 door for this shape. It validates `Cf-Access-Jwt-Assertion` or the
-`CF_Authorization` cookie against the Access JWKS, looks up
-`principal:{access_jwt_sub}` in `TENANT_ACCESS_KV`, signs the tenant context,
-and forwards to the Python Worker through a service binding. The details live in
+`CF_Authorization` cookie against the Access JWKS, looks up `user:{email}` in
+`TENANT_ACCESS_KV`, signs the tenant context, and forwards to the Python Worker
+through a service binding. The legacy `principal:{access_jwt_sub}` mapping is
+still accepted as a migration fallback. The details live in
 `docs/cloudflare-access-frontdoor.md`.
 
 For manual API debugging, `scripts/sign_context.py` prints matching signed
@@ -283,11 +290,14 @@ for curl, HTTP clients, or focused frontend/API debugging. The default local
 server mode remains `local`, which keeps fast admin debugging available.
 
 For production access assignment seeding, `scripts/tenant_access_assignments.py`
-validates a low-PII JSON assignment file and renders either Wrangler commands or
-a KV bulk JSON file for `TENANT_ACCESS_KV`. It stores assignments under
-`principal:{access_jwt_sub}` and rejects email/name/phone/address fields plus
-email or phone-like principal and actor values, so tenant access can be managed
-without copying identity PII into KV.
+validates a JSON assignment file and renders either Wrangler commands or a KV
+bulk JSON file for `TENANT_ACCESS_KV`. User-profile rows are stored under
+`user:{email}` because Cloudflare Access supplies email as the stable user
+identifier for this app. They can carry global roles, per-tenant roles,
+tenant/member links, and `full` or `basic` access profiles. Legacy rows stored
+under `principal:{access_jwt_sub}` remain low-PII and reject
+email/name/phone/address fields plus email or phone-like principal and actor
+values.
 
 The older `RENTAL_AUTH_MODE=header` path is still available for deliberately
 trusted Cloudflare edge chains that overwrite:
@@ -355,6 +365,18 @@ an `admin` role on the `platform-admin` tenant context. A tenant-level admin for
 `band-one`, for example, can manage `/api/band-one/...` records but receives
 `403 platform admin required` for `/api/admin/associations`.
 
+The same platform boundary now covers `/api/admin/users`. User access records
+are stored outside tenant data under a hashed backend id plus the normalized
+Access email, role configuration, tenant/member links, status, and timestamps.
+Optional display labels reject contact-like values, keeping the Access email as
+the only intentional user identifier for the front door. Member links use opaque
+local member ids and reject email or phone-like values.
+The Admin Center renders these users beside associations and opens a drilldown
+showing global role, access profile, tenant roles, and linked member ids.
+`GET /api/admin/users/export/tenant-access` renders those profiles as Wrangler
+KV bulk rows for `TENANT_ACCESS_KV`, bridging the backend registry to the
+Cloudflare Access front door without manually reshaping JSON.
+
 ## Local Debugging
 
 Use Wrangler local development:
@@ -366,8 +388,10 @@ npm run dev
 ```
 
 The backend `dev` and `deploy` scripts use Cloudflare's Python Worker tooling:
-`uv run pywrangler dev` and `uv run pywrangler deploy`. JavaScript Wrangler is
-still present for KV namespace management and the optional Access front door.
+`uv run pywrangler dev` and `uv run pywrangler deploy`. Keep `uv.lock` committed
+so that tooling is reproducible across local debug and deployment. JavaScript
+Wrangler is still present for KV namespace management and the optional Access
+front door.
 
 When Wrangler cannot run, use the stdlib Python debug server:
 
@@ -378,6 +402,9 @@ python3 scripts/local_dev_server.py
 It serves `public/`, exposes the same `/api/...` routes through
 `worker.api_core`, and persists local JSON files under `.data/local-kv/`. This
 runner is only for development; production storage remains Cloudflare KV.
+Preflight also keeps generated debug artifacts out of source control, including
+`.data/local-kv/`, `.wrangler/`, `.venv/`, `.venv-workers/`, Python bytecode
+caches, `node_modules/`, and `.env`.
 
 Run pure Python domain tests without starting Wrangler:
 
@@ -408,9 +435,10 @@ The same signed smoke path is available through `npm run smoke:signed`.
 
 The smoke script starts the same Python HTTP handler on an ephemeral localhost
 port with temporary JSON storage. It checks static assets, the `/api` JSON
-boundary, `/api/context`, bootstrap, admin associations, export/import,
-instrument inventory import/export, Hitobito member import, return/delete, PII
-rejection, and tenant-id validation.
+boundary, `/api/context`, bootstrap, admin associations and users,
+export/import, instrument inventory import/export, Hitobito member import,
+basic access-profile scoping, return/delete, PII rejection, and tenant-id
+validation.
 
 Run deployment-shape preflight checks:
 
@@ -420,8 +448,9 @@ npm run preflight
 
 The `Cloudflare refactor CI` GitHub Actions workflow keeps the repository on the
 Cloudflare path by running unit tests, signed local smoke, frontdoor-aware
-preflight, and frontend syntax checks. It intentionally does not deploy and does
-not use the removed Azure App Service workflow actions.
+preflight, and frontend/frontdoor JavaScript syntax checks through
+`npm run check:js`. It intentionally does not deploy and does not use the
+removed Azure App Service workflow actions.
 Preflight also requires the static shell to declare a same-origin Content
 Security Policy and `no-referrer` metadata.
 

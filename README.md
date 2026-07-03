@@ -14,7 +14,9 @@ serverless app:
 
 Install the Worker tooling. The Python Worker runs through Cloudflare's
 `pywrangler` package via `uv`; the JavaScript Wrangler package is still used for
-KV namespace commands and the optional Access front door.
+KV namespace commands and the optional Access front door. Keep `uv.lock`
+committed so `uv run pywrangler ...` uses the same Python Worker tooling in
+local debug and deployment.
 
 ```bash
 npm install
@@ -40,8 +42,9 @@ python3 scripts/local_dev_server.py
 
 That server opens on `http://127.0.0.1:8787` and persists local development data
 under `.data/local-kv/`. Local debug state, Wrangler state, Python bytecode
-caches, `node_modules/`, and `.env` stay ignored and are checked by preflight so
-generated artifacts do not become part of the Cloudflare source tree.
+caches, Python virtual environments, `node_modules/`, and `.env` stay ignored
+and are checked by preflight so generated artifacts do not become part of the
+Cloudflare source tree.
 The local static fallback is constrained to `public/` with pathlib containment
 checks, so deep links work without allowing path traversal during debugging.
 
@@ -99,7 +102,8 @@ npm run preflight
 
 The `Cloudflare refactor CI` GitHub Actions workflow runs the same local
 validation path on pushes and pull requests: Python unit tests, signed smoke,
-Cloudflare preflight with frontdoor checks, and frontend syntax checks.
+Cloudflare preflight with frontdoor checks, and frontend/frontdoor JavaScript
+syntax checks through `npm run check:js`.
 Preflight also checks that the static shell declares a same-origin Content
 Security Policy and `no-referrer` metadata, keeping browser-side tenant data
 handling aligned with the low-PII model.
@@ -147,6 +151,9 @@ The Worker exposes tenant-scoped endpoints:
 - `GET /api/context`
 - `GET|POST /api/admin/associations`
 - `GET|PUT /api/admin/associations/{tenant}`
+- `GET|POST /api/admin/users`
+- `GET /api/admin/users/export/tenant-access`
+- `GET|PUT|DELETE /api/admin/users/{user_id}`
 - `POST /api/{tenant}/bootstrap`
 - `GET /api/{tenant}/summary`
 - `GET /api/{tenant}/export`
@@ -168,6 +175,9 @@ The Worker exposes tenant-scoped endpoints:
 Collection reads accept `search=` and `status=` query parameters. Instrument and
 service-record status filters also understand service conditions such as `watch`
 or `needs_service`.
+Delete responses keep the compatibility `deleted` id and also return the deleted
+record as `data`; instrument deletes include cascaded service records when any
+were removed with the instrument.
 
 Empty API paths such as `/api` and `/api/` return JSON `404` responses in both
 the Worker and local server, keeping API debugging separate from the static
@@ -196,21 +206,23 @@ npx wrangler secret put RENTAL_CONTEXT_SECRET
 The signed context uses two edge-injected headers:
 
 - `x-rental-context`: base64url JSON containing `tenant_id`, `actor_id`, `role`,
-  and optionally `issued_at`
+  and optionally `issued_at`, `user_email`, `member_id`, and `access_profile`
 - `x-rental-context-signature`: HMAC-SHA256 of `x-rental-context` using
   `RENTAL_CONTEXT_SECRET`
 
-Roles are `viewer`, `operator`, and `admin`. Signed contexts with an `issued_at`
-older than one hour are rejected. This keeps tenant identity out of browser
-storage and avoids storing member/user PII in the rental data. `actor_id` must
-be an opaque identifier such as `access:abc123` or `roster-user-42`; email
+Tenant roles are `viewer`, `operator`, and `admin`. Signed contexts with an
+`issued_at` older than one hour are rejected. This keeps tenant identity out of
+browser storage and avoids storing member/user PII in rental records. `actor_id`
+must be an opaque identifier such as `access:abc123` or `roster-user-42`; email
 addresses and phone-like values are rejected because actor ids are written to
-history records.
+history records. `access_profile=basic` is read-only and scopes reads to the
+member's own linked members, rentals, and rented instruments.
 
 `frontdoor/access_context_worker.js` is an optional Cloudflare Access front door
-that validates the Access JWT, maps the authenticated principal to a tenant and
-role through `TENANT_ACCESS_KV`, strips identity headers, and injects the signed
-tenant context for the Python Worker. See
+that validates the Access JWT, maps the authenticated email to a user access
+profile through `TENANT_ACCESS_KV`, strips identity headers, and injects the
+signed tenant context for the Python Worker. It still accepts legacy
+`principal:{access_sub}` assignments as a migration fallback. See
 `docs/cloudflare-access-frontdoor.md`.
 
 Prepare low-PII `TENANT_ACCESS_KV` seed data with:
@@ -220,10 +232,11 @@ npm run tenant-access -- assignments.json --format summary
 npm run tenant-access -- assignments.json --format kv-bulk --output /tmp/tenant-access-kv.json
 ```
 
-The assignment helper expects opaque Cloudflare Access subject ids, rejects
-email/name/phone/address fields, and blocks email or phone-like principal
-values. Optional `actor_id` values must also be opaque; email addresses and
-phone-like values are rejected before seed data is rendered.
+The assignment helper now accepts user-profile rows keyed by the Cloudflare
+Access email claim. Profiles can set `global_role`, per-tenant `tenant_roles`,
+`member_links`, and an `access_profile` of `full` or `basic`. Legacy opaque
+subject assignments are still supported; those legacy rows reject
+email/name/phone/address fields and block email or phone-like principal values.
 
 For manual API debugging, generate matching headers with:
 
@@ -245,14 +258,22 @@ UI tenant switcher.
 
 ### Admin Center
 
-Admins can use the `Admin Center` view to manage association records across
-tenants. The registry stores operational details only: tenant slug, display
-name, short name, status, region, locale, contact reference, Hitobito group
-reference, inventory reference, and notes. It intentionally avoids email and
-phone fields; use references to the association roster or Hitobito instead.
-Association rows open a drilldown with the operational state and references. In
-local/debug mode, admins can open an association from that view to switch the
-current tenant.
+Admins can use the `Admin Center` view to manage association records and user
+access profiles across tenants. The association registry stores operational
+details only: tenant slug, display name, short name, status, region, locale,
+contact reference, Hitobito group reference, inventory reference, and notes. It
+intentionally avoids email and phone fields; use references to the association
+roster or Hitobito instead. Association and user rows open drilldowns with
+operational state, tenant roles, and member links. In local/debug mode, admins
+can open an association from that view to switch the current tenant.
+
+User access profiles identify users by the email loaded from Cloudflare Access,
+then configure global reader/operator/admin/platform-admin roles, per-tenant
+reader/operator/admin roles, optional tenant/member links, and the read-only
+`basic` profile for users who should only see their own related rentals and
+instruments. Optional user labels are operational display text only and reject
+contact-like values; the Access email is the only user identifier stored for
+frontdoor authentication.
 Tenant data mutations such as bootstrap, imports, and CRUD writes automatically
 create a default registry entry when one is missing, so newly onboarded
 associations appear in the Admin Center without a separate setup step. Existing
@@ -374,7 +395,5 @@ API JSON responses from both the Worker and the Python local server are marked
 intentionally cached by the browser while operators work. The API does not emit
 wildcard CORS origins; the static frontend and Worker are expected to run
 same-origin, with the Access front door handling deployed authentication.
-
-
---
-Just trigger a deploy.
+Unexpected server failures return a generic `unexpected error` response instead
+of echoing internal exception details across tenant boundaries.

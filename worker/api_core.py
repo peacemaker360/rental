@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import parse_qs
 
-from .domain import (
+from domain import (
     DomainError,
     EMAIL_PATTERN,
     ENTITY_TYPES,
@@ -32,7 +32,7 @@ from .domain import (
     update_record,
     utc_now,
 )
-from .migration import instrument_export_package, merge_hitobito_members, merge_instruments
+from migration import instrument_export_package, merge_hitobito_members, merge_instruments
 
 
 class TenantRepository(Protocol):
@@ -57,10 +57,26 @@ class TenantRepository(Protocol):
     async def save_association(self, tenant_id: str, association: dict[str, Any]) -> dict[str, Any]:
         ...
 
+    async def list_users(self) -> list[dict[str, Any]]:
+        ...
+
+    async def load_user(self, user_id: str) -> dict[str, Any] | None:
+        ...
+
+    async def save_user(self, user_id: str, user: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+    async def delete_user(self, user_id: str) -> dict[str, Any] | None:
+        ...
+
 
 TENANT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,62}$")
 TENANT_ID_MESSAGE = "tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores"
 ALLOWED_ROLES = {"viewer", "operator", "admin"}
+USER_GLOBAL_ROLES = {"none", "reader", "operator", "admin", "platform_admin"}
+USER_TENANT_ROLES = {"reader", "operator", "admin"}
+USER_ACCESS_PROFILES = {"full", "basic"}
+USER_STATUSES = {"active", "disabled"}
 SIGNED_CONTEXT_MAX_AGE_SECONDS = 60 * 60
 EXPECTED_REVISION_HEADER = "x-rental-expected-revision"
 ASSOCIATION_STATUSES = {"active", "paused", "archived"}
@@ -73,6 +89,9 @@ class RequestContext:
     actor_id: str = "system"
     role: str = "operator"
     mode: str = "local"
+    access_profile: str = "full"
+    member_id: str | None = None
+    user_email: str | None = None
 
 
 def parse_api_path(pathname: str) -> list[str]:
@@ -107,9 +126,154 @@ def validate_actor_id(actor_id: Any) -> str | None:
     return None
 
 
+def validate_member_link_id(member_id: Any) -> str | None:
+    value = clean_text(member_id)
+    if not value:
+        return "member_id is required for member links"
+    if EMAIL_PATTERN.search(value):
+        return "member_id must be opaque, not an email address"
+    if PHONE_PATTERN.search(value):
+        return "member_id must be opaque, not a phone number"
+    return None
+
+
 def optional_text(value: Any) -> str | None:
     text = clean_text(value)
     return text or None
+
+
+def normalize_email(value: Any) -> str:
+    email = clean_text(value).lower()
+    if not email or not EMAIL_PATTERN.fullmatch(email):
+        raise DomainError("email must be a valid email address")
+    return email
+
+
+def optional_context_email(value: Any, message: str) -> tuple[str | None, str | None]:
+    email = clean_text(value)
+    if not email:
+        return None, None
+    try:
+        return normalize_email(email), None
+    except DomainError:
+        return None, message
+
+
+def normalize_user_id(value: Any) -> str:
+    user_id = clean_text(value)
+    if not re.fullmatch(r"user_[a-f0-9]{16,64}", user_id):
+        raise DomainError("user id is invalid", 404)
+    return user_id
+
+
+def user_id_for_email(email: str) -> str:
+    return f"user_{hashlib.sha256(email.encode('utf-8')).hexdigest()[:24]}"
+
+
+def normalize_tenant_role_items(value: Any) -> list[dict[str, str]]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, dict):
+        source = [{"tenant_id": tenant_id, "role": role} for tenant_id, role in value.items()]
+    elif isinstance(value, list):
+        source = value
+    else:
+        raise DomainError("tenant_roles must be a list or object")
+    roles = []
+    seen: set[str] = set()
+    for item in source:
+        if not isinstance(item, dict):
+            raise DomainError("tenant_roles entries must be objects")
+        tenant_id = clean_text(item.get("tenant_id"))
+        error = validate_tenant_id(tenant_id)
+        if error:
+            raise DomainError(error)
+        role = clean_text(item.get("role")).lower()
+        if role not in USER_TENANT_ROLES:
+            raise DomainError("tenant role must be reader, operator, or admin")
+        if tenant_id not in seen:
+            roles.append({"tenant_id": tenant_id, "role": role})
+            seen.add(tenant_id)
+    return roles
+
+
+def normalize_member_link_items(value: Any) -> list[dict[str, str]]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, dict):
+        source = [{"tenant_id": tenant_id, "member_id": member_id} for tenant_id, member_id in value.items()]
+    elif isinstance(value, list):
+        source = value
+    else:
+        raise DomainError("member_links must be a list or object")
+    links = []
+    seen: set[str] = set()
+    for item in source:
+        if not isinstance(item, dict):
+            raise DomainError("member_links entries must be objects")
+        tenant_id = clean_text(item.get("tenant_id"))
+        error = validate_tenant_id(tenant_id)
+        if error:
+            raise DomainError(error)
+        member_id = clean_text(item.get("member_id"))
+        member_error = validate_member_link_id(member_id)
+        if member_error:
+            raise DomainError(member_error)
+        if tenant_id not in seen:
+            links.append({"tenant_id": tenant_id, "member_id": member_id})
+            seen.add(tenant_id)
+    return links
+
+
+def normalize_user_access(
+    payload: dict[str, Any],
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    current = existing or {}
+    reject_contact_reference_pii(payload, "display_name")
+    email = normalize_email(payload.get("email", current.get("email")))
+    if current.get("email") and email != current["email"]:
+        raise DomainError("email cannot be changed for an existing user")
+    global_role = clean_text(payload.get("global_role", current.get("global_role", "none")), "none").lower()
+    if global_role not in USER_GLOBAL_ROLES:
+        raise DomainError("global_role must be none, reader, operator, admin, or platform_admin")
+    access_profile = clean_text(payload.get("access_profile", current.get("access_profile", "full")), "full").lower()
+    if access_profile not in USER_ACCESS_PROFILES:
+        raise DomainError("access_profile must be full or basic")
+    status = clean_text(payload.get("status", current.get("status", "active")), "active").lower()
+    if status not in USER_STATUSES:
+        raise DomainError("status must be active or disabled")
+    now = utc_now()
+    return {
+        "id": current.get("id") or user_id_for_email(email),
+        "email": email,
+        "display_name": optional_text(payload.get("display_name", current.get("display_name"))),
+        "status": status,
+        "global_role": global_role,
+        "access_profile": access_profile,
+        "tenant_roles": normalize_tenant_role_items(payload.get("tenant_roles", current.get("tenant_roles", []))),
+        "member_links": normalize_member_link_items(payload.get("member_links", current.get("member_links", []))),
+        "created_at": current.get("created_at") or now,
+        "updated_at": now,
+    }
+
+
+def frontdoor_user_assignment(user: dict[str, Any]) -> dict[str, str]:
+    value = {
+        "access_profile": user.get("access_profile", "full"),
+        "email": user["email"],
+        "global_role": user.get("global_role", "none"),
+        "member_links": user.get("member_links", []),
+        "status": user.get("status", "active"),
+        "tenant_roles": user.get("tenant_roles", []),
+    }
+    tenant_roles = value["tenant_roles"]
+    if tenant_roles:
+        value["default_tenant"] = tenant_roles[0]["tenant_id"]
+    return {
+        "key": f"user:{user['email']}",
+        "value": json.dumps(value, separators=(",", ":"), sort_keys=True),
+    }
 
 
 def normalize_association(
@@ -222,7 +386,26 @@ def context_from_signed_headers(
     actor_error = validate_actor_id(actor_id)
     if actor_error:
         return None, actor_error
-    return RequestContext(tenant_id=tenant_id, actor_id=actor_id, role=role, mode="signed"), None
+    access_profile = str(payload.get("access_profile") or "full")
+    if access_profile not in USER_ACCESS_PROFILES:
+        return None, "invalid access profile in signed tenant context"
+    member_id = clean_text(payload.get("member_id")) or None
+    if member_id:
+        member_error = validate_member_link_id(member_id)
+        if member_error:
+            return None, member_error
+    user_email, email_error = optional_context_email(payload.get("user_email"), "invalid user email in signed tenant context")
+    if email_error:
+        return None, email_error
+    return RequestContext(
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        role=role,
+        mode="signed",
+        access_profile=access_profile,
+        member_id=member_id,
+        user_email=user_email,
+    ), None
 
 
 def context_from_headers(
@@ -244,7 +427,20 @@ def context_from_headers(
         if actor_error:
             return None, actor_error
         role = normalized.get("x-rental-role", "admin")
-        return RequestContext(tenant_id=tenant_id, actor_id=actor_id, role=role, mode=mode), None
+        if role not in ALLOWED_ROLES:
+            return None, "invalid role in tenant context"
+        access_profile = normalized.get("x-rental-access-profile", "full")
+        if access_profile not in USER_ACCESS_PROFILES:
+            return None, "invalid access profile in tenant context"
+        member_id = normalized.get("x-rental-member-id")
+        if member_id:
+            member_error = validate_member_link_id(member_id)
+            if member_error:
+                return None, member_error
+        user_email, email_error = optional_context_email(normalized.get("x-rental-user-email"), "invalid user email in tenant context")
+        if email_error:
+            return None, email_error
+        return RequestContext(tenant_id=tenant_id, actor_id=actor_id, role=role, mode=mode, access_profile=access_profile, member_id=member_id, user_email=user_email), None
 
     if mode == "signed":
         return context_from_signed_headers(path_tenant_id, normalized, context_secret)
@@ -267,15 +463,36 @@ def context_from_headers(
     role = normalized.get("x-rental-role", "viewer")
     if role not in ALLOWED_ROLES:
         return None, "invalid role in tenant context"
-    return RequestContext(tenant_id=tenant_id, actor_id=actor_id, role=role, mode=mode), None
+    access_profile = normalized.get("x-rental-access-profile", "full")
+    if access_profile not in USER_ACCESS_PROFILES:
+        return None, "invalid access profile in tenant context"
+    member_id = normalized.get("x-rental-member-id")
+    if member_id:
+        member_error = validate_member_link_id(member_id)
+        if member_error:
+            return None, member_error
+    user_email, email_error = optional_context_email(normalized.get("x-rental-user-email"), "invalid user email in tenant context")
+    if email_error:
+        return None, email_error
+    return RequestContext(
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        role=role,
+        mode=mode,
+        access_profile=access_profile,
+        member_id=member_id,
+        user_email=user_email,
+    ), None
 
 
 def can_write(context: RequestContext) -> bool:
+    if context.access_profile == "basic":
+        return False
     return context.role in ("admin", "operator")
 
 
 def can_admin(context: RequestContext) -> bool:
-    return context.role == "admin"
+    return context.access_profile != "basic" and context.role == "admin"
 
 
 def can_manage_associations(context: RequestContext) -> bool:
@@ -294,6 +511,7 @@ def context_payload(context: RequestContext) -> dict[str, Any]:
             "write": can_write(context),
             "admin": can_admin(context),
             "platform_admin": can_manage_associations(context),
+            "access_profile": context.access_profile,
         },
     }
 
@@ -361,8 +579,11 @@ async def handle_admin_request(
         return 403, {"error": "admin role required"}
     if not can_manage_associations(context):
         return 403, {"error": "platform admin required"}
-    if len(parts) < 2 or parts[1] != "associations":
+    if len(parts) < 2 or parts[1] not in ("associations", "users"):
         return 404, {"error": "route not found"}
+
+    if parts[1] == "users":
+        return await handle_admin_users_request(method, parts, payload, repo)
 
     if len(parts) == 2:
         if method == "GET":
@@ -393,6 +614,53 @@ async def handle_admin_request(
     return 405, {"error": "method not allowed"}
 
 
+async def handle_admin_users_request(
+    method: str,
+    parts: list[str],
+    payload: Any,
+    repo: TenantRepository,
+) -> tuple[int, Any]:
+    if len(parts) == 4 and parts[2] == "export" and parts[3] == "tenant-access":
+        if method != "GET":
+            return 405, {"error": "method not allowed"}
+        users = await repo.list_users()
+        return 200, {
+            "schema": "tenant-access-kv-bulk",
+            "data": [frontdoor_user_assignment(user) for user in users],
+            "summary": {"users": len(users)},
+        }
+
+    if len(parts) == 2:
+        if method == "GET":
+            return 200, {"data": await repo.list_users()}
+        if method == "POST":
+            user = normalize_user_access(object_payload(payload))
+            saved = await repo.save_user(user["id"], user)
+            return 201, {"data": saved}
+        return 405, {"error": "method not allowed"}
+
+    if len(parts) != 3:
+        return 404, {"error": "route not found"}
+    user_id = normalize_user_id(parts[2])
+    existing = await repo.load_user(user_id)
+    if method == "GET":
+        if not existing:
+            return 404, {"error": "user not found"}
+        return 200, {"data": existing}
+    if method == "PUT":
+        user = normalize_user_access({**object_payload(payload), "id": user_id}, existing)
+        if user["id"] != user_id:
+            raise DomainError("email cannot be changed for an existing user")
+        saved = await repo.save_user(user_id, user)
+        return 200, {"data": saved}
+    if method == "DELETE":
+        deleted = await repo.delete_user(user_id)
+        if not deleted:
+            return 404, {"error": "user not found"}
+        return 200, {"deleted": user_id, "data": deleted}
+    return 405, {"error": "method not allowed"}
+
+
 async def revision_conflict_response(
     repo: TenantRepository,
     tenant_id: str,
@@ -419,9 +687,36 @@ async def revision_conflict_response(
     return None
 
 
-def filtered_collection(entity: str, records: dict[str, list[dict[str, Any]]], query: str) -> list[dict[str, Any]]:
+def basic_instrument_ids(records: dict[str, list[dict[str, Any]]], member_id: str) -> set[str]:
+    return {
+        rental.get("instrument_id")
+        for rental in records["rentals"]
+        if rental.get("member_id") == member_id and rental.get("instrument_id")
+    }
+
+
+def basic_access_matches(entity: str, item: dict[str, Any], records: dict[str, list[dict[str, Any]]], context: RequestContext) -> bool:
+    if context.access_profile != "basic":
+        return True
+    if not context.member_id:
+        return False
+    instrument_ids = basic_instrument_ids(records, context.member_id)
+    if entity == "members":
+        return item.get("id") == context.member_id
+    if entity == "rentals":
+        return item.get("member_id") == context.member_id
+    if entity == "instruments":
+        return item.get("id") in instrument_ids
+    if entity == "service_records":
+        return item.get("instrument_id") in instrument_ids
+    if entity == "history":
+        return item.get("member_id") == context.member_id or item.get("instrument_id") in instrument_ids
+    return False
+
+
+def filtered_collection(entity: str, records: dict[str, list[dict[str, Any]]], query: str, context: RequestContext) -> list[dict[str, Any]]:
     hydrated = hydrate(records)
-    items = hydrated[entity]
+    items = [item for item in hydrated[entity] if basic_access_matches(entity, item, records, context)]
     params = parse_qs(query)
     search = (params.get("search") or [""])[0].lower().strip()
     status = (params.get("status") or [""])[0].lower().strip()
@@ -431,6 +726,14 @@ def filtered_collection(entity: str, records: dict[str, list[dict[str, Any]]], q
     if status:
         items = [item for item in items if collection_status_matches(entity, item, status)]
     return items
+
+
+def scoped_record(entity: str, records: dict[str, list[dict[str, Any]]], record_id: str, context: RequestContext) -> dict[str, Any]:
+    hydrated = hydrate(records)
+    record = find_record(hydrated, entity, record_id)
+    if not basic_access_matches(entity, record, records, context):
+        raise DomainError("record not found", 404)
+    return record
 
 
 def collection_status_matches(entity: str, item: dict[str, Any], status: str) -> bool:
@@ -564,7 +867,7 @@ async def handle_api_request(
 
         if len(parts) == 2:
             if method == "GET":
-                return 200, {"data": filtered_collection(entity, records, query), "meta": await tenant_metadata(repo, tenant_id)}
+                return 200, {"data": filtered_collection(entity, records, query, context), "meta": await tenant_metadata(repo, tenant_id)}
             if method == "POST":
                 if not can_write(context):
                     return 403, {"error": "operator role required"}
@@ -593,8 +896,7 @@ async def handle_api_request(
             return 404, {"error": "route not found"}
 
         if method == "GET":
-            hydrated = hydrate(records)
-            return 200, {"data": find_record(hydrated, entity, record_id), "meta": await tenant_metadata(repo, tenant_id)}
+            return 200, {"data": scoped_record(entity, records, record_id, context), "meta": await tenant_metadata(repo, tenant_id)}
         if method == "PUT":
             if not can_write(context):
                 return 403, {"error": "operator role required"}
@@ -620,17 +922,20 @@ async def handle_api_request(
                     if service_record.get("instrument_id") == record_id
                 ]
             record = delete_record(records, entity, record_id)
+            response: dict[str, Any] = {"deleted": record_id, "data": record}
             if entity == "instruments":
                 for service_record in cascaded_service_records:
                     add_service_history(records, tenant_id, service_record, "deleted", context.actor_id)
+                if cascaded_service_records:
+                    response["cascaded"] = {"service_records": cascaded_service_records}
             if entity == "rentals":
                 add_history(records, tenant_id, record, "deleted", context.actor_id)
             if entity == "service_records":
                 add_service_history(records, tenant_id, record, "deleted", context.actor_id)
             metadata = await save_tenant_mutation(repo, tenant_id, records)
-            return 200, {"deleted": record_id, "meta": metadata}
+            return 200, {**response, "meta": metadata}
         return 405, {"error": "method not allowed"}
     except DomainError as exc:
         return exc.status, {"error": str(exc)}
-    except Exception as exc:
-        return 500, {"error": f"unexpected error: {exc}"}
+    except Exception:
+        return 500, {"error": "unexpected error"}

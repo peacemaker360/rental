@@ -70,6 +70,7 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertEqual(scripts["preflight:deploy"], "python3 scripts/deploy_preflight.py")
         self.assertEqual(scripts["preflight:frontdoor"], "python3 scripts/deploy_preflight.py --include-frontdoor")
         self.assertEqual(scripts["smoke:signed"], "python3 scripts/smoke_local.py --signed")
+        self.assertEqual(scripts["check:js"], "node --check public/app.js && node --check frontdoor/access_context_worker.js")
         self.assertIn("wrangler dev --config wrangler.frontdoor.toml", scripts["dev:frontdoor"])
         self.assertIn("wrangler deploy --config wrangler.frontdoor.toml", scripts["deploy:frontdoor"])
         self.assertIn("TENANT_ACCESS_KV", scripts["kv:create-tenant-access"])
@@ -86,7 +87,7 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("python3 -m unittest discover -s tests", source)
         self.assertIn("python3 scripts/smoke_local.py --signed", source)
         self.assertIn("python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor", source)
-        self.assertIn("node --check public/app.js", source)
+        self.assertIn("npm run check:js", source)
         self.assertIn("npm ci", source)
         self.assertNotIn("azure/", source.lower())
         self.assertNotIn("requirements.txt", source)
@@ -97,6 +98,20 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("cf-access-jwt-assertion", source)
         self.assertIn("/cdn-cgi/access/certs", source)
         self.assertIn("RSASSA-PKCS1-v1_5", source)
+        self.assertIn("claims.email", source)
+        self.assertIn("validEmail(email)", source)
+        self.assertIn("Cloudflare Access token email is invalid", source)
+        self.assertIn("user:${email}", source)
+        self.assertIn("resolveUserAssignment", source)
+        self.assertIn("validateUserProfile(user)", source)
+        self.assertIn('const ACCESS_PROFILES = new Set(["full", "basic"])', source)
+        self.assertIn("user access profile has invalid access profile", source)
+        self.assertIn("user access profile tenant roles must be a list", source)
+        self.assertIn("user access profile has invalid member id", source)
+        self.assertIn("opaqueMemberId(item.member_id)", source)
+        self.assertIn("tenant_roles", source)
+        self.assertIn("access_profile", source)
+        self.assertIn("member_id", source)
         self.assertIn("principal:${principal}", source)
         self.assertIn('headers.delete("cf-access-authenticated-user-email")', source)
         self.assertIn('headers.delete("cookie")', source)
@@ -113,6 +128,14 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("await request.text()", source)
         self.assertIn("json.loads(raw)", source)
         self.assertIn('return json_response({"error": str(exc)}, 400)', source)
+
+    def test_backend_worker_cors_allows_trusted_access_profile_headers(self):
+        module = load_worker_module_for_test()
+        allowed = module.JSON_HEADERS["access-control-allow-headers"]
+
+        self.assertIn("x-rental-access-profile", allowed)
+        self.assertIn("x-rental-member-id", allowed)
+        self.assertIn("x-rental-user-email", allowed)
 
     def test_backend_worker_keeps_empty_api_path_in_json_api_boundary(self):
         source = (ROOT / "worker" / "worker.py").read_text(encoding="utf-8")

@@ -4,7 +4,7 @@ import re
 from copy import deepcopy
 from typing import Any
 
-from .domain import (
+from domain import (
     DomainError,
     EMAIL_PATTERN,
     PHONE_PATTERN,
