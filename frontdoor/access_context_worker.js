@@ -35,10 +35,14 @@ export default {
       const context = {
         access_profile: assignment.access_profile || "full",
         actor_id: assignment.actor_id || `access:${await shortDigest(assignment.email || claims.sub || "unknown")}`,
+        global_role: assignment.global_role || "none",
+        has_global_role: Boolean(assignment.has_global_role),
         issued_at: Date.now() / 1000,
         member_id: assignment.member_id,
         role: assignment.role,
+        tenant_count: assignment.tenant_count || 0,
         tenant_id: assignment.tenant_id,
+        tenant_switchable: Boolean(assignment.tenant_switchable),
         user_email: assignment.email
       };
       const signedHeaders = await signedContextHeaders(context, env.RENTAL_CONTEXT_SECRET);
@@ -187,12 +191,18 @@ function resolveUserAssignment(user, email, url) {
 
   const role = roleForTenant(user, tenantId, adminRoute);
   const memberLink = (user.member_links || []).find((item) => item.tenant_id === tenantId);
+  const globalRole = user.global_role || "none";
+  const tenantCount = tenantAccessCount(user);
   return {
     access_profile: user.access_profile || "full",
     email,
+    global_role: globalRole,
+    has_global_role: globalRole !== "none",
     member_id: memberLink?.member_id,
     role,
-    tenant_id: tenantId
+    tenant_count: tenantCount,
+    tenant_id: tenantId,
+    tenant_switchable: globalRole !== "none" || tenantCount > 1
   };
 }
 
@@ -235,6 +245,17 @@ function roleForTenant(user, tenantId, adminRoute) {
 
 function firstTenantRole(user) {
   return (user.tenant_roles || []).find((item) => validTenantId(item.tenant_id));
+}
+
+function tenantAccessCount(user) {
+  const tenantIds = new Set();
+  for (const item of user.tenant_roles || []) {
+    if (validTenantId(item.tenant_id)) tenantIds.add(item.tenant_id);
+  }
+  for (const item of user.member_links || []) {
+    if (validTenantId(item.tenant_id)) tenantIds.add(item.tenant_id);
+  }
+  return tenantIds.size;
 }
 
 function routeTenant(url) {

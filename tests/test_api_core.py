@@ -1,7 +1,7 @@
 import time
 import unittest
 
-from worker.api_core import RequestContext, context_from_headers, handle_api_request, is_api_request_path, parse_api_path, signed_context_headers
+from worker.api_core import RequestContext, context_from_headers, context_payload, handle_api_request, is_api_request_path, parse_api_path, signed_context_headers
 from worker.domain import empty_records
 
 
@@ -1225,6 +1225,26 @@ class ContextTests(unittest.TestCase):
 
         self.assertIsNone(context)
         self.assertEqual(error, "actor_id must be opaque, not a phone number")
+
+    def test_signed_mode_exposes_coarse_tenant_switch_hints(self):
+        headers = signed_context_headers({
+            "tenant_id": "tenant-a",
+            "actor_id": "access-user-1",
+            "role": "viewer",
+            "global_role": "reader",
+            "tenant_count": 2,
+            "tenant_switchable": True,
+        }, "test-secret")
+
+        context, error = context_from_headers("tenant-a", headers, "signed", "test-secret")
+
+        self.assertIsNone(error)
+        self.assertEqual(context.global_role, "reader")
+        self.assertEqual(context.tenant_count, 2)
+        self.assertTrue(context.tenant_switchable)
+        payload = context_payload(context)
+        self.assertTrue(payload["has_global_role"])
+        self.assertTrue(payload["tenant_switchable"])
 
     def test_signed_mode_requires_secret(self):
         headers = signed_context_headers({"tenant_id": "tenant-a", "role": "viewer"}, "test-secret")

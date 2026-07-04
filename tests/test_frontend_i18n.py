@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "public" / "app.js"
 INDEX_HTML = ROOT / "public" / "index.html"
+STYLES_CSS = ROOT / "public" / "styles.css"
 
 
 def extract_translation_body(source: str, language: str) -> str:
@@ -46,6 +47,7 @@ class FrontendI18nTests(unittest.TestCase):
     def setUp(self):
         self.app_js = APP_JS.read_text(encoding="utf-8")
         self.index_html = INDEX_HTML.read_text(encoding="utf-8")
+        self.styles_css = STYLES_CSS.read_text(encoding="utf-8")
         self.en_keys = translation_keys(self.app_js, "en")
         self.de_keys = translation_keys(self.app_js, "de")
 
@@ -231,6 +233,46 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('const target = event.target.closest("button");', self.app_js)
         self.assertIn("event.stopPropagation();", self.app_js)
         self.assertIn('const row = event.target.closest("[data-open]");', self.app_js)
+
+    def test_mobile_layout_turns_tables_into_labeled_cards(self):
+        self.assertIn("@media (max-width: 680px)", self.styles_css)
+        self.assertIn("table,\n  thead,\n  tbody,\n  tr,\n  td {\n    display: block;", self.styles_css)
+        self.assertIn("td::before", self.styles_css)
+        self.assertIn("content: attr(data-label)", self.styles_css)
+        self.assertIn("table {\n    min-width: 0;", self.styles_css)
+        self.assertIn('data-label="${t("table.name")}"', self.app_js)
+        self.assertIn('data-label="${t("table.status")}"', self.app_js)
+        self.assertIn('data-label="${t("table.action")}"', self.app_js)
+
+    def test_mobile_top_controls_wrap_without_overlap(self):
+        self.assertIn("body {\n  margin: 0;\n  min-height: 100vh;\n  background: var(--bg);\n  color: var(--ink);\n  overflow-x: hidden;", self.styles_css)
+        self.assertIn(".sidebar {\n    position: sticky;", self.styles_css)
+        self.assertIn(".nav {\n    display: flex;\n    overflow-x: auto;", self.styles_css)
+        self.assertIn(".nav {\n    display: grid;\n    grid-template-columns: repeat(3, minmax(0, 1fr));", self.styles_css)
+        self.assertIn("overflow: visible;", self.styles_css)
+        self.assertIn(".topbar-actions {\n    display: grid;", self.styles_css)
+        self.assertIn("grid-template-columns: 1fr;", self.styles_css)
+        self.assertIn(".segmented {\n    width: 100%;", self.styles_css)
+        self.assertIn("overflow-wrap: anywhere;", self.styles_css)
+        self.assertIn(".record-dialog {\n    width: 100%;", self.styles_css)
+        self.assertIn("margin: 0;", self.styles_css)
+
+    def test_reader_chrome_hides_switcher_and_operational_meta(self):
+        self.assertIn("const tenantBox = document.querySelector(\".tenant-box\");", self.app_js)
+        self.assertIn("const tenantMeta = document.querySelector(\".tenant-meta\");", self.app_js)
+        self.assertIn("function shouldShowTenantSwitcher()", self.app_js)
+        self.assertIn('context.mode === "local" || context.mode === "open"', self.app_js)
+        self.assertIn("context.tenant_switchable || hasGlobalRole() || Number(context.tenant_count || 0) > 1", self.app_js)
+        self.assertIn("function shouldShowOperationalMeta()", self.app_js)
+        self.assertIn("return Boolean(caps.write || caps.admin);", self.app_js)
+        self.assertIn("if (tenantBox) tenantBox.hidden = !switcherVisible && !metaVisible;", self.app_js)
+        self.assertIn("if (tenantMeta) tenantMeta.hidden = !metaVisible;", self.app_js)
+
+    def test_load_demo_button_disappears_when_tenant_has_data(self):
+        self.assertIn("function hasExistingTenantData()", self.app_js)
+        self.assertIn("Object.values(state.records).some((records) => Array.isArray(records) && records.length > 1)", self.app_js)
+        self.assertIn("seedButton.hidden = hasExistingTenantData();", self.app_js)
+        self.assertIn("seedButton.disabled = !caps.admin || seedButton.hidden;", self.app_js)
 
     def test_data_refresh_clears_missing_detail_selection(self):
         self.assertIn("reconcileDetailSelection();", self.app_js)

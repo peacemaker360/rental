@@ -41,6 +41,8 @@ const tenantInput = document.querySelector("#tenantInput");
 const tenantLabel = document.querySelector("#tenantLabel");
 const tenantRevision = document.querySelector("#tenantRevision");
 const tenantUpdatedAt = document.querySelector("#tenantUpdatedAt");
+const tenantBox = document.querySelector(".tenant-box");
+const tenantMeta = document.querySelector(".tenant-meta");
 const saveTenant = document.querySelector("#saveTenant");
 const dialog = document.querySelector("#recordDialog");
 const recordForm = document.querySelector("#recordForm");
@@ -657,7 +659,8 @@ function applyContext(context) {
   state.context = context;
   state.authStatus = "signed_in";
   state.authError = "";
-  if (context.tenant_locked) {
+  const switcherVisible = shouldShowTenantSwitcher();
+  if (context.tenant_locked && !switcherVisible) {
     state.tenant = context.tenant_id;
     tenantInput.value = state.tenant;
     tenantInput.disabled = true;
@@ -671,12 +674,14 @@ function applyContext(context) {
   }
   tenantLabel.textContent = state.tenant;
   applyMeta(context.meta);
+  applyAccessChrome();
 }
 
 function applyMeta(meta = state.meta) {
   if (meta && typeof meta === "object") {
     state.meta = {...state.meta, ...meta};
   }
+  applyAccessChrome();
   const revision = Number(state.meta.revision || 0);
   tenantRevision.textContent = Number.isFinite(revision) ? String(revision) : "0";
   if (!state.meta.updated_at) {
@@ -706,10 +711,40 @@ function applyLanguage() {
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  if (state.context?.tenant_locked) {
+  if (state.context?.tenant_locked && !shouldShowTenantSwitcher()) {
     saveTenant.title = t("tenant.locked");
   }
   applyMeta();
+}
+
+function hasGlobalRole() {
+  const globalRole = state.context?.global_role || "none";
+  return globalRole !== "none" || Boolean(state.context?.has_global_role);
+}
+
+function shouldShowTenantSwitcher() {
+  const context = state.context;
+  if (!context) return true;
+  if (context.mode === "local" || context.mode === "open") return true;
+  return Boolean(context.tenant_switchable || hasGlobalRole() || Number(context.tenant_count || 0) > 1);
+}
+
+function shouldShowOperationalMeta() {
+  const caps = capabilities();
+  return Boolean(caps.write || caps.admin);
+}
+
+function applyAccessChrome() {
+  const switcherVisible = state.authStatus === "signed_in" && shouldShowTenantSwitcher();
+  const metaVisible = state.authStatus === "signed_in" && shouldShowOperationalMeta();
+  if (tenantBox) tenantBox.hidden = !switcherVisible && !metaVisible;
+  if (tenantInput) tenantInput.hidden = !switcherVisible;
+  if (saveTenant) saveTenant.hidden = !switcherVisible;
+  const tenantRow = tenantInput?.closest(".tenant-row");
+  if (tenantRow) tenantRow.hidden = !switcherVisible;
+  const tenantLabelElement = tenantBox?.querySelector("label");
+  if (tenantLabelElement) tenantLabelElement.hidden = !switcherVisible;
+  if (tenantMeta) tenantMeta.hidden = !metaVisible;
 }
 
 function downloadJson(filename, data) {
@@ -845,6 +880,10 @@ function capabilities() {
   return state.context?.capabilities || {read: true, write: true, admin: true, platform_admin: true};
 }
 
+function hasExistingTenantData() {
+  return Object.values(state.records).some((records) => Array.isArray(records) && records.length > 1);
+}
+
 function defaultSortFor(viewName) {
   if (viewName === "service_records") return "service_date";
   if (viewName === "rentals") return "due_date";
@@ -928,7 +967,8 @@ function render() {
   primaryAction.hidden = state.view === "history" || (state.view === "admin" && !caps.admin);
   primaryAction.textContent = state.view === "admin" ? t("actions.new_association") : state.view === "instruments" ? t("actions.new_instruments") : state.view === "members" ? t("actions.new_members") : state.view === "service_records" ? t("actions.new_service_records") : t("actions.new_rentals");
   primaryAction.disabled = state.view === "admin" ? !caps.platform_admin : !caps.write;
-  seedButton.disabled = !caps.admin;
+  seedButton.hidden = hasExistingTenantData();
+  seedButton.disabled = !caps.admin || seedButton.hidden;
   exportButton.disabled = !caps.admin;
   importButton.disabled = !caps.admin;
   hitobitoImportButton.disabled = !caps.admin;
@@ -955,6 +995,7 @@ function renderAuthStart() {
   tenantInput.disabled = true;
   saveTenant.disabled = true;
   primaryAction.hidden = true;
+  seedButton.hidden = false;
   seedButton.disabled = true;
   exportButton.disabled = true;
   importButton.disabled = true;
@@ -1107,11 +1148,11 @@ function renderAccessRequestTable(items) {
         <thead><tr><th>${t("fields.email")}</th><th>${t("labels.tenant")}</th><th>${t("table.status")}</th><th>${t("table.updated")}</th><th></th></tr></thead>
         <tbody>${items.map((item) => `
           <tr>
-            <td><strong>${escapeHtml(item.email)}</strong></td>
-            <td>${escapeHtml(item.tenant_id)}</td>
-            <td>${statusPill(item.status || "pending")}</td>
-            <td>${item.requested_at ? new Date(item.requested_at).toLocaleString(locale()) : ""}</td>
-            <td><div class="row-actions">
+            <td data-label="${t("fields.email")}"><strong>${escapeHtml(item.email)}</strong></td>
+            <td data-label="${t("labels.tenant")}">${escapeHtml(item.tenant_id)}</td>
+            <td data-label="${t("table.status")}">${statusPill(item.status || "pending")}</td>
+            <td data-label="${t("table.updated")}">${item.requested_at ? new Date(item.requested_at).toLocaleString(locale()) : ""}</td>
+            <td data-label="${t("table.action")}"><div class="row-actions">
               <button class="primary-button" data-approve-request="${escapeHtml(item.id)}">${t("actions.approve")}</button>
               <button class="danger-button" data-deny-request="${escapeHtml(item.id)}">${t("actions.deny")}</button>
             </div></td>
@@ -1148,15 +1189,15 @@ function renderAssociationTable(items) {
         <thead><tr><th>${t("table.tenant")}</th><th>${t("table.name")}</th><th>${t("table.status")}</th><th>${t("table.region")}</th><th>Hitobito</th><th>${t("table.updated")}</th><th></th></tr></thead>
         <tbody>${items.map((item) => `
           <tr class="clickable-row ${state.detail?.id === item.tenant_id ? "is-selected" : ""}" data-open="associations" data-id="${item.tenant_id}" tabindex="0">
-            <td><strong>${escapeHtml(item.tenant_id)}</strong><div class="muted">${escapeHtml(item.short_name || "")}</div></td>
-            <td>${escapeHtml(item.display_name)}</td>
-            <td>${statusPill(item.status || "active")}</td>
-            <td>${escapeHtml(item.region || "")}</td>
-            <td>${escapeHtml(item.hitobito_group_ref || "")}</td>
-            <td>${item.meta?.updated_at ? new Date(item.meta.updated_at).toLocaleString(locale()) : ""}</td>
-            <td><div class="row-actions">
+            <td data-label="${t("table.tenant")}"><strong>${escapeHtml(item.tenant_id)}</strong><div class="muted">${escapeHtml(item.short_name || "")}</div></td>
+            <td data-label="${t("table.name")}">${escapeHtml(item.display_name)}</td>
+            <td data-label="${t("table.status")}">${statusPill(item.status || "active")}</td>
+            <td data-label="${t("table.region")}">${escapeHtml(item.region || "")}</td>
+            <td data-label="Hitobito">${escapeHtml(item.hitobito_group_ref || "")}</td>
+            <td data-label="${t("table.updated")}">${item.meta?.updated_at ? new Date(item.meta.updated_at).toLocaleString(locale()) : ""}</td>
+            <td data-label="${t("table.action")}"><div class="row-actions">
               <button class="ghost-button" data-edit-association="${item.tenant_id}">${t("actions.edit")}</button>
-              ${state.context?.tenant_locked ? "" : `<button class="primary-button" data-open-association="${item.tenant_id}">${t("actions.open")}</button>`}
+              ${shouldShowTenantSwitcher() ? `<button class="primary-button" data-open-association="${item.tenant_id}">${t("actions.open")}</button>` : ""}
             </div></td>
           </tr>
         `).join("")}</tbody>
@@ -1173,12 +1214,12 @@ function renderUserTable(items) {
         <thead><tr><th>${t("fields.email")}</th><th>${t("fields.global_role")}</th><th>${t("fields.access_profile")}</th><th>${t("fields.tenant_roles")}</th><th>${t("table.status")}</th><th></th></tr></thead>
         <tbody>${items.map((item) => `
           <tr class="clickable-row ${state.detail?.entity === "user_access" && state.detail?.id === item.id ? "is-selected" : ""}" data-open="user_access" data-id="${item.id}" tabindex="0">
-            <td><strong>${escapeHtml(item.email)}</strong><div class="muted">${escapeHtml(item.display_name || item.id)}</div></td>
-            <td>${globalRolePill(item.global_role || "none")}</td>
-            <td>${accessProfilePill(item.access_profile || "full")}</td>
-            <td>${escapeHtml((item.tenant_roles || []).map((role) => `${role.tenant_id}:${role.role}`).join(", "))}</td>
-            <td>${statusPill(item.status || "active")}</td>
-            <td><div class="row-actions">
+            <td data-label="${t("fields.email")}"><strong>${escapeHtml(item.email)}</strong><div class="muted">${escapeHtml(item.display_name || item.id)}</div></td>
+            <td data-label="${t("fields.global_role")}">${globalRolePill(item.global_role || "none")}</td>
+            <td data-label="${t("fields.access_profile")}">${accessProfilePill(item.access_profile || "full")}</td>
+            <td data-label="${t("fields.tenant_roles")}">${escapeHtml((item.tenant_roles || []).map((role) => `${role.tenant_id}:${role.role}`).join(", "))}</td>
+            <td data-label="${t("table.status")}">${statusPill(item.status || "active")}</td>
+            <td data-label="${t("table.action")}"><div class="row-actions">
               <button class="ghost-button" data-edit-user="${item.id}">${t("actions.edit")}</button>
               <button class="danger-button" data-delete-user="${item.id}">${t("actions.delete")}</button>
             </div></td>
@@ -1192,7 +1233,7 @@ function renderUserTable(items) {
 function renderAssociationDetail(tenantId) {
   const item = state.associations.find((association) => association.tenant_id === tenantId);
   if (!item) return "";
-  const canOpen = !state.context?.tenant_locked;
+  const canOpen = shouldShowTenantSwitcher();
   return `
     <aside class="detail-panel">
       <div class="panel-head">
@@ -1443,14 +1484,14 @@ function renderInstrumentTable(items) {
         <thead><tr><th>${t("table.name")}</th><th>${t("table.type")}</th><th>${t("table.serial")}</th><th>${t("table.condition")}</th><th>${t("table.last_service")}</th><th>${t("table.next_service")}</th><th>${t("table.status")}</th><th></th></tr></thead>
         <tbody>${items.map((item) => `
           <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="instruments" data-id="${item.id}" tabindex="0">
-            <td><strong>${escapeHtml(item.name)}</strong><div class="muted">${escapeHtml(item.brand)}</div></td>
-            <td>${escapeHtml(item.type)}</td>
-            <td>${escapeHtml(item.serial)}</td>
-            <td>${conditionPill(item.service_condition || "good")}</td>
-            <td>${formatDate(item.last_service_date)}</td>
-            <td>${item.next_service_date ? `${formatDate(item.next_service_date)} ${serviceDuePill(item.service_due_status)}` : ""}</td>
-            <td>${statusPill(item.status)}</td>
-            <td><div class="row-actions">
+            <td data-label="${t("table.name")}"><strong>${escapeHtml(item.name)}</strong><div class="muted">${escapeHtml(item.brand)}</div></td>
+            <td data-label="${t("table.type")}">${escapeHtml(item.type)}</td>
+            <td data-label="${t("table.serial")}">${escapeHtml(item.serial)}</td>
+            <td data-label="${t("table.condition")}">${conditionPill(item.service_condition || "good")}</td>
+            <td data-label="${t("table.last_service")}">${formatDate(item.last_service_date)}</td>
+            <td data-label="${t("table.next_service")}">${item.next_service_date ? `${formatDate(item.next_service_date)} ${serviceDuePill(item.service_due_status)}` : ""}</td>
+            <td data-label="${t("table.status")}">${statusPill(item.status)}</td>
+            <td data-label="${t("table.action")}"><div class="row-actions">
               ${caps.write ? `<button class="ghost-button" data-edit="instruments" data-id="${item.id}">${t("actions.edit")}</button>` : ""}
               ${caps.admin ? `<button class="danger-button" data-delete="instruments" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
             </div></td>
@@ -1531,12 +1572,12 @@ function renderServiceTable(items) {
           const dueStatus = serviceDueStatus(item.next_service_date);
           return `
             <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="service_records" data-id="${item.id}" tabindex="0">
-              <td><strong>${escapeHtml(serviceInstrumentName(item))}</strong><div class="muted">${escapeHtml(item.job_type || "")}</div></td>
-              <td>${formatDate(item.service_date)}</td>
-              <td>${conditionPill(item.condition)}</td>
-              <td>${item.next_service_date ? `${formatDate(item.next_service_date)} ${serviceDuePill(dueStatus)}` : ""}</td>
-              <td>${escapeHtml(item.provider || "")}</td>
-              <td><div class="row-actions">
+              <td data-label="${t("table.instrument")}"><strong>${escapeHtml(serviceInstrumentName(item))}</strong><div class="muted">${escapeHtml(item.job_type || "")}</div></td>
+              <td data-label="${t("fields.service_date")}">${formatDate(item.service_date)}</td>
+              <td data-label="${t("table.condition")}">${conditionPill(item.condition)}</td>
+              <td data-label="${t("table.next_service")}">${item.next_service_date ? `${formatDate(item.next_service_date)} ${serviceDuePill(dueStatus)}` : ""}</td>
+              <td data-label="${t("fields.provider")}">${escapeHtml(item.provider || "")}</td>
+              <td data-label="${t("table.action")}"><div class="row-actions">
                 ${caps.write ? `<button class="ghost-button" data-edit="service_records" data-id="${item.id}">${t("actions.edit")}</button>` : ""}
                 ${caps.admin ? `<button class="danger-button" data-delete="service_records" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
               </div></td>
@@ -1610,11 +1651,11 @@ function renderMemberTable(items) {
         <thead><tr><th>${t("table.name")}</th><th>${t("table.reference")}</th><th>${t("table.contact")}</th><th>${t("table.status")}</th><th></th></tr></thead>
         <tbody>${items.map((item) => `
           <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="members" data-id="${item.id}" tabindex="0">
-            <td><strong>${escapeHtml(item.display_name)}</strong></td>
-            <td>${escapeHtml(item.member_ref)}</td>
-            <td>${escapeHtml(item.contact_hint)}</td>
-            <td>${item.is_active ? statusPill("active") : statusPill("inactive")}</td>
-            <td><div class="row-actions">
+            <td data-label="${t("table.name")}"><strong>${escapeHtml(item.display_name)}</strong></td>
+            <td data-label="${t("table.reference")}">${escapeHtml(item.member_ref)}</td>
+            <td data-label="${t("table.contact")}">${escapeHtml(item.contact_hint)}</td>
+            <td data-label="${t("table.status")}">${item.is_active ? statusPill("active") : statusPill("inactive")}</td>
+            <td data-label="${t("table.action")}"><div class="row-actions">
               ${caps.write ? `<button class="ghost-button" data-edit="members" data-id="${item.id}">${t("actions.edit")}</button>` : ""}
               ${caps.admin ? `<button class="danger-button" data-delete="members" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
             </div></td>
@@ -1659,12 +1700,12 @@ function renderRentalTable(items, compact = false) {
         <thead><tr><th>${t("table.instrument")}</th><th>${t("table.member")}</th><th>${t("table.start")}</th><th>${t("table.due")}</th><th>${t("table.status")}</th><th></th></tr></thead>
         <tbody>${items.map((item) => `
           <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="rentals" data-id="${item.id}" tabindex="0">
-            <td><strong>${escapeHtml(item.instrument_name)}</strong><div class="muted">${escapeHtml(item.note)}</div></td>
-            <td>${escapeHtml(item.member_name)}</td>
-            <td>${formatDate(item.start_date)}</td>
-            <td>${formatDate(item.due_date)}</td>
-            <td>${statusPill(item.status)}</td>
-            <td><div class="row-actions">
+            <td data-label="${t("table.instrument")}"><strong>${escapeHtml(item.instrument_name)}</strong><div class="muted">${escapeHtml(item.note)}</div></td>
+            <td data-label="${t("table.member")}">${escapeHtml(item.member_name)}</td>
+            <td data-label="${t("table.start")}">${formatDate(item.start_date)}</td>
+            <td data-label="${t("table.due")}">${formatDate(item.due_date)}</td>
+            <td data-label="${t("table.status")}">${statusPill(item.status)}</td>
+            <td data-label="${t("table.action")}"><div class="row-actions">
               ${caps.write && item.status !== "returned" ? `<button class="primary-button" data-return="${item.id}">${t("actions.return")}</button>` : ""}
               ${compact ? "" : `${caps.write ? `<button class="ghost-button" data-edit="rentals" data-id="${item.id}">${t("actions.edit")}</button>` : ""}
               ${caps.admin ? `<button class="danger-button" data-delete="rentals" data-id="${item.id}">${t("actions.delete")}</button>` : ""}`}
@@ -1721,12 +1762,12 @@ function renderHistory() {
             <thead><tr><th>${t("table.when")}</th><th>${t("table.action")}</th><th>${t("table.instrument")}</th><th>${t("table.member")}</th><th>${t("table.service")}</th><th>${t("table.rental")}</th></tr></thead>
             <tbody>${items.map((item) => `
               <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="history" data-id="${item.id}" tabindex="0">
-                <td>${new Date(item.created_at).toLocaleString(locale())}</td>
-                <td>${statusPill(item.action)}</td>
-                <td>${escapeHtml(item.instrument_name)}</td>
-                <td>${escapeHtml(item.member_name)}</td>
-                <td>${renderHistoryServiceCell(item)}</td>
-                <td>${escapeHtml(item.rental_id)}</td>
+                <td data-label="${t("table.when")}">${new Date(item.created_at).toLocaleString(locale())}</td>
+                <td data-label="${t("table.action")}">${statusPill(item.action)}</td>
+                <td data-label="${t("table.instrument")}">${escapeHtml(item.instrument_name)}</td>
+                <td data-label="${t("table.member")}">${escapeHtml(item.member_name)}</td>
+                <td data-label="${t("table.service")}">${renderHistoryServiceCell(item)}</td>
+                <td data-label="${t("table.rental")}">${escapeHtml(item.rental_id)}</td>
               </tr>
             `).join("")}</tbody>
           </table>

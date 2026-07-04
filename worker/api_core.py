@@ -101,6 +101,9 @@ class RequestContext:
     access_profile: str = "full"
     member_id: str | None = None
     user_email: str | None = None
+    global_role: str = "none"
+    tenant_count: int = 1
+    tenant_switchable: bool = False
 
 
 def parse_api_path(pathname: str) -> list[str]:
@@ -413,6 +416,13 @@ def context_from_signed_headers(
     user_email, email_error = optional_context_email(payload.get("user_email"), "invalid user email in signed tenant context")
     if email_error:
         return None, email_error
+    global_role = str(payload.get("global_role") or "none")
+    if global_role not in USER_GLOBAL_ROLES:
+        return None, "invalid global role in signed tenant context"
+    try:
+        tenant_count = max(0, int(payload.get("tenant_count") or 0))
+    except (TypeError, ValueError):
+        return None, "invalid tenant count in signed tenant context"
     return RequestContext(
         tenant_id=tenant_id,
         actor_id=actor_id,
@@ -421,6 +431,9 @@ def context_from_signed_headers(
         access_profile=access_profile,
         member_id=member_id,
         user_email=user_email,
+        global_role=global_role,
+        tenant_count=tenant_count,
+        tenant_switchable=bool(payload.get("tenant_switchable")),
     ), None
 
 
@@ -586,6 +599,10 @@ def context_payload(context: RequestContext) -> dict[str, Any]:
             "platform_admin": can_manage_associations(context),
             "access_profile": context.access_profile,
         },
+        "global_role": context.global_role,
+        "has_global_role": context.global_role != "none",
+        "tenant_count": context.tenant_count,
+        "tenant_switchable": context.tenant_switchable or context.global_role != "none" or context.tenant_count > 1,
     }
 
 

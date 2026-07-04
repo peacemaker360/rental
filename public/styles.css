@@ -24,6 +24,7 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--ink);
+  overflow-x: hidden;
 }
 
 button,
@@ -57,12 +58,14 @@ button {
   display: flex;
   flex-direction: column;
   gap: 28px;
+  min-width: 0;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .brand-mark {
@@ -90,6 +93,7 @@ button {
 .nav {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .nav-item {
@@ -112,11 +116,13 @@ button {
   margin-top: auto;
   padding-top: 18px;
   border-top: 1px solid rgba(255, 255, 255, 0.18);
+  min-width: 0;
 }
 
 .language-box {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .language-box span {
@@ -130,6 +136,7 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  min-width: 0;
 }
 
 .language-switch button {
@@ -164,6 +171,7 @@ label {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 42px;
   gap: 8px;
+  min-width: 0;
 }
 
 .tenant-meta {
@@ -248,6 +256,7 @@ h3 {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .primary-button,
@@ -259,6 +268,9 @@ h3 {
   border: 1px solid transparent;
   padding: 0 14px;
   font-weight: 700;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .primary-button {
@@ -484,6 +496,8 @@ h3 {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 3px;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .segmented button {
@@ -507,6 +521,7 @@ h3 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
+  max-width: 100%;
 }
 
 table {
@@ -521,6 +536,7 @@ td {
   padding: 12px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 
 th {
@@ -880,16 +896,28 @@ tr:last-child td {
   }
 
   .sidebar {
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 10;
     padding: 16px;
+    gap: 14px;
+  }
+
+  .brand {
+    align-items: flex-start;
   }
 
   .nav {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    display: flex;
     overflow-x: auto;
+    padding-bottom: 3px;
+    scrollbar-width: none;
   }
 
   .nav-item {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 0 12px;
     text-align: center;
     white-space: nowrap;
   }
@@ -907,8 +935,46 @@ tr:last-child td {
 }
 
 @media (max-width: 680px) {
+  .app-shell {
+    min-height: 100dvh;
+  }
+
+  .sidebar {
+    padding: 12px;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .brand strong {
+    font-size: 0.96rem;
+  }
+
+  .brand span:not(.brand-mark) {
+    font-size: 0.8rem;
+  }
+
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .nav-item {
+    width: 100%;
+    min-height: 38px;
+    padding: 0 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.15;
+  }
+
   .workspace {
-    padding: 16px;
+    padding: 14px 12px 24px;
   }
 
   .topbar,
@@ -918,6 +984,16 @@ tr:last-child td {
     flex-direction: column;
   }
 
+  .topbar {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-size: 1.55rem;
+    line-height: 1.15;
+  }
+
   .topbar-actions,
   .row-actions,
   .dialog-actions,
@@ -925,10 +1001,59 @@ tr:last-child td {
     width: 100%;
   }
 
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .primary-button,
   .ghost-button,
   .danger-button {
     flex: 1;
+    width: 100%;
+  }
+
+  .icon-button {
+    min-width: 42px;
+    width: 42px;
+    flex: 0 0 42px;
+  }
+
+  .toolbar {
+    gap: 10px;
+  }
+
+  .toolbar input,
+  .toolbar select,
+  .sort-control,
+  .sort-control select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .segmented {
+    width: 100%;
+  }
+
+  .segmented button {
+    flex: 0 0 auto;
+  }
+
+  .panel {
+    padding: 12px;
+  }
+
+  .panel-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .tenant-row {
+    grid-template-columns: minmax(0, 1fr) 42px;
+  }
+
+  .language-switch {
+    grid-template-columns: 1fr 1fr;
   }
 
   .stats-grid,
@@ -942,6 +1067,87 @@ tr:last-child td {
 
   .auth-start {
     padding: 22px;
+  }
+
+  .table-wrap {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  table,
+  thead,
+  tbody,
+  tr,
+  td {
+    display: block;
+    width: 100%;
+  }
+
+  table {
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0 10px;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tr {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #ffffff;
+    overflow: hidden;
+  }
+
+  td {
+    display: grid;
+    grid-template-columns: minmax(88px, 34%) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    min-height: 42px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  td:last-child {
+    border-bottom: 0;
+  }
+
+  td:empty {
+    display: none;
+  }
+
+  td .row-actions {
+    justify-content: stretch;
+  }
+
+  .detail-panel {
+    position: static;
+  }
+
+  .record-dialog {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+    margin: 0;
+  }
+
+  .record-dialog form {
+    min-height: 100dvh;
+    padding: 14px;
+    overflow-y: auto;
   }
 
   .field.full {
