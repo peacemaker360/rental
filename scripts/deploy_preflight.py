@@ -64,8 +64,8 @@ LEGACY_JS_IMPORT = re.compile(
 LEGACY_CONFIG_DEPENDENCY = re.compile(r"[\"']?(flask|sqlalchemy|alembic|azure[-_.a-z0-9]*)[\"']?\s*(?:[<>=!~]=?|[,;\]}\n]|$)", re.IGNORECASE)
 CI_WORKFLOW_PATH = ".github/workflows/cloudflare_refactor_ci.yml"
 CI_REQUIRED_SNIPPETS = (
-    "python3 -m unittest discover -s tests",
-    "python3 scripts/smoke_local.py --signed",
+    "npm test",
+    "npm run smoke:signed",
     "python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor",
     "npm run check:js",
     "npm ci",
@@ -132,9 +132,9 @@ def validate_package(package: dict[str, Any], errors: list[str]) -> None:
         "dev": "uv run pywrangler dev",
         "deploy": "uv run pywrangler deploy",
         "dev:python": "python3 scripts/local_dev_server.py",
-        "test": "python3 -m unittest discover -s tests",
-        "smoke:python": "python3 scripts/smoke_local.py",
-        "smoke:signed": "python3 scripts/smoke_local.py --signed",
+        "test": "PYTHONPATH=.:worker python3 -m unittest discover -s tests",
+        "smoke:python": "PYTHONPATH=.:worker python3 scripts/smoke_local.py",
+        "smoke:signed": "PYTHONPATH=.:worker python3 scripts/smoke_local.py --signed",
         "tenant-access": "python3 scripts/tenant_access_assignments.py",
         "check:js": "node --check public/app.js && node --check frontdoor/access_context_worker.js",
     }
@@ -150,8 +150,10 @@ def validate_pyproject(pyproject: dict[str, Any], errors: list[str]) -> None:
     if pyproject.get("project", {}).get("requires-python") != ">=3.12":
         errors.append("pyproject.toml must require Python >=3.12 for Python Workers")
     dev_dependencies = pyproject.get("dependency-groups", {}).get("dev", [])
-    if "workers-py>=0.2.0" not in dev_dependencies:
-        errors.append("pyproject.toml dev dependency group must include workers-py>=0.2.0")
+    if "workers-py>=1.14.0" not in dev_dependencies:
+        errors.append("pyproject.toml dev dependency group must include workers-py>=1.14.0")
+    if "workers-runtime-sdk" not in dev_dependencies:
+        errors.append("pyproject.toml dev dependency group must include workers-runtime-sdk")
 
 
 def validate_uv_lock(root: Path, errors: list[str]) -> None:

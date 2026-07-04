@@ -70,6 +70,20 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('data-lang="en"', self.index_html)
         self.assertIn('data-lang="de"', self.index_html)
 
+    def test_unauthenticated_start_screen_is_localized(self):
+        self.assertIn('authStatus: "checking"', self.app_js)
+        self.assertIn('state.authStatus = "signed_out"', self.app_js)
+        self.assertIn("try {\n    context = await apiContext();", self.app_js)
+        self.assertIn("await loadData();\n  } catch (error) {\n    render();\n    showMessage(error.message, true);", self.app_js)
+        self.assertIn('function renderAuthStart()', self.app_js)
+        self.assertIn('data-auth-retry', self.app_js)
+        self.assertIn('window.location.reload()', self.app_js)
+        self.assertIn('"auth.start_title": "Start with your association account"', self.app_js)
+        self.assertIn('"auth.registration_hint": "Need access? Ask your association administrator', self.app_js)
+        self.assertIn('"auth.start_title": "Mit dem Vereinszugang starten"', self.app_js)
+        self.assertIn('"auth.registration_hint": "Brauchst du Zugriff? Bitte deine Vereinsadministration', self.app_js)
+        self.assertIn('document.body.classList.toggle("is-auth-start", state.authStatus !== "signed_in")', self.app_js)
+
     def test_static_shell_has_low_pii_security_metadata(self):
         self.assertIn('http-equiv="Content-Security-Policy"', self.index_html)
         self.assertIn("default-src 'self'", self.index_html)

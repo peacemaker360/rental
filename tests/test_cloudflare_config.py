@@ -69,7 +69,7 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertEqual(scripts["preflight"], "python3 scripts/deploy_preflight.py --allow-placeholders")
         self.assertEqual(scripts["preflight:deploy"], "python3 scripts/deploy_preflight.py")
         self.assertEqual(scripts["preflight:frontdoor"], "python3 scripts/deploy_preflight.py --include-frontdoor")
-        self.assertEqual(scripts["smoke:signed"], "python3 scripts/smoke_local.py --signed")
+        self.assertEqual(scripts["smoke:signed"], "PYTHONPATH=.:worker python3 scripts/smoke_local.py --signed")
         self.assertEqual(scripts["check:js"], "node --check public/app.js && node --check frontdoor/access_context_worker.js")
         self.assertIn("wrangler dev --config wrangler.frontdoor.toml", scripts["dev:frontdoor"])
         self.assertIn("wrangler deploy --config wrangler.frontdoor.toml", scripts["deploy:frontdoor"])
@@ -79,13 +79,14 @@ class CloudflareConfigTests(unittest.TestCase):
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
         self.assertEqual(pyproject["project"]["requires-python"], ">=3.12")
-        self.assertIn("workers-py>=0.2.0", pyproject["dependency-groups"]["dev"])
+        self.assertIn("workers-py>=1.14.0", pyproject["dependency-groups"]["dev"])
+        self.assertIn("workers-runtime-sdk", pyproject["dependency-groups"]["dev"])
 
     def test_cloudflare_refactor_ci_uses_local_validation_not_azure_deploy(self):
         source = (ROOT / ".github" / "workflows" / "cloudflare_refactor_ci.yml").read_text(encoding="utf-8")
 
-        self.assertIn("python3 -m unittest discover -s tests", source)
-        self.assertIn("python3 scripts/smoke_local.py --signed", source)
+        self.assertIn("npm test", source)
+        self.assertIn("npm run smoke:signed", source)
         self.assertIn("python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor", source)
         self.assertIn("npm run check:js", source)
         self.assertIn("npm ci", source)
@@ -112,6 +113,9 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("tenant_roles", source)
         self.assertIn("access_profile", source)
         self.assertIn("member_id", source)
+        self.assertIn('const adminRoute = url.pathname.startsWith("/api/admin")', source)
+        self.assertIn('const platformAdminRoute = adminRoute && user.global_role === "platform_admin"', source)
+        self.assertIn('platformAdminRoute\n    ? "platform-admin"', source)
         self.assertIn("principal:${principal}", source)
         self.assertIn('headers.delete("cf-access-authenticated-user-email")', source)
         self.assertIn('headers.delete("cookie")', source)

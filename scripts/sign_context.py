@@ -8,6 +8,9 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
+WORKER_DIR = ROOT / "worker"
+if str(WORKER_DIR) not in sys.path:
+    sys.path.insert(0, str(WORKER_DIR))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 

@@ -43,6 +43,13 @@ button {
   min-height: 100vh;
 }
 
+.is-auth-start .nav,
+.is-auth-start .tenant-box,
+.is-auth-start .topbar-actions,
+.is-auth-start .message {
+  display: none;
+}
+
 .sidebar {
   background: #1f302e;
   color: #f8fbf8;
@@ -303,6 +310,78 @@ h3 {
   background: #fff2ef;
   color: var(--danger);
   border-color: #f0c5c0;
+}
+
+.auth-start {
+  max-width: 840px;
+  display: grid;
+  gap: 24px;
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(11, 107, 93, 0.08), rgba(34, 87, 122, 0.07)),
+    #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.auth-start-mark {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 8px;
+  background: #1f302e;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.auth-start h2 {
+  max-width: 680px;
+  font-size: 2rem;
+}
+
+.auth-start p {
+  max-width: 680px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.auth-start-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.auth-start-steps div {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.auth-start-steps span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.auth-start-steps strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.auth-start-actions {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .stats-grid {
@@ -797,7 +876,8 @@ tr:last-child td {
 
   .stats-grid,
   .content-grid,
-  .split-view {
+  .split-view,
+  .auth-start-steps {
     grid-template-columns: 1fr 1fr;
   }
 }
@@ -830,8 +910,13 @@ tr:last-child td {
   .stats-grid,
   .content-grid,
   .split-view,
+  .auth-start-steps,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auth-start {
+    padding: 22px;
   }
 
   .field.full {

@@ -59,6 +59,9 @@ Value:
 front door maps `reader` to the backend read-only role. `access_profile=basic`
 is read-only and includes the linked `member_id` in the signed context so the
 backend only returns that member's related rentals and instruments.
+For `/api/admin/...` routes, `platform_admin` profiles are always signed with
+the `platform-admin` tenant context even when the user also has a default tenant
+or per-association roles.
 Malformed profile rows fail closed before any tenant context is signed: the
 front door validates status, global role, access profile, default tenant, and
 that tenant roles and member links are lists. Member-link ids must be opaque

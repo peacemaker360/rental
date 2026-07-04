@@ -74,8 +74,8 @@ class DeployPreflightTests(unittest.TestCase):
             (root / "worker").mkdir()
             (root / ".github" / "workflows").mkdir(parents=True)
             (root / ".github" / "workflows" / "cloudflare_refactor_ci.yml").write_text(
-                "run: python3 -m unittest discover -s tests\n"
-                "run: python3 scripts/smoke_local.py --signed\n"
+                "run: npm test\n"
+                "run: npm run smoke:signed\n"
                 "run: python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor\n"
                 "run: npm run check:js\n"
                 "run: npm ci\n",
@@ -115,8 +115,8 @@ class DeployPreflightTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / ".github" / "workflows" / "cloudflare_refactor_ci.yml").write_text(
-                "run: python3 -m unittest discover -s tests\n"
-                "run: python3 scripts/smoke_local.py --signed\n"
+                "run: npm test\n"
+                "run: npm run smoke:signed\n"
                 "run: python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor\n"
                 "run: npm run check:js\n"
                 "run: npm ci\n",
@@ -261,7 +261,7 @@ class DeployPreflightTests(unittest.TestCase):
             errors: list[str] = []
             validate_ci_workflow(root, errors)
 
-        self.assertTrue(any("must run 'python3 -m unittest discover -s tests'" in error for error in errors))
+        self.assertTrue(any("must run 'npm test'" in error for error in errors))
         self.assertTrue(any("legacy deployment reference 'azure/'" in error for error in errors))
         self.assertTrue(any("legacy deployment reference 'requirements.txt'" in error for error in errors))
 

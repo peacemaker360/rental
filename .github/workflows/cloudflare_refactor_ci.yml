@@ -32,10 +32,10 @@ jobs:
         run: npm ci
 
       - name: Run Python tests
-        run: python3 -m unittest discover -s tests
+        run: npm test
 
       - name: Run signed local smoke
-        run: python3 scripts/smoke_local.py --signed
+        run: npm run smoke:signed
 
       - name: Validate Cloudflare deployment shape
         run: python3 scripts/deploy_preflight.py --allow-placeholders --include-frontdoor

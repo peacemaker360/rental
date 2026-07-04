@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "worker"))
 sys.path.insert(0, str(ROOT))
 
 from worker.api_core import context_from_headers, handle_api_request, is_api_request_path, parse_api_path, validate_tenant_id

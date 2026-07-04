@@ -144,10 +144,14 @@ function resolveUserAssignment(user, email, url) {
   if (user.status && user.status !== "active") throw new Error("user access profile is disabled");
   const requestedTenant = routeTenant(url);
   const defaultTenant = user.default_tenant || firstTenantRole(user)?.tenant_id;
-  const tenantId = requestedTenant || defaultTenant || (user.global_role === "platform_admin" ? "platform-admin" : "");
+  const adminRoute = url.pathname.startsWith("/api/admin");
+  const platformAdminRoute = adminRoute && user.global_role === "platform_admin";
+  const tenantId = platformAdminRoute
+    ? "platform-admin"
+    : requestedTenant || defaultTenant || (user.global_role === "platform_admin" ? "platform-admin" : "");
   if (!validTenantId(tenantId)) throw new Error("user access profile has no tenant for this route");
 
-  const role = roleForTenant(user, tenantId, url.pathname.startsWith("/api/admin"));
+  const role = roleForTenant(user, tenantId, adminRoute);
   const memberLink = (user.member_links || []).find((item) => item.tenant_id === tenantId);
   return {
     access_profile: user.access_profile || "full",

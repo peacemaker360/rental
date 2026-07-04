@@ -18,7 +18,9 @@ const state = {
   users: [],
   summary: {},
   meta: {revision: 0, updated_at: null},
-  context: null
+  context: null,
+  authStatus: "checking",
+  authError: ""
 };
 
 const viewTitle = document.querySelector("#viewTitle");
@@ -79,6 +81,7 @@ const translations = {
     "actions.import_instruments": "Import Inventory",
     "actions.export_tenant_access": "Export Access KV",
     "actions.refresh": "Refresh",
+    "actions.retry_sign_in": "Retry sign-in",
     "actions.cancel": "Cancel",
     "actions.close": "Close",
     "actions.save": "Save",
@@ -232,6 +235,11 @@ const translations = {
     "messages.import_invalid_json": "Import blocked: choose a valid JSON file",
     "messages.write_blocked_pii": "Remove contact details before saving ({fields})",
     "messages.revision_conflict": "This tenant changed in another session. The latest data is loaded; review and try again.",
+    "auth.start_title": "Start with your association account",
+    "auth.start_lead": "Rental Desk is available after Cloudflare Access has confirmed your email and tenant permissions.",
+    "auth.registration_hint": "Need access? Ask your association administrator to register your Access email and assign you to the right association.",
+    "auth.invalid_token": "Your sign-in could not be verified or your token is no longer valid.",
+    "auth.no_profile": "If you already signed in, your user access profile may still be missing or disabled.",
     "status.all": "all",
     "status.available": "available",
     "status.rented": "rented",
@@ -292,6 +300,7 @@ const translations = {
     "actions.import_instruments": "Inventar importieren",
     "actions.export_tenant_access": "Access-KV exportieren",
     "actions.refresh": "Aktualisieren",
+    "actions.retry_sign_in": "Anmeldung erneut versuchen",
     "actions.cancel": "Abbrechen",
     "actions.close": "Schliessen",
     "actions.save": "Speichern",
@@ -445,6 +454,11 @@ const translations = {
     "messages.import_invalid_json": "Import blockiert: Bitte eine gültige JSON-Datei auswählen",
     "messages.write_blocked_pii": "Kontaktdaten vor dem Speichern entfernen ({fields})",
     "messages.revision_conflict": "Dieser Mandant wurde in einer anderen Sitzung geändert. Die aktuellen Daten sind geladen; bitte prüfen und erneut versuchen.",
+    "auth.start_title": "Mit dem Vereinszugang starten",
+    "auth.start_lead": "Die Verleihverwaltung ist verfügbar, sobald Cloudflare Access deine E-Mail und Mandantenrechte bestätigt hat.",
+    "auth.registration_hint": "Brauchst du Zugriff? Bitte deine Vereinsadministration, deine Access-E-Mail zu registrieren und dem richtigen Verein zuzuweisen.",
+    "auth.invalid_token": "Deine Anmeldung konnte nicht verifiziert werden oder dein Token ist nicht mehr gültig.",
+    "auth.no_profile": "Falls du bereits angemeldet bist, fehlt dein Benutzerzugriff eventuell noch oder ist deaktiviert.",
     "status.all": "alle",
     "status.available": "verfügbar",
     "status.rented": "ausgeliehen",
@@ -576,7 +590,10 @@ async function apiContext() {
   const response = await fetch("/api/context", {headers: {"content-type": "application/json"}});
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || `Request failed (${response.status})`);
+    const error = new Error(data.error || `Request failed (${response.status})`);
+    error.status = response.status;
+    error.data = data;
+    throw error;
   }
   return data;
 }
@@ -598,6 +615,8 @@ function adminApi(path, options = {}) {
 
 function applyContext(context) {
   state.context = context;
+  state.authStatus = "signed_in";
+  state.authError = "";
   if (context.tenant_locked) {
     state.tenant = context.tenant_id;
     tenantInput.value = state.tenant;
@@ -851,6 +870,11 @@ function reconcileDetailSelection() {
 
 function render() {
   applyLanguage();
+  document.body.classList.toggle("is-auth-start", state.authStatus !== "signed_in");
+  if (state.authStatus !== "signed_in") {
+    renderAuthStart();
+    return;
+  }
   const caps = capabilities();
   if (adminNavItem) adminNavItem.hidden = !caps.platform_admin;
   if (state.view === "admin" && !caps.platform_admin) {
@@ -880,6 +904,42 @@ function render() {
   if (state.view === "service_records") renderCollection("service_records");
   if (state.view === "history") renderHistory();
   if (state.view === "admin") renderAdmin();
+}
+
+function renderAuthStart() {
+  viewTitle.textContent = t("auth.start_title");
+  tenantLabel.textContent = t("app.eyebrow");
+  tenantInput.disabled = true;
+  saveTenant.disabled = true;
+  primaryAction.hidden = true;
+  seedButton.disabled = true;
+  exportButton.disabled = true;
+  importButton.disabled = true;
+  hitobitoImportButton.disabled = true;
+  refreshButton.disabled = false;
+  tenantRevision.textContent = "0";
+  tenantUpdatedAt.textContent = "";
+  document.querySelectorAll(".nav-item").forEach((button) => {
+    button.classList.remove("is-active");
+  });
+  view.innerHTML = `
+    <section class="auth-start" aria-labelledby="authStartTitle">
+      <div class="auth-start-mark">RD</div>
+      <div>
+        <p class="eyebrow">${t("app.eyebrow")}</p>
+        <h2 id="authStartTitle">${t("auth.start_title")}</h2>
+        <p>${t("auth.start_lead")}</p>
+      </div>
+      <div class="auth-start-steps" aria-label="${escapeHtml(t("auth.start_title"))}">
+        <div><span>1</span><strong>Cloudflare Access</strong><p>${t("auth.invalid_token")}</p></div>
+        <div><span>2</span><strong>${t("entities.user_access")}</strong><p>${t("auth.no_profile")}</p></div>
+        <div><span>3</span><strong>${t("entities.association")}</strong><p>${t("auth.registration_hint")}</p></div>
+      </div>
+      <div class="auth-start-actions">
+        <button class="primary-button" data-auth-retry>${t("actions.retry_sign_in")}</button>
+      </div>
+    </section>
+  `;
 }
 
 function renderDashboard() {
@@ -1827,6 +1887,10 @@ view.addEventListener("click", async (event) => {
       render();
       return;
     }
+    if (target.dataset.authRetry !== undefined) {
+      window.location.reload();
+      return;
+    }
     if (target.dataset.status) {
       state.status = target.dataset.status;
       render();
@@ -2122,6 +2186,10 @@ instrumentFile.addEventListener("change", async () => {
 });
 
 refreshButton.addEventListener("click", () => {
+  if (state.authStatus !== "signed_in") {
+    window.location.reload();
+    return;
+  }
   loadData().catch((error) => showMessage(error.message, true));
 });
 
@@ -2152,9 +2220,23 @@ function openAssociation(tenant) {
 
 async function init() {
   applyLanguage();
-  const context = await apiContext();
+  let context;
+  try {
+    context = await apiContext();
+  } catch (error) {
+    state.authStatus = "signed_out";
+    state.authError = error.message || "";
+    state.context = null;
+    render();
+    return;
+  }
   applyContext(context);
-  await loadData();
+  try {
+    await loadData();
+  } catch (error) {
+    render();
+    showMessage(error.message, true);
+  }
 }
 
 init().catch((error) => {
