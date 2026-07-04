@@ -1,4 +1,4 @@
-name = "association-rental"
+name = "rental"
 main = "worker/worker.py"
 compatibility_date = "2026-06-26"
 compatibility_flags = ["python_workers"]
