@@ -3,7 +3,7 @@ main = "frontdoor/access_context_worker.js"
 compatibility_date = "2026-06-26"
 
 kv_namespaces = [
-  { binding = "TENANT_ACCESS_KV", id = "replace-with-tenant-access-kv-id", preview_id = "replace-with-tenant-access-preview-kv-id" }
+  { binding = "TENANT_ACCESS_KV", id = "3e699bb348d544aa8fbd56d69990ec97", preview_id = "64c4c75c68df47858d12892e2fba1e14" }
 ]
 
 services = [
@@ -11,5 +11,5 @@ services = [
 ]
 
 [vars]
-CF_ACCESS_TEAM_DOMAIN = "replace-with-team.cloudflareaccess.com"
-CF_ACCESS_AUD = "replace-with-access-aud-tag"
+CF_ACCESS_TEAM_DOMAIN = "kittythecat.cloudflareaccess.com"
+CF_ACCESS_AUD = "7d2fbcbdd4f9ebd30fcb51cafd5e0ee158eb8aa423b9454492f2896d21b10b7c"
