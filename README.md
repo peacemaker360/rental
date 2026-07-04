@@ -273,17 +273,28 @@ reader/operator/admin roles, optional tenant/member links, and the read-only
 `basic` profile for users who should only see their own related rentals and
 instruments. Optional user labels are operational display text only and reject
 contact-like values; the Access email is the only user identifier stored for
-frontdoor authentication.
+frontdoor authentication. In hosted deployments, the backend also binds
+`TENANT_ACCESS_KV`, so creating, editing, approving, or deleting users in the
+Admin Center immediately mirrors the `user:{email}` profile used by the
+Cloudflare Access front door. The export button remains useful for audits and
+bulk migration, but it is no longer required for normal user saves.
+Users can belong to more than one association through multiple `tenant_roles`
+and `member_links`. Platform/global admins can manage all users; tenant admins
+can manage users and join requests only for their own association tenant.
+Authenticated users without a profile can use the start screen to request to
+join a tenant. Those requests appear in Admin Center for the relevant tenant
+admin or platform admin, who can approve or deny entry.
 Tenant data mutations such as bootstrap, imports, and CRUD writes automatically
 create a default registry entry when one is missing, so newly onboarded
 associations appear in the Admin Center without a separate setup step. Existing
 registry details are preserved unless edited through the Admin Center or an
 import file explicitly includes `display_name` or `association_name` metadata.
 
-In deployed signed/header modes, the Admin Center is platform-scoped: the
-authenticated context must have role `admin` and tenant id `platform-admin`.
-Tenant admins can still administer records inside their own association tenant,
-but they cannot list or edit the cross-tenant association registry.
+In deployed signed/header modes, association registry management remains
+platform-scoped: the authenticated context must have role `admin` and tenant id
+`platform-admin`. Tenant admins can still administer records and users inside
+their own association tenant, but they cannot list or edit the cross-tenant
+association registry or export the full frontdoor access KV.
 
 ### Backup And Migration
 

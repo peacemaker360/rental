@@ -64,6 +64,9 @@ class JsonFileRepository:
     def users_file(self) -> Path:
         return self.data_dir / "_users.json"
 
+    def access_requests_file(self) -> Path:
+        return self.data_dir / "_access_requests.json"
+
     async def load_tenant(self, tenant_id: str) -> dict[str, list[dict[str, Any]]]:
         path = self.tenant_file(tenant_id)
         if not path.exists():
@@ -174,6 +177,44 @@ class JsonFileRepository:
         temp_path = path.with_suffix(".json.tmp")
         with temp_path.open("w", encoding="utf-8") as handle:
             json.dump({"users": users}, handle, indent=2, sort_keys=True)
+        temp_path.replace(path)
+        return existing
+
+    async def list_access_requests(self) -> list[dict[str, Any]]:
+        path = self.access_requests_file()
+        if not path.exists():
+            return []
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        requests = data.get("access_requests", []) if isinstance(data, dict) else []
+        return sorted(requests, key=lambda item: item.get("requested_at", ""))
+
+    async def load_access_request(self, request_id: str) -> dict[str, Any] | None:
+        for item in await self.list_access_requests():
+            if item.get("id") == request_id:
+                return item
+        return None
+
+    async def save_access_request(self, request_id: str, item: dict[str, Any]) -> dict[str, Any]:
+        path = self.access_requests_file()
+        requests = [request for request in await self.list_access_requests() if request.get("id") != request_id]
+        requests.append(item)
+        requests.sort(key=lambda request: request.get("requested_at", ""))
+        temp_path = path.with_suffix(".json.tmp")
+        with temp_path.open("w", encoding="utf-8") as handle:
+            json.dump({"access_requests": requests}, handle, indent=2, sort_keys=True)
+        temp_path.replace(path)
+        return item
+
+    async def delete_access_request(self, request_id: str) -> dict[str, Any] | None:
+        path = self.access_requests_file()
+        existing = await self.load_access_request(request_id)
+        if existing is None:
+            return None
+        requests = [item for item in await self.list_access_requests() if item.get("id") != request_id]
+        temp_path = path.with_suffix(".json.tmp")
+        with temp_path.open("w", encoding="utf-8") as handle:
+            json.dump({"access_requests": requests}, handle, indent=2, sort_keys=True)
         temp_path.replace(path)
         return existing
 

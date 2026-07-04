@@ -69,6 +69,15 @@ class TenantRepository(Protocol):
     async def delete_user(self, user_id: str) -> dict[str, Any] | None:
         ...
 
+    async def list_access_requests(self) -> list[dict[str, Any]]:
+        ...
+
+    async def load_access_request(self, request_id: str) -> dict[str, Any] | None:
+        ...
+
+    async def delete_access_request(self, request_id: str) -> dict[str, Any] | None:
+        ...
+
 
 TENANT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,62}$")
 TENANT_ID_MESSAGE = "tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores"
@@ -164,6 +173,13 @@ def normalize_user_id(value: Any) -> str:
     if not re.fullmatch(r"user_[a-f0-9]{16,64}", user_id):
         raise DomainError("user id is invalid", 404)
     return user_id
+
+
+def normalize_access_request_id(value: Any) -> str:
+    request_id = clean_text(value)
+    if not re.fullmatch(r"access_request:[a-f0-9]{24}", request_id):
+        raise DomainError("access request id is invalid", 404)
+    return request_id
 
 
 def user_id_for_email(email: str) -> str:
@@ -499,6 +515,63 @@ def can_manage_associations(context: RequestContext) -> bool:
     return can_admin(context) and (context.mode in ("local", "open") or context.tenant_id == PLATFORM_TENANT_ID)
 
 
+def can_manage_users(context: RequestContext) -> bool:
+    return can_admin(context)
+
+
+def can_manage_all_users(context: RequestContext) -> bool:
+    return can_manage_associations(context)
+
+
+def user_has_tenant(user: dict[str, Any], tenant_id: str) -> bool:
+    return any(item.get("tenant_id") == tenant_id for item in user.get("tenant_roles", [])) or any(
+        item.get("tenant_id") == tenant_id for item in user.get("member_links", [])
+    )
+
+
+def tenant_scoped_user(user: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    return {
+        **user,
+        "global_role": "none",
+        "tenant_roles": [item for item in user.get("tenant_roles", []) if item.get("tenant_id") == tenant_id],
+        "member_links": [item for item in user.get("member_links", []) if item.get("tenant_id") == tenant_id],
+    }
+
+
+def normalize_tenant_admin_user_access(payload: dict[str, Any], context: RequestContext, existing: dict[str, Any] | None = None) -> dict[str, Any]:
+    scoped_existing = tenant_scoped_user(existing, context.tenant_id) if existing else None
+    tenant_role = clean_text(payload.get("tenant_role", "reader")).lower()
+    tenant_roles_payload = payload.get("tenant_roles")
+    if tenant_roles_payload not in (None, ""):
+        tenant_roles = normalize_tenant_role_items(tenant_roles_payload)
+        if any(item["tenant_id"] != context.tenant_id for item in tenant_roles):
+            raise DomainError("tenant admin can only manage users for their tenant")
+        if len(tenant_roles) > 1:
+            raise DomainError("tenant admin can set only one tenant role")
+        if tenant_roles:
+            tenant_role = tenant_roles[0]["role"]
+    if tenant_role not in USER_TENANT_ROLES:
+        raise DomainError("tenant role must be reader, operator, or admin")
+    member_links_payload = payload.get("member_links", scoped_existing.get("member_links", []) if scoped_existing else [])
+    member_links = normalize_member_link_items(member_links_payload)
+    if any(item["tenant_id"] != context.tenant_id for item in member_links):
+        raise DomainError("tenant admin can only manage member links for their tenant")
+    user = normalize_user_access({
+        **payload,
+        "global_role": "none",
+        "tenant_roles": [{"tenant_id": context.tenant_id, "role": tenant_role}],
+        "member_links": member_links,
+    }, scoped_existing)
+    if existing:
+        other_roles = [item for item in existing.get("tenant_roles", []) if item.get("tenant_id") != context.tenant_id]
+        other_links = [item for item in existing.get("member_links", []) if item.get("tenant_id") != context.tenant_id]
+        user["global_role"] = existing.get("global_role", "none")
+        user["tenant_roles"] = other_roles + user["tenant_roles"]
+        user["member_links"] = other_links + user["member_links"]
+        user["created_at"] = existing.get("created_at", user["created_at"])
+    return user
+
+
 def context_payload(context: RequestContext) -> dict[str, Any]:
     return {
         "tenant_id": context.tenant_id,
@@ -577,13 +650,17 @@ async def handle_admin_request(
 ) -> tuple[int, Any]:
     if not can_admin(context):
         return 403, {"error": "admin role required"}
-    if not can_manage_associations(context):
-        return 403, {"error": "platform admin required"}
-    if len(parts) < 2 or parts[1] not in ("associations", "users"):
+    if len(parts) < 2 or parts[1] not in ("associations", "users", "access-requests"):
         return 404, {"error": "route not found"}
 
     if parts[1] == "users":
-        return await handle_admin_users_request(method, parts, payload, repo)
+        return await handle_admin_users_request(method, parts, payload, repo, context)
+
+    if parts[1] == "access-requests":
+        return await handle_admin_access_requests(method, parts, payload, repo, context)
+
+    if not can_manage_associations(context):
+        return 403, {"error": "platform admin required"}
 
     if len(parts) == 2:
         if method == "GET":
@@ -614,13 +691,74 @@ async def handle_admin_request(
     return 405, {"error": "method not allowed"}
 
 
+async def handle_admin_access_requests(
+    method: str,
+    parts: list[str],
+    payload: Any,
+    repo: TenantRepository,
+    context: RequestContext,
+) -> tuple[int, Any]:
+    if not can_manage_users(context):
+        return 403, {"error": "admin role required"}
+    if len(parts) == 2:
+        if method != "GET":
+            return 405, {"error": "method not allowed"}
+        requests = await repo.list_access_requests()
+        if not can_manage_all_users(context):
+            requests = [item for item in requests if item.get("tenant_id") == context.tenant_id]
+        return 200, {"data": requests}
+    if len(parts) != 4 or parts[3] not in ("approve", "deny"):
+        return 404, {"error": "route not found"}
+    request_id = normalize_access_request_id(parts[2])
+    request = await repo.load_access_request(request_id)
+    if not request:
+        return 404, {"error": "access request not found"}
+    if not can_manage_all_users(context) and request.get("tenant_id") != context.tenant_id:
+        return 404, {"error": "access request not found"}
+    if method != "POST":
+        return 405, {"error": "method not allowed"}
+    if parts[3] == "deny":
+        deleted = await repo.delete_access_request(request_id)
+        return 200, {"denied": request_id, "data": deleted}
+
+    body = object_payload(payload)
+    tenant_role = clean_text(body.get("tenant_role", "reader")).lower()
+    member_links = body.get("member_links", [])
+    existing = await repo.load_user(user_id_for_email(request["email"]))
+    if can_manage_all_users(context):
+        user = normalize_user_access({
+            "email": request["email"],
+            "status": "active",
+            "global_role": clean_text(body.get("global_role", "none"), "none").lower(),
+            "access_profile": clean_text(body.get("access_profile", "full"), "full").lower(),
+            "tenant_roles": body.get("tenant_roles", [{"tenant_id": request["tenant_id"], "role": tenant_role}]),
+            "member_links": member_links,
+        }, existing)
+    else:
+        user = normalize_tenant_admin_user_access({
+            "email": request["email"],
+            "status": "active",
+            "access_profile": clean_text(body.get("access_profile", "full"), "full").lower(),
+            "tenant_role": tenant_role,
+            "member_links": member_links,
+        }, context, existing)
+    saved = await repo.save_user(user["id"], user)
+    await repo.delete_access_request(request_id)
+    return 200, {"approved": request_id, "data": saved if can_manage_all_users(context) else tenant_scoped_user(saved, context.tenant_id)}
+
+
 async def handle_admin_users_request(
     method: str,
     parts: list[str],
     payload: Any,
     repo: TenantRepository,
+    context: RequestContext,
 ) -> tuple[int, Any]:
+    if not can_manage_users(context):
+        return 403, {"error": "admin role required"}
     if len(parts) == 4 and parts[2] == "export" and parts[3] == "tenant-access":
+        if not can_manage_all_users(context):
+            return 403, {"error": "platform admin required"}
         if method != "GET":
             return 405, {"error": "method not allowed"}
         users = await repo.list_users()
@@ -632,9 +770,12 @@ async def handle_admin_users_request(
 
     if len(parts) == 2:
         if method == "GET":
-            return 200, {"data": await repo.list_users()}
+            users = await repo.list_users()
+            if not can_manage_all_users(context):
+                users = [tenant_scoped_user(user, context.tenant_id) for user in users if user_has_tenant(user, context.tenant_id)]
+            return 200, {"data": users}
         if method == "POST":
-            user = normalize_user_access(object_payload(payload))
+            user = normalize_user_access(object_payload(payload)) if can_manage_all_users(context) else normalize_tenant_admin_user_access(object_payload(payload), context)
             saved = await repo.save_user(user["id"], user)
             return 201, {"data": saved}
         return 405, {"error": "method not allowed"}
@@ -646,14 +787,34 @@ async def handle_admin_users_request(
     if method == "GET":
         if not existing:
             return 404, {"error": "user not found"}
+        if not can_manage_all_users(context):
+            if not user_has_tenant(existing, context.tenant_id):
+                return 404, {"error": "user not found"}
+            return 200, {"data": tenant_scoped_user(existing, context.tenant_id)}
         return 200, {"data": existing}
     if method == "PUT":
-        user = normalize_user_access({**object_payload(payload), "id": user_id}, existing)
+        if not existing:
+            return 404, {"error": "user not found"}
+        if not can_manage_all_users(context) and not user_has_tenant(existing, context.tenant_id):
+            return 404, {"error": "user not found"}
+        user = normalize_user_access({**object_payload(payload), "id": user_id}, existing) if can_manage_all_users(context) else normalize_tenant_admin_user_access({**object_payload(payload), "id": user_id}, context, existing)
         if user["id"] != user_id:
             raise DomainError("email cannot be changed for an existing user")
         saved = await repo.save_user(user_id, user)
-        return 200, {"data": saved}
+        return 200, {"data": saved if can_manage_all_users(context) else tenant_scoped_user(saved, context.tenant_id)}
     if method == "DELETE":
+        if not can_manage_all_users(context):
+            if not existing or not user_has_tenant(existing, context.tenant_id):
+                return 404, {"error": "user not found"}
+            updated = {
+                **existing,
+                "tenant_roles": [item for item in existing.get("tenant_roles", []) if item.get("tenant_id") != context.tenant_id],
+                "member_links": [item for item in existing.get("member_links", []) if item.get("tenant_id") != context.tenant_id],
+                "updated_at": utc_now(),
+            }
+            if updated.get("tenant_roles") or updated.get("member_links") or updated.get("global_role", "none") != "none":
+                saved = await repo.save_user(user_id, updated)
+                return 200, {"deleted": user_id, "data": tenant_scoped_user(saved, context.tenant_id)}
         deleted = await repo.delete_user(user_id)
         if not deleted:
             return 404, {"error": "user not found"}

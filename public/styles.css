@@ -381,7 +381,14 @@ h3 {
 
 .auth-start-actions {
   display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
   justify-content: flex-start;
+}
+
+.auth-request-form {
+  min-width: min(100%, 420px);
 }
 
 .stats-grid {
@@ -845,6 +852,23 @@ tr:last-child td {
   grid-column: 1 / -1;
 }
 
+.tenant-role-field {
+  display: grid;
+  gap: 10px;
+}
+
+.tenant-role-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tenant-role-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 190px) 42px;
+  gap: 8px;
+  align-items: center;
+}
+
 .dialog-actions {
   justify-content: flex-end;
   margin-top: 18px;
@@ -911,6 +935,7 @@ tr:last-child td {
   .content-grid,
   .split-view,
   .auth-start-steps,
+  .tenant-role-row,
   .form-grid {
     grid-template-columns: 1fr;
   }

@@ -83,7 +83,7 @@ class Default(WorkerEntrypoint):
             if error:
                 return json_response({"error": error}, 403)
 
-        repo = KVRepository(self.env.RENTAL_KV)
+        repo = KVRepository(self.env.RENTAL_KV, getattr(self.env, "TENANT_ACCESS_KV", None))
         try:
             payload = await request_json(request) if request.method in ("POST", "PUT") else {}
         except InvalidJsonBody as exc:

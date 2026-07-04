@@ -25,6 +25,12 @@ export default {
       }
 
       const claims = await verifyAccessJwt(accessJwt, env);
+      if (url.pathname === "/api/access-requests" && request.method === "POST") {
+        return createAccessRequest(request, env, claims);
+      }
+      if (!url.pathname.startsWith("/api/")) {
+        return forwardToBackend(request, env, null);
+      }
       const assignment = await loadTenantAssignment(claims, env, url);
       const context = {
         access_profile: assignment.access_profile || "full",
@@ -42,6 +48,34 @@ export default {
     }
   }
 };
+
+async function createAccessRequest(request, env, claims) {
+  if (!env.TENANT_ACCESS_KV) throw new Error("TENANT_ACCESS_KV binding is required");
+  const email = cleanEmail(claims.email);
+  if (!validEmail(email)) throw new Error("Cloudflare Access token email is invalid");
+  const payload = await request.json().catch(() => ({}));
+  const tenantId = String(payload.tenant_id || "").trim().toLowerCase();
+  if (!validTenantId(tenantId)) throw new Error("tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores");
+  const now = new Date().toISOString();
+  const id = `access_request:${await shortDigest(`${email}:${tenantId}`)}`;
+  const item = {
+    id,
+    email,
+    status: "pending",
+    tenant_id: tenantId,
+    requested_at: now,
+    updated_at: now
+  };
+  const indexKey = "access_requests:index";
+  const ids = await env.TENANT_ACCESS_KV.get(indexKey, {type: "json"}) || [];
+  if (!ids.includes(id)) {
+    ids.push(id);
+    ids.sort();
+    await env.TENANT_ACCESS_KV.put(indexKey, JSON.stringify(ids));
+  }
+  await env.TENANT_ACCESS_KV.put(id, JSON.stringify(item));
+  return jsonResponse({data: item}, 201);
+}
 
 function jsonResponse(body, status) {
   return new Response(JSON.stringify(body), {
@@ -188,6 +222,7 @@ function validateUserProfile(user) {
 function roleForTenant(user, tenantId, adminRoute) {
   const globalRole = user.global_role || "none";
   if (globalRole === "platform_admin" && adminRoute) return "admin";
+  if (globalRole === "platform_admin" && tenantId === "platform-admin") return "admin";
   if (globalRole === "admin") return "admin";
   if (globalRole === "operator") return "operator";
   if (globalRole === "reader") return "viewer";
@@ -215,6 +250,10 @@ function validTenantId(value) {
 
 function validEmail(value) {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value || "");
+}
+
+function cleanEmail(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function opaqueMemberId(value) {

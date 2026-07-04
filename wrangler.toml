@@ -4,7 +4,8 @@ compatibility_date = "2026-06-26"
 compatibility_flags = ["python_workers"]
 
 kv_namespaces = [
-  { binding = "RENTAL_KV", id = "e6b20c66b9144d03ad713fdb3a00cfd9", preview_id = "5c483cc38f7b49e1b5d9baaf98b52680" }
+  { binding = "RENTAL_KV", id = "e6b20c66b9144d03ad713fdb3a00cfd9", preview_id = "5c483cc38f7b49e1b5d9baaf98b52680" },
+  { binding = "TENANT_ACCESS_KV", id = "3e699bb348d544aa8fbd56d69990ec97", preview_id = "64c4c75c68df47858d12892e2fba1e14" }
 ]
 
 [vars]

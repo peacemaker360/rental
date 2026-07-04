@@ -145,20 +145,26 @@ class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_user_registry_round_trip(self):
         kv = FakeKV()
-        repo = KVRepository(kv)
+        tenant_access_kv = FakeKV()
+        repo = KVRepository(kv, tenant_access_kv)
 
         saved = await repo.save_user("user_abc123", {
             "id": "user_abc123",
             "email": "reader@example.test",
             "global_role": "reader",
+            "tenant_roles": [{"tenant_id": "tenant-a", "role": "reader"}],
+            "member_links": [],
         })
 
         self.assertEqual(saved["email"], "reader@example.test")
         self.assertIn(users_index_key(), kv.values)
         self.assertIn(user_key("user_abc123"), kv.values)
+        self.assertIn("user:reader@example.test", tenant_access_kv.values)
+        self.assertEqual(json.loads(tenant_access_kv.values["user:reader@example.test"])["default_tenant"], "tenant-a")
         self.assertEqual((await repo.load_user("user_abc123"))["global_role"], "reader")
         self.assertEqual([item["id"] for item in await repo.list_users()], ["user_abc123"])
         self.assertEqual((await repo.delete_user("user_abc123"))["email"], "reader@example.test")
+        self.assertIn("user:reader@example.test", tenant_access_kv.deleted)
         self.assertNotIn(user_key("user_abc123"), kv.values)
         self.assertEqual(json.loads(kv.values[users_index_key()]), [])
         self.assertIsNone(await repo.load_user("user_abc123"))

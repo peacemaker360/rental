@@ -16,6 +16,7 @@ const state = {
   },
   associations: [],
   users: [],
+  accessRequests: [],
   summary: {},
   meta: {revision: 0, updated_at: null},
   context: null,
@@ -82,6 +83,9 @@ const translations = {
     "actions.export_tenant_access": "Export Access KV",
     "actions.refresh": "Refresh",
     "actions.retry_sign_in": "Retry sign-in",
+    "actions.request_join": "Request to join",
+    "actions.approve": "Approve",
+    "actions.deny": "Deny",
     "actions.cancel": "Cancel",
     "actions.close": "Close",
     "actions.save": "Save",
@@ -92,6 +96,7 @@ const translations = {
     "actions.view_all": "View All",
     "actions.history": "History",
     "actions.add_service": "Add Service",
+    "actions.add_tenant_role": "Add tenant role",
     "actions.new_association": "New Association",
     "actions.new_user": "New User",
     "actions.new_instruments": "New Instrument",
@@ -151,6 +156,7 @@ const translations = {
     "fields.contact_ref": "Contact ref",
     "fields.hitobito_group_ref": "Hitobito group ref",
     "fields.inventory_ref": "Inventory ref",
+    "fields.tenant_role": "Tenant role",
     "table.name": "Name",
     "table.type": "Type",
     "table.serial": "Serial",
@@ -193,11 +199,13 @@ const translations = {
     "sections.event_journey": "Event journey",
     "sections.associations": "Associations",
     "sections.users": "Users",
+    "sections.access_requests": "Join requests",
     "empty.no_overdue": "No overdue rentals",
     "empty.no_attention": "No rentals or service items need attention",
     "empty.no_service_records": "No service records",
     "empty.no_associations": "No associations",
     "empty.no_users": "No users",
+    "empty.no_access_requests": "No join requests",
     "empty.no_tenant_roles": "No tenant roles",
     "empty.no_instruments": "No instruments",
     "empty.no_members": "No members",
@@ -230,6 +238,9 @@ const translations = {
     "messages.hitobito_import_complete": "Hitobito import complete: {created} created, {updated} updated",
     "messages.instrument_export_downloaded": "Instrument inventory export downloaded",
     "messages.tenant_access_export_downloaded": "Access KV export downloaded",
+    "messages.join_request_sent": "Join request sent",
+    "messages.access_request_approved": "Join request approved",
+    "messages.access_request_denied": "Join request denied",
     "messages.instrument_import_complete": "Instrument import complete: {created} created, {updated} updated",
     "messages.import_blocked_pii": "Import blocked: remove contact fields before uploading ({fields})",
     "messages.import_invalid_json": "Import blocked: choose a valid JSON file",
@@ -248,6 +259,7 @@ const translations = {
     "status.returned": "returned",
     "status.inactive": "inactive",
     "status.paused": "paused",
+    "status.pending": "pending",
     "status.disabled": "disabled",
     "status.archived": "archived",
     "status.created": "created",
@@ -301,6 +313,9 @@ const translations = {
     "actions.export_tenant_access": "Access-KV exportieren",
     "actions.refresh": "Aktualisieren",
     "actions.retry_sign_in": "Anmeldung erneut versuchen",
+    "actions.request_join": "Beitritt anfragen",
+    "actions.approve": "Freigeben",
+    "actions.deny": "Ablehnen",
     "actions.cancel": "Abbrechen",
     "actions.close": "Schliessen",
     "actions.save": "Speichern",
@@ -311,6 +326,7 @@ const translations = {
     "actions.view_all": "Alle anzeigen",
     "actions.history": "Verlauf",
     "actions.add_service": "Service erfassen",
+    "actions.add_tenant_role": "Mandantenrolle hinzufügen",
     "actions.new_association": "Neue Organisation",
     "actions.new_user": "Neuer Benutzer",
     "actions.new_instruments": "Neues Instrument",
@@ -370,6 +386,7 @@ const translations = {
     "fields.contact_ref": "Kontaktreferenz",
     "fields.hitobito_group_ref": "Hitobito-Gruppenreferenz",
     "fields.inventory_ref": "Inventarreferenz",
+    "fields.tenant_role": "Mandantenrolle",
     "table.name": "Name",
     "table.type": "Typ",
     "table.serial": "Seriennummer",
@@ -412,11 +429,13 @@ const translations = {
     "sections.event_journey": "Ereignisverlauf",
     "sections.associations": "Organisationen",
     "sections.users": "Benutzer",
+    "sections.access_requests": "Beitrittsanfragen",
     "empty.no_overdue": "Keine überfälligen Ausleihen",
     "empty.no_attention": "Keine Ausleihen oder Servicepunkte benötigen Aufmerksamkeit",
     "empty.no_service_records": "Keine Serviceeinträge",
     "empty.no_associations": "Keine Organisationen",
     "empty.no_users": "Keine Benutzer",
+    "empty.no_access_requests": "Keine Beitrittsanfragen",
     "empty.no_tenant_roles": "Keine Mandantenrollen",
     "empty.no_instruments": "Keine Instrumente",
     "empty.no_members": "Keine Mitglieder",
@@ -449,6 +468,9 @@ const translations = {
     "messages.hitobito_import_complete": "Hitobito-Import abgeschlossen: {created} erstellt, {updated} aktualisiert",
     "messages.instrument_export_downloaded": "Instrumenteninventar exportiert",
     "messages.tenant_access_export_downloaded": "Access-KV exportiert",
+    "messages.join_request_sent": "Beitrittsanfrage gesendet",
+    "messages.access_request_approved": "Beitrittsanfrage freigegeben",
+    "messages.access_request_denied": "Beitrittsanfrage abgelehnt",
     "messages.instrument_import_complete": "Instrumentenimport abgeschlossen: {created} erstellt, {updated} aktualisiert",
     "messages.import_blocked_pii": "Import blockiert: Kontaktfelder vor dem Hochladen entfernen ({fields})",
     "messages.import_invalid_json": "Import blockiert: Bitte eine gültige JSON-Datei auswählen",
@@ -467,6 +489,7 @@ const translations = {
     "status.returned": "zurückgegeben",
     "status.inactive": "inaktiv",
     "status.paused": "pausiert",
+    "status.pending": "offen",
     "status.disabled": "deaktiviert",
     "status.archived": "archiviert",
     "status.created": "erstellt",
@@ -562,7 +585,7 @@ const schemas = {
     ["status", "fields.status", "user_status", true],
     ["global_role", "fields.global_role", "global_role", true],
     ["access_profile", "fields.access_profile", "access_profile", true],
-    ["tenant_roles", "fields.tenant_roles", "json", false, "full"],
+    ["tenant_roles", "fields.tenant_roles", "tenant_roles", false, "full"],
     ["member_links", "fields.member_links", "json", false, "full"]
   ]
 };
@@ -602,6 +625,23 @@ function adminApi(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const headers = {"content-type": "application/json", ...(options.headers || {})};
   return fetch(`/api/admin${path}`, {...options, method, headers}).then(async (response) => {
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data.error || `Request failed (${response.status})`);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+    return data;
+  });
+}
+
+function accessRequestApi(payload) {
+  return fetch("/api/access-requests", {
+    method: "POST",
+    headers: {"content-type": "application/json"},
+    body: JSON.stringify(payload)
+  }).then(async (response) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(data.error || `Request failed (${response.status})`);
@@ -828,8 +868,9 @@ function switchView(viewName) {
 
 async function loadData() {
   const associationsPromise = capabilities().platform_admin ? adminApi("/associations").catch(() => ({data: []})) : Promise.resolve({data: []});
-  const usersPromise = capabilities().platform_admin ? adminApi("/users").catch(() => ({data: []})) : Promise.resolve({data: []});
-  const [summary, instruments, members, rentals, serviceRecords, history, associations, users] = await Promise.all([
+  const usersPromise = capabilities().admin ? adminApi("/users").catch(() => ({data: []})) : Promise.resolve({data: []});
+  const requestsPromise = capabilities().admin ? adminApi("/access-requests").catch(() => ({data: []})) : Promise.resolve({data: []});
+  const [summary, instruments, members, rentals, serviceRecords, history, associations, users, accessRequests] = await Promise.all([
     api("/summary"),
     api("/instruments"),
     api("/members"),
@@ -837,7 +878,8 @@ async function loadData() {
     api("/service_records"),
     api("/history"),
     associationsPromise,
-    usersPromise
+    usersPromise,
+    requestsPromise
   ]);
   state.summary = summary;
   applyMeta(summary.meta);
@@ -850,6 +892,7 @@ async function loadData() {
   };
   state.associations = associations.data || [];
   state.users = users.data || [];
+  state.accessRequests = accessRequests.data || [];
   reconcileDetailSelection();
   render();
 }
@@ -876,13 +919,13 @@ function render() {
     return;
   }
   const caps = capabilities();
-  if (adminNavItem) adminNavItem.hidden = !caps.platform_admin;
-  if (state.view === "admin" && !caps.platform_admin) {
+  if (adminNavItem) adminNavItem.hidden = !caps.admin;
+  if (state.view === "admin" && !caps.admin) {
     switchView("dashboard");
   }
   viewTitle.textContent = t(`views.${state.view}`);
   tenantLabel.textContent = state.tenant;
-  primaryAction.hidden = state.view === "history" || (state.view === "admin" && !caps.platform_admin);
+  primaryAction.hidden = state.view === "history" || (state.view === "admin" && !caps.admin);
   primaryAction.textContent = state.view === "admin" ? t("actions.new_association") : state.view === "instruments" ? t("actions.new_instruments") : state.view === "members" ? t("actions.new_members") : state.view === "service_records" ? t("actions.new_service_records") : t("actions.new_rentals");
   primaryAction.disabled = state.view === "admin" ? !caps.platform_admin : !caps.write;
   seedButton.disabled = !caps.admin;
@@ -892,7 +935,7 @@ function render() {
 
   document.querySelectorAll(".nav-item").forEach((button) => {
     if (button.dataset.view === "admin") {
-      button.hidden = !caps.platform_admin;
+      button.hidden = !caps.admin;
     }
     button.classList.toggle("is-active", button.dataset.view === state.view);
   });
@@ -936,6 +979,13 @@ function renderAuthStart() {
         <div><span>3</span><strong>${t("entities.association")}</strong><p>${t("auth.registration_hint")}</p></div>
       </div>
       <div class="auth-start-actions">
+        <form class="auth-request-form" data-join-request>
+          <label for="joinTenant">${t("labels.tenant")}</label>
+          <div class="tenant-row">
+            <input id="joinTenant" name="tenant_id" autocomplete="organization" pattern="[a-z0-9][a-z0-9_-]{1,62}" required value="${escapeHtml(state.tenant)}">
+            <button class="primary-button">${t("actions.request_join")}</button>
+          </div>
+        </form>
         <button class="primary-button" data-auth-retry>${t("actions.retry_sign_in")}</button>
       </div>
     </section>
@@ -1005,12 +1055,14 @@ function renderStats() {
 }
 
 function renderAdmin() {
-  if (!capabilities().platform_admin) {
+  const caps = capabilities();
+  if (!caps.admin) {
     view.innerHTML = `<div class="empty">${t("tenant.locked")}</div>`;
     return;
   }
   const associationItems = filterAssociationItems(state.associations);
   const userItems = filterUserItems(state.users);
+  const requestItems = filterUserItems(state.accessRequests);
   const detail = state.detail?.entity === "associations"
     ? renderAssociationDetail(state.detail.id)
     : state.detail?.entity === "user_access"
@@ -1018,17 +1070,25 @@ function renderAdmin() {
       : "";
   view.innerHTML = `${renderToolbar("associations")}<div class="${detail ? "split-view" : ""}">
     <div class="admin-stack">
+      ${caps.platform_admin ? `
       <section class="panel">
         <div class="panel-head">
           <h2>${t("sections.associations")}</h2>
         </div>
         ${renderAssociationTable(associationItems)}
       </section>
+      ` : ""}
+      <section class="panel">
+        <div class="panel-head">
+          <h2>${t("sections.access_requests")}</h2>
+        </div>
+        ${renderAccessRequestTable(requestItems)}
+      </section>
       <section class="panel">
         <div class="panel-head">
           <h2>${t("sections.users")}</h2>
           <div class="panel-actions">
-            <button class="ghost-button" data-export-tenant-access>${t("actions.export_tenant_access")}</button>
+            ${caps.platform_admin ? `<button class="ghost-button" data-export-tenant-access>${t("actions.export_tenant_access")}</button>` : ""}
             <button class="primary-button" data-new-user>${t("actions.new_user")}</button>
           </div>
         </div>
@@ -1037,6 +1097,29 @@ function renderAdmin() {
     </div>
     ${detail}
   </div>`;
+}
+
+function renderAccessRequestTable(items) {
+  if (!items.length) return `<div class="empty">${t("empty.no_access_requests")}</div>`;
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>${t("fields.email")}</th><th>${t("labels.tenant")}</th><th>${t("table.status")}</th><th>${t("table.updated")}</th><th></th></tr></thead>
+        <tbody>${items.map((item) => `
+          <tr>
+            <td><strong>${escapeHtml(item.email)}</strong></td>
+            <td>${escapeHtml(item.tenant_id)}</td>
+            <td>${statusPill(item.status || "pending")}</td>
+            <td>${item.requested_at ? new Date(item.requested_at).toLocaleString(locale()) : ""}</td>
+            <td><div class="row-actions">
+              <button class="primary-button" data-approve-request="${escapeHtml(item.id)}">${t("actions.approve")}</button>
+              <button class="danger-button" data-deny-request="${escapeHtml(item.id)}">${t("actions.deny")}</button>
+            </div></td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function filterAssociationItems(items) {
@@ -1766,6 +1849,16 @@ function renderField(name, label, type, required, span, value) {
     const jsonValue = value === undefined ? "[]" : JSON.stringify(value, null, 2);
     return `<div class="field${full}"><label for="${name}">${t(label)}</label><textarea id="${name}" name="${name}" ${requiredAttr}>${escapeHtml(jsonValue)}</textarea></div>`;
   }
+  if (type === "tenant_roles") {
+    const roles = Array.isArray(value) && value.length ? value : [{tenant_id: "", role: "reader"}];
+    return `<div class="field${full} tenant-role-field" data-tenant-roles-field>
+      <label>${t(label)}</label>
+      <div class="tenant-role-list">
+        ${roles.map((role) => renderTenantRoleRow(role)).join("")}
+      </div>
+      <button type="button" class="ghost-button" data-add-tenant-role>${t("actions.add_tenant_role")}</button>
+    </div>`;
+  }
   if (type === "condition") {
     return `<div class="field${full}"><label for="${name}">${t(label)}</label><select id="${name}" name="${name}" ${requiredAttr}>
       ${["good", "watch", "needs_service", "in_service", "retired"].map((condition) => `<option value="${condition}" ${condition === (value || "good") ? "selected" : ""}>${t(`condition.${condition}`)}</option>`).join("")}
@@ -1827,6 +1920,18 @@ function renderInstrumentSelect(name, label, requiredAttr, full, value, options)
   </select></div>`;
 }
 
+function renderTenantRoleRow(role = {}) {
+  const tenantId = role.tenant_id || "";
+  const selectedRole = role.role || "reader";
+  return `<div class="tenant-role-row">
+    <input name="tenant_roles_tenant_id" placeholder="${t("labels.tenant")}" value="${escapeHtml(tenantId)}" pattern="[a-z0-9][a-z0-9_-]{1,62}">
+    <select name="tenant_roles_role">
+      ${["reader", "operator", "admin"].map((item) => `<option value="${item}" ${item === selectedRole ? "selected" : ""}>${t(`tenant_role.${item}`)}</option>`).join("")}
+    </select>
+    <button type="button" class="icon-button" data-remove-tenant-role title="${t("actions.delete")}" aria-label="${t("actions.delete")}">×</button>
+  </div>`;
+}
+
 function singular(entity) {
   return entity === "members" ? t("entities.member") : entity === "rentals" ? t("entities.rental") : entity === "service_records" ? t("entities.service_record") : entity === "associations" ? t("entities.association") : entity === "user_access" ? t("entities.user_access") : t("entities.instrument");
 }
@@ -1840,8 +1945,17 @@ function formPayload(form) {
   if ("value_chf" in payload) payload.value_chf = Number(payload.value_chf);
   if ("cost_chf" in payload) payload.cost_chf = Number(payload.cost_chf);
   if ("purchase_year" in payload) payload.purchase_year = Number(payload.purchase_year);
+  if (form.querySelector("[data-tenant-roles-field]")) {
+    const tenantIds = [...form.querySelectorAll('[name="tenant_roles_tenant_id"]')].map((input) => input.value.trim().toLowerCase());
+    const roles = [...form.querySelectorAll('[name="tenant_roles_role"]')].map((select) => select.value);
+    payload.tenant_roles = tenantIds
+      .map((tenantId, index) => tenantId ? {tenant_id: tenantId, role: roles[index] || "reader"} : null)
+      .filter(Boolean);
+    delete payload.tenant_roles_tenant_id;
+    delete payload.tenant_roles_role;
+  }
   ["tenant_roles", "member_links"].forEach((key) => {
-    if (key in payload) payload[key] = JSON.parse(payload[key] || "[]");
+    if (key in payload && typeof payload[key] === "string") payload[key] = JSON.parse(payload[key] || "[]");
   });
   return payload;
 }
@@ -1882,6 +1996,19 @@ view.addEventListener("click", async (event) => {
   const target = event.target.closest("button");
   if (target) {
     event.stopPropagation();
+    if (target.dataset.addTenantRole !== undefined) {
+      const list = target.closest("[data-tenant-roles-field]")?.querySelector(".tenant-role-list");
+      if (list) list.insertAdjacentHTML("beforeend", renderTenantRoleRow());
+      return;
+    }
+    if (target.dataset.removeTenantRole !== undefined) {
+      const list = target.closest(".tenant-role-list");
+      target.closest(".tenant-role-row")?.remove();
+      if (list && !list.querySelector(".tenant-role-row")) {
+        list.insertAdjacentHTML("beforeend", renderTenantRoleRow());
+      }
+      return;
+    }
     if (target.dataset.closeDetail !== undefined) {
       state.detail = null;
       render();
@@ -1917,6 +2044,14 @@ view.addEventListener("click", async (event) => {
     }
     if (target.dataset.exportTenantAccess !== undefined) {
       await exportTenantAccessUsers();
+      return;
+    }
+    if (target.dataset.approveRequest) {
+      await approveAccessRequest(target.dataset.approveRequest);
+      return;
+    }
+    if (target.dataset.denyRequest) {
+      await denyAccessRequest(target.dataset.denyRequest);
       return;
     }
     if (target.dataset.serviceAdd) {
@@ -1998,6 +2133,22 @@ view.addEventListener("keydown", (event) => {
   render();
 });
 
+view.addEventListener("submit", async (event) => {
+  if (!event.target.matches("[data-join-request]")) return;
+  event.preventDefault();
+  const tenant = new FormData(event.target).get("tenant_id")?.toString().trim().toLowerCase();
+  if (!tenantPattern.test(tenant)) {
+    showMessage(t("tenant.invalid"), true);
+    return;
+  }
+  try {
+    await accessRequestApi({tenant_id: tenant});
+    showMessage(t("messages.join_request_sent"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+});
+
 primaryAction.addEventListener("click", () => {
   if (state.view === "admin") {
     openDialog("associations", {status: "active", locale: "de-CH"});
@@ -2044,6 +2195,22 @@ recordForm.addEventListener("submit", async (event) => {
     showMessage(t("messages.saved", {entity: singular(entity)}));
   } catch (error) {
     await handleMutationError(error);
+  }
+});
+
+recordForm.addEventListener("click", (event) => {
+  const target = event.target.closest("button");
+  if (!target) return;
+  if (target.dataset.addTenantRole !== undefined) {
+    const list = target.closest("[data-tenant-roles-field]")?.querySelector(".tenant-role-list");
+    if (list) list.insertAdjacentHTML("beforeend", renderTenantRoleRow());
+  }
+  if (target.dataset.removeTenantRole !== undefined) {
+    const list = target.closest(".tenant-role-list");
+    target.closest(".tenant-role-row")?.remove();
+    if (list && !list.querySelector(".tenant-role-row")) {
+      list.insertAdjacentHTML("beforeend", renderTenantRoleRow());
+    }
   }
 });
 
@@ -2162,6 +2329,26 @@ async function exportTenantAccessUsers() {
     const date = new Date().toISOString().slice(0, 10);
     downloadJson(`rental-tenant-access-${date}.json`, data.data || []);
     showMessage(t("messages.tenant_access_export_downloaded"));
+  } catch (error) {
+    await handleMutationError(error);
+  }
+}
+
+async function approveAccessRequest(id) {
+  try {
+    await adminApi(`/access-requests/${id}/approve`, {method: "POST", body: JSON.stringify({tenant_role: "reader"})});
+    await loadData();
+    showMessage(t("messages.access_request_approved"));
+  } catch (error) {
+    await handleMutationError(error);
+  }
+}
+
+async function denyAccessRequest(id) {
+  try {
+    await adminApi(`/access-requests/${id}/deny`, {method: "POST", body: "{}"});
+    await loadData();
+    showMessage(t("messages.access_request_denied"));
   } catch (error) {
     await handleMutationError(error);
   }

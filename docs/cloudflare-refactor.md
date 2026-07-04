@@ -365,17 +365,19 @@ an `admin` role on the `platform-admin` tenant context. A tenant-level admin for
 `band-one`, for example, can manage `/api/band-one/...` records but receives
 `403 platform admin required` for `/api/admin/associations`.
 
-The same platform boundary now covers `/api/admin/users`. User access records
-are stored outside tenant data under a hashed backend id plus the normalized
-Access email, role configuration, tenant/member links, status, and timestamps.
+User access records are stored outside tenant data under a hashed backend id
+plus the normalized Access email, role configuration, tenant/member links,
+status, and timestamps. Platform admins can manage all users; tenant admins can
+manage only users and pending join requests for their own signed tenant.
 Optional display labels reject contact-like values, keeping the Access email as
 the only intentional user identifier for the front door. Member links use opaque
 local member ids and reject email or phone-like values.
 The Admin Center renders these users beside associations and opens a drilldown
 showing global role, access profile, tenant roles, and linked member ids.
-`GET /api/admin/users/export/tenant-access` renders those profiles as Wrangler
-KV bulk rows for `TENANT_ACCESS_KV`, bridging the backend registry to the
-Cloudflare Access front door without manually reshaping JSON.
+Hosted backend deployments now bind the same `TENANT_ACCESS_KV` namespace as the
+front door, so user saves, deletes, and access-request approvals mirror
+`user:{email}` rows automatically. `GET /api/admin/users/export/tenant-access`
+still renders those profiles as Wrangler KV bulk rows for audits and migration.
 
 ## Local Debugging
 

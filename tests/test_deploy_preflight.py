@@ -6,6 +6,7 @@ from scripts.deploy_preflight import (
     validate_ci_workflow,
     validate_backend_wrangler,
     validate_frontend_assets,
+    validate_frontdoor_wrangler,
     validate_gitignore,
     validate_no_legacy_runtime_dependencies,
     validate_no_wildcard_cors,
@@ -144,7 +145,20 @@ class DeployPreflightTests(unittest.TestCase):
         self.assertTrue(any("legacy path should be removed: .docs" in error for error in errors))
 
     def test_strict_frontdoor_preflight_rejects_placeholder_access_values(self):
-        errors, _ = validate_project(ROOT, include_frontdoor=True)
+        errors = []
+        validate_frontdoor_wrangler({
+            "main": "frontdoor/access_context_worker.js",
+            "kv_namespaces": [{
+                "binding": "TENANT_ACCESS_KV",
+                "id": "replace-with-tenant-access-kv-id",
+                "preview_id": "replace-with-tenant-access-preview-kv-id",
+            }],
+            "services": [{"binding": "RENTAL_BACKEND", "service": "association-rental"}],
+            "vars": {
+                "CF_ACCESS_TEAM_DOMAIN": "replace-with-team-domain",
+                "CF_ACCESS_AUD": "replace-with-aud",
+            },
+        }, False, errors)
 
         self.assertTrue(any("TENANT_ACCESS_KV id still uses a placeholder" in error for error in errors))
         self.assertTrue(any("vars.CF_ACCESS_TEAM_DOMAIN still uses a placeholder" in error for error in errors))

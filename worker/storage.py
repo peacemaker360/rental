@@ -38,13 +38,22 @@ def user_key(user_id: str) -> str:
     return f"users:{user_id}"
 
 
+def access_requests_index_key() -> str:
+    return "access_requests:index"
+
+
+def access_request_key(request_id: str) -> str:
+    return f"access_request:{request_id}" if not request_id.startswith("access_request:") else request_id
+
+
 def empty_metadata(tenant_id: str) -> dict[str, Any]:
     return {"tenant_id": tenant_id, "revision": 0, "updated_at": None}
 
 
 class KVRepository:
-    def __init__(self, kv: Any):
+    def __init__(self, kv: Any, tenant_access_kv: Any = None):
         self.kv = kv
+        self.tenant_access_kv = tenant_access_kv
 
     async def _get_json(self, key: str, default: Any = None) -> Any:
         value = await self.kv.get(key, type="json")
@@ -141,6 +150,7 @@ class KVRepository:
             user_ids.sort()
             await self._put_json(users_index_key(), user_ids)
         await self._put_json(user_key(user_id), user)
+        await self.save_frontdoor_user_assignment(user)
         return user
 
     async def delete_user(self, user_id: str) -> dict[str, Any] | None:
@@ -150,4 +160,70 @@ class KVRepository:
         user_ids = [item for item in await self._get_json(users_index_key(), []) if item != user_id]
         await self._put_json(users_index_key(), user_ids)
         await self._delete(user_key(user_id))
+        await self.delete_frontdoor_user_assignment(user)
         return user
+
+    async def save_frontdoor_user_assignment(self, user: dict[str, Any]) -> None:
+        if self.tenant_access_kv is None:
+            return
+        value = {
+            "access_profile": user.get("access_profile", "full"),
+            "email": user["email"],
+            "global_role": user.get("global_role", "none"),
+            "member_links": user.get("member_links", []),
+            "status": user.get("status", "active"),
+            "tenant_roles": user.get("tenant_roles", []),
+        }
+        tenant_roles = value["tenant_roles"]
+        if tenant_roles:
+            value["default_tenant"] = tenant_roles[0]["tenant_id"]
+        await self.tenant_access_kv.put(f"user:{user['email']}", json.dumps(value, separators=(",", ":"), sort_keys=True))
+
+    async def delete_frontdoor_user_assignment(self, user: dict[str, Any]) -> None:
+        if self.tenant_access_kv is None:
+            return
+        delete = getattr(self.tenant_access_kv, "delete", None)
+        if delete is not None:
+            await delete(f"user:{user['email']}")
+
+    async def list_access_requests(self) -> list[dict[str, Any]]:
+        if self.tenant_access_kv is None:
+            return []
+        ids = await self.tenant_access_kv.get(access_requests_index_key(), type="json") or []
+        requests = []
+        for request_id in ids:
+            item = await self.tenant_access_kv.get(access_request_key(request_id), type="json")
+            if item is not None:
+                requests.append(item)
+        return sorted(requests, key=lambda item: item.get("requested_at", ""))
+
+    async def load_access_request(self, request_id: str) -> dict[str, Any] | None:
+        if self.tenant_access_kv is None:
+            return None
+        return await self.tenant_access_kv.get(access_request_key(request_id), type="json")
+
+    async def save_access_request(self, request_id: str, item: dict[str, Any]) -> dict[str, Any]:
+        if self.tenant_access_kv is None:
+            return item
+        ids = await self.tenant_access_kv.get(access_requests_index_key(), type="json") or []
+        key = access_request_key(request_id)
+        if key not in ids:
+            ids.append(key)
+            ids.sort()
+            await self.tenant_access_kv.put(access_requests_index_key(), json.dumps(ids))
+        await self.tenant_access_kv.put(key, json.dumps(item))
+        return item
+
+    async def delete_access_request(self, request_id: str) -> dict[str, Any] | None:
+        if self.tenant_access_kv is None:
+            return None
+        key = access_request_key(request_id)
+        item = await self.tenant_access_kv.get(key, type="json")
+        if item is None:
+            return None
+        ids = [item_id for item_id in await self.tenant_access_kv.get(access_requests_index_key(), type="json") or [] if item_id != key]
+        await self.tenant_access_kv.put(access_requests_index_key(), json.dumps(ids))
+        delete = getattr(self.tenant_access_kv, "delete", None)
+        if delete is not None:
+            await delete(key)
+        return item

@@ -61,7 +61,9 @@ is read-only and includes the linked `member_id` in the signed context so the
 backend only returns that member's related rentals and instruments.
 For `/api/admin/...` routes, `platform_admin` profiles are always signed with
 the `platform-admin` tenant context even when the user also has a default tenant
-or per-association roles.
+or per-association roles. A pure `platform_admin` profile with no default tenant
+or tenant roles can also sign in with the `platform-admin` context, which keeps
+first-time setup possible before any association tenant exists.
 Malformed profile rows fail closed before any tenant context is signed: the
 front door validates status, global role, access profile, default tenant, and
 that tenant roles and member links are lists. Member-link ids must be opaque
@@ -119,12 +121,22 @@ npm run tenant-access -- assignments.json \
   --output /tmp/tenant-access-kv.json
 ```
 
-Platform admins can also export the same KV bulk shape directly from the app
-after editing users in the Admin Center:
+Hosted deployments bind `TENANT_ACCESS_KV` to both Workers. Creating, editing,
+approving, or deleting a user in the Admin Center writes the backend user
+registry and mirrors the frontdoor `user:{email}` row automatically. Platform
+admins can still export the same KV bulk shape directly from the app for audit
+or migration:
 
 ```text
 GET /api/admin/users/export/tenant-access
 ```
+
+Authenticated users without a profile can load the static start screen and send
+a join request for a tenant. The front door stores pending requests in
+`TENANT_ACCESS_KV`; platform admins see all requests, while tenant admins see
+only requests for their signed tenant. Approving a request creates or updates
+the user profile and removes the pending request; denying removes the pending
+request without creating access.
 
 Or render explicit Wrangler commands:
 
