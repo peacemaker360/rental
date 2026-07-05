@@ -72,6 +72,19 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('data-lang="en"', self.index_html)
         self.assertIn('data-lang="de"', self.index_html)
 
+    def test_mobile_appbar_keeps_minimal_sticky_navigation(self):
+        self.assertIn('class="mobile-appbar"', self.index_html)
+        self.assertIn('id="mobileTenantLabel"', self.index_html)
+        self.assertIn('href="#mainNav"', self.index_html)
+        self.assertIn('id="mainNav" class="nav"', self.index_html)
+        self.assertIn("const mobileTenantLabel = document.querySelector(\"#mobileTenantLabel\");", self.app_js)
+        self.assertIn("if (mobileTenantLabel) mobileTenantLabel.textContent = state.tenant;", self.app_js)
+        self.assertIn(".mobile-appbar {\n  display: none;", self.styles_css)
+        self.assertIn(".mobile-appbar {\n    position: sticky;\n    top: 0;", self.styles_css)
+        self.assertIn("min-height: 46px;", self.styles_css)
+        self.assertIn(".mobile-menu-button", self.styles_css)
+        self.assertIn(".sidebar > .brand {\n    display: none;", self.styles_css)
+
     def test_unauthenticated_start_screen_is_localized(self):
         self.assertIn('authStatus: "checking"', self.app_js)
         self.assertIn('state.authStatus = "signed_out"', self.app_js)
@@ -248,8 +261,10 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn("body {\n  margin: 0;\n  min-height: 100vh;\n  background: var(--bg);\n  color: var(--ink);\n  overflow-x: hidden;", self.styles_css)
         self.assertIn(".sidebar {\n    position: sticky;", self.styles_css)
         self.assertIn(".nav {\n    display: flex;\n    overflow-x: auto;", self.styles_css)
-        self.assertIn(".nav {\n    display: grid;\n    grid-template-columns: repeat(3, minmax(0, 1fr));", self.styles_css)
+        self.assertIn(".sidebar {\n    position: static;\n    padding: 12px;\n    gap: 8px;", self.styles_css)
+        self.assertIn(".nav {\n    display: grid;\n    grid-template-columns: repeat(4, minmax(0, 1fr));", self.styles_css)
         self.assertIn("overflow: visible;", self.styles_css)
+        self.assertIn(".language-box > span {\n    display: none;", self.styles_css)
         self.assertIn(".topbar-actions {\n    display: grid;", self.styles_css)
         self.assertIn("grid-template-columns: 1fr;", self.styles_css)
         self.assertIn(".segmented {\n    width: 100%;", self.styles_css)

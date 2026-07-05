@@ -39,6 +39,7 @@ const instrumentFile = document.querySelector("#instrumentFile");
 const refreshButton = document.querySelector("#refreshButton");
 const tenantInput = document.querySelector("#tenantInput");
 const tenantLabel = document.querySelector("#tenantLabel");
+const mobileTenantLabel = document.querySelector("#mobileTenantLabel");
 const tenantRevision = document.querySelector("#tenantRevision");
 const tenantUpdatedAt = document.querySelector("#tenantUpdatedAt");
 const tenantBox = document.querySelector(".tenant-box");
@@ -533,6 +534,7 @@ function locale() {
 
 tenantInput.value = state.tenant;
 tenantLabel.textContent = state.tenant;
+if (mobileTenantLabel) mobileTenantLabel.textContent = state.tenant;
 
 const schemas = {
   instruments: [
@@ -673,6 +675,7 @@ function applyContext(context) {
     tenantInput.value = state.tenant;
   }
   tenantLabel.textContent = state.tenant;
+  if (mobileTenantLabel) mobileTenantLabel.textContent = state.tenant;
   applyMeta(context.meta);
   applyAccessChrome();
 }
@@ -964,6 +967,7 @@ function render() {
   }
   viewTitle.textContent = t(`views.${state.view}`);
   tenantLabel.textContent = state.tenant;
+  if (mobileTenantLabel) mobileTenantLabel.textContent = state.tenant;
   primaryAction.hidden = state.view === "history" || (state.view === "admin" && !caps.admin);
   primaryAction.textContent = state.view === "admin" ? t("actions.new_association") : state.view === "instruments" ? t("actions.new_instruments") : state.view === "members" ? t("actions.new_members") : state.view === "service_records" ? t("actions.new_service_records") : t("actions.new_rentals");
   primaryAction.disabled = state.view === "admin" ? !caps.platform_admin : !caps.write;
@@ -992,6 +996,7 @@ function render() {
 function renderAuthStart() {
   viewTitle.textContent = t("auth.start_title");
   tenantLabel.textContent = t("app.eyebrow");
+  if (mobileTenantLabel) mobileTenantLabel.textContent = t("app.eyebrow");
   tenantInput.disabled = true;
   saveTenant.disabled = true;
   primaryAction.hidden = true;

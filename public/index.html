@@ -10,6 +10,13 @@
   </head>
   <body>
     <div class="app-shell">
+      <header class="mobile-appbar">
+        <a class="mobile-brand" href="#view" aria-label="Back to top">
+          <span class="brand-mark">RD</span>
+          <span id="mobileTenantLabel">Association</span>
+        </a>
+        <a class="mobile-menu-button" href="#mainNav" aria-label="Open menu">☰</a>
+      </header>
       <aside class="sidebar">
         <div class="brand">
           <span class="brand-mark">RD</span>
@@ -18,7 +25,7 @@
             <span id="tenantLabel">Association</span>
           </div>
         </div>
-        <nav class="nav" aria-label="Main">
+        <nav id="mainNav" class="nav" aria-label="Main">
           <button class="nav-item is-active" data-view="dashboard" data-i18n="views.dashboard">Dashboard</button>
           <button class="nav-item" data-view="instruments" data-i18n="views.instruments">Instruments</button>
           <button class="nav-item" data-view="members" data-i18n="views.members">Members</button>

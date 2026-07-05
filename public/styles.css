@@ -44,6 +44,10 @@ button {
   min-height: 100vh;
 }
 
+.mobile-appbar {
+  display: none;
+}
+
 .is-auth-start .nav,
 .is-auth-start .tenant-box,
 .is-auth-start .topbar-actions,
@@ -936,41 +940,120 @@ tr:last-child td {
 
 @media (max-width: 680px) {
   .app-shell {
+    display: block;
     min-height: 100dvh;
   }
 
+  .mobile-appbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 46px;
+    padding: 7px 10px;
+    background: #1f302e;
+    color: #f8fbf8;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .mobile-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: inherit;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .mobile-brand .brand-mark {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+  }
+
+  .mobile-brand span:not(.brand-mark) {
+    overflow: hidden;
+    color: #dbe5df;
+    font-size: 0.86rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-menu-button {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border: 1px solid #49625d;
+    border-radius: 8px;
+    color: #f8fbf8;
+    font-size: 1.1rem;
+    font-weight: 800;
+    line-height: 1;
+    text-decoration: none;
+  }
+
   .sidebar {
+    position: static;
     padding: 12px;
+    gap: 8px;
+  }
+
+  .sidebar > .brand {
+    display: none;
   }
 
   .brand-mark {
-    width: 38px;
-    height: 38px;
+    width: 32px;
+    height: 32px;
   }
 
   .brand strong {
-    font-size: 0.96rem;
+    font-size: 0.9rem;
   }
 
   .brand span:not(.brand-mark) {
-    font-size: 0.8rem;
+    display: none;
   }
 
   .nav {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
     overflow: visible;
     padding-bottom: 0;
   }
 
   .nav-item {
     width: 100%;
-    min-height: 38px;
-    padding: 0 8px;
+    min-height: 32px;
+    padding: 0 6px;
+    font-size: 0.82rem;
     white-space: normal;
     overflow-wrap: anywhere;
     line-height: 1.15;
+  }
+
+  .tenant-box {
+    padding-top: 8px;
+  }
+
+  .language-box {
+    gap: 4px;
+  }
+
+  .language-box > span {
+    display: none;
+  }
+
+  .language-switch button {
+    min-height: 30px;
+    font-size: 0.82rem;
   }
 
   .workspace {
