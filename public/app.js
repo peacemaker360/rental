@@ -283,6 +283,7 @@ const translations = {
     "auth.registration_hint": "Need access? Ask your association administrator to register your sign-in email and assign you to the right association.",
     "auth.invalid_token": "Your sign-in could not be verified or is no longer valid.",
     "auth.no_profile": "You are signed in, but your app access is still missing or disabled.",
+    "auth.access_denied": "Your sign-in worked, but this association is not available to your account.",
     "auth.pending_hint": "Your request is pending. You can retry sign-in or submit another request if the details changed.",
     "auth.email_help": "Use the same email you use to sign in.",
     "auth.request_submitted": "Your access request was submitted.",
@@ -532,6 +533,7 @@ const translations = {
     "auth.registration_hint": "Brauchst du Zugriff? Bitte deine Vereinsadministration, deine Anmelde-E-Mail zu registrieren und dem richtigen Verein zuzuweisen.",
     "auth.invalid_token": "Deine Anmeldung konnte nicht verifiziert werden oder ist nicht mehr gültig.",
     "auth.no_profile": "Du bist angemeldet, aber dein App-Zugriff fehlt noch oder ist deaktiviert.",
+    "auth.access_denied": "Deine Anmeldung funktioniert, aber dieser Verein ist fuer dein Konto nicht freigegeben.",
     "auth.pending_hint": "Deine Anfrage ist offen. Du kannst die Anmeldung erneut versuchen oder eine neue Anfrage senden, falls sich Details geändert haben.",
     "auth.email_help": "Verwende dieselbe E-Mail, die du auch fuer die Anmeldung nutzt.",
     "auth.request_submitted": "Deine Beitrittsanfrage wurde gesendet.",
@@ -732,13 +734,14 @@ function saveStoredAccessRequest(request) {
 
 function authReasonFromError(error) {
   const message = String(error?.message || "").toLowerCase();
-  if (error?.status === 401 || (message.includes("missing") && message.includes("token"))) return "missing_token";
+  if (error?.status === 401 || message.includes("missing signed tenant context") || (message.includes("missing") && message.includes("token"))) return "missing_token";
   if (message.includes("no user access profile")) return "no_profile";
+  if (message.includes("user is not allowed for this tenant") || message.includes("user access profile is disabled") || message.includes("user access profile has no tenant")) return "access_denied";
   return "auth_error";
 }
 
 function hasLikelySignInToken() {
-  return state.authStatus === "signed_out" && state.authReason !== "missing_token";
+  return state.authStatus === "signed_out" && ["no_profile", "access_denied"].includes(state.authReason);
 }
 
 function currentAuthStartState() {
@@ -756,9 +759,9 @@ function authStartSteps() {
       body: hasToken ? t("auth.signed_in") : t("auth.sign_in_needed")
     },
     {
-      state: authState === "pending_request" || authState === "no_profile" ? "current" : "waiting",
+      state: authState === "pending_request" || authState === "no_profile" || authState === "access_denied" ? "current" : "waiting",
       title: t("entities.user_access"),
-      body: authState === "pending_request" ? t("auth.pending_hint") : authState === "missing_token" ? t("auth.invalid_token") : t("auth.no_profile")
+      body: authState === "pending_request" ? t("auth.pending_hint") : authState === "missing_token" ? t("auth.invalid_token") : authState === "access_denied" ? t("auth.access_denied") : t("auth.no_profile")
     },
     {
       state: hasRequest ? "current" : "waiting",
@@ -2402,6 +2405,10 @@ view.addEventListener("click", async (event) => {
     if (target.dataset.closeDetail !== undefined) {
       state.detail = null;
       render();
+      return;
+    }
+    if (target.dataset.logout !== undefined) {
+      window.location.assign("/cdn-cgi/access/logout");
       return;
     }
     if (target.dataset.authRetry !== undefined) {
