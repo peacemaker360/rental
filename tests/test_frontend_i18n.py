@@ -190,6 +190,15 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn("assertLowPiiWrite(payload, entity)", submit_handler.group(0))
         self.assertIn('const allowedFields = entity === "user_access" ? new Set(["email"]) : entity === "associations" ? new Set(["contact"]) : new Set()', self.app_js)
 
+    def test_nullable_date_fields_can_be_cleared_from_forms(self):
+        self.assertIn('"fields.return_date": "Return date"', self.app_js)
+        self.assertIn('"fields.return_date": "Rückgabedatum"', self.app_js)
+        self.assertIn('["return_date", "fields.return_date", "date", false]', self.app_js)
+        self.assertIn("function shouldKeepEmptyField(entity, key)", self.app_js)
+        self.assertIn('rentals: new Set(["due_date", "return_date"])', self.app_js)
+        self.assertIn('service_records: new Set(["next_service_date"])', self.app_js)
+        self.assertIn('if (payload[key] === "" && !shouldKeepEmptyField(entity, key)) delete payload[key];', self.app_js)
+
     def test_import_handlers_use_localized_json_parse_error(self):
         self.assertIn('"messages.import_invalid_json": "Import blocked: choose a valid JSON file"', self.app_js)
         self.assertIn('"messages.import_invalid_json": "Import blockiert: Bitte eine gültige JSON-Datei auswählen"', self.app_js)

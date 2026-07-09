@@ -158,6 +158,7 @@ const translations = {
     "fields.member_id": "Member",
     "fields.start_date": "Start date",
     "fields.due_date": "Due date",
+    "fields.return_date": "Return date",
     "fields.note": "Note",
     "fields.service_date": "Service date",
     "fields.next_service_date": "Next service",
@@ -402,6 +403,7 @@ const translations = {
     "fields.member_id": "Mitglied",
     "fields.start_date": "Startdatum",
     "fields.due_date": "Fälligkeitsdatum",
+    "fields.return_date": "Rückgabedatum",
     "fields.note": "Notiz",
     "fields.service_date": "Servicedatum",
     "fields.next_service_date": "Nächster Service",
@@ -602,6 +604,7 @@ const schemas = {
     ["member_id", "fields.member_id", "member", true],
     ["start_date", "fields.start_date", "date", true],
     ["due_date", "fields.due_date", "date", false],
+    ["return_date", "fields.return_date", "date", false],
     ["note", "fields.note", "textarea", false, "full"]
   ],
   service_records: [
@@ -2211,8 +2214,9 @@ function singular(entity) {
 
 function formPayload(form) {
   const payload = Object.fromEntries(new FormData(form).entries());
+  const entity = form.dataset.entity;
   Object.keys(payload).forEach((key) => {
-    if (payload[key] === "") delete payload[key];
+    if (payload[key] === "" && !shouldKeepEmptyField(entity, key)) delete payload[key];
   });
   if ("is_active" in payload) payload.is_active = payload.is_active === "true";
   if ("value_chf" in payload) payload.value_chf = Number(payload.value_chf);
@@ -2240,6 +2244,14 @@ function formPayload(form) {
     if (key in payload && typeof payload[key] === "string") payload[key] = JSON.parse(payload[key] || "[]");
   });
   return payload;
+}
+
+function shouldKeepEmptyField(entity, key) {
+  const nullableDateFields = {
+    rentals: new Set(["due_date", "return_date"]),
+    service_records: new Set(["next_service_date"])
+  };
+  return nullableDateFields[entity]?.has(key) || false;
 }
 
 document.querySelectorAll(".nav-item").forEach((button) => {

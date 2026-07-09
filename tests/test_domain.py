@@ -105,6 +105,23 @@ class DomainTests(unittest.TestCase):
                 "instrument_id": "missing",
             })
 
+    def test_rental_update_can_clear_nullable_dates(self):
+        rental = create_record(self.records, self.tenant_id, "rentals", {
+            "instrument_id": self.instrument["id"],
+            "member_id": self.member["id"],
+            "start_date": "2026-01-01",
+            "due_date": "2026-02-01",
+            "return_date": "2026-01-20",
+        })
+
+        updated = update_record(self.records, self.tenant_id, "rentals", rental["id"], {
+            "due_date": "",
+            "return_date": "",
+        })
+
+        self.assertIsNone(updated["due_date"])
+        self.assertIsNone(updated["return_date"])
+
     def test_service_record_updates_instrument_condition(self):
         service = create_record(self.records, self.tenant_id, "service_records", {
             "instrument_id": self.instrument["id"],
