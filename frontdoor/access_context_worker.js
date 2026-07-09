@@ -7,6 +7,7 @@ const ALLOWED_ROLES = new Set(["viewer", "operator", "admin"]);
 const GLOBAL_ROLES = new Set(["none", "reader", "operator", "admin", "platform_admin"]);
 const TENANT_ROLES = new Set(["reader", "operator", "admin"]);
 const ACCESS_PROFILES = new Set(["full", "basic"]);
+const LOGIN_PATH = "/auth/login";
 
 let cachedJwks = null;
 let cachedJwksUntil = 0;
@@ -18,6 +19,12 @@ export default {
       if (url.pathname === "/api/health") {
         return forwardToBackend(request, env, null);
       }
+      if (url.pathname === "/api/access-requests" && request.method === "POST") {
+        return createAccessRequest(request, env, null);
+      }
+      if (!url.pathname.startsWith("/api/") && url.pathname !== LOGIN_PATH) {
+        return forwardToBackend(request, env, null);
+      }
 
       const accessJwt = accessJwtFromRequest(request);
       if (!accessJwt) {
@@ -25,8 +32,8 @@ export default {
       }
 
       const claims = await verifyAccessJwt(accessJwt, env);
-      if (url.pathname === "/api/access-requests" && request.method === "POST") {
-        return createAccessRequest(request, env, claims);
+      if (url.pathname === LOGIN_PATH) {
+        return redirectResponse("/");
       }
       if (!url.pathname.startsWith("/api/")) {
         return forwardToBackend(request, env, null);
@@ -55,9 +62,9 @@ export default {
 
 async function createAccessRequest(request, env, claims) {
   if (!env.TENANT_ACCESS_KV) throw new Error("TENANT_ACCESS_KV binding is required");
-  const email = cleanEmail(claims.email);
-  if (!validEmail(email)) throw new Error("Cloudflare Access token email is invalid");
   const payload = await request.json().catch(() => ({}));
+  const email = cleanEmail(claims?.email || payload.email);
+  if (!validEmail(email)) throw new Error("valid email is required");
   const tenantId = String(payload.tenant_id || "").trim().toLowerCase();
   if (!validTenantId(tenantId)) throw new Error("tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores");
   const now = new Date().toISOString();
@@ -70,6 +77,14 @@ async function createAccessRequest(request, env, claims) {
     requested_at: now,
     updated_at: now
   };
+  const associationContact = await env.TENANT_ACCESS_KV.get(`association_contact:${tenantId}`, {type: "json"});
+  if (associationContact) {
+    item.association = {
+      contact: associationContact.contact,
+      display_name: associationContact.display_name,
+      tenant_id: tenantId
+    };
+  }
   const indexKey = "access_requests:index";
   const ids = await env.TENANT_ACCESS_KV.get(indexKey, {type: "json"}) || [];
   if (!ids.includes(id)) {
@@ -79,6 +94,16 @@ async function createAccessRequest(request, env, claims) {
   }
   await env.TENANT_ACCESS_KV.put(id, JSON.stringify(item));
   return jsonResponse({data: item}, 201);
+}
+
+function redirectResponse(location, status = 302) {
+  return new Response("", {
+    status,
+    headers: {
+      "cache-control": "no-store",
+      "location": location
+    }
+  });
 }
 
 function jsonResponse(body, status) {
@@ -181,7 +206,7 @@ function resolveUserAssignment(user, email, url) {
   validateUserProfile(user);
   if (user.status && user.status !== "active") throw new Error("user access profile is disabled");
   const requestedTenant = routeTenant(url);
-  const defaultTenant = user.default_tenant || firstTenantRole(user)?.tenant_id;
+  const defaultTenant = user.default_tenant || firstTenantRole(user)?.tenant_id || firstMemberLink(user)?.tenant_id;
   const adminRoute = url.pathname.startsWith("/api/admin");
   const platformAdminRoute = adminRoute && user.global_role === "platform_admin";
   const tenantId = platformAdminRoute
@@ -238,6 +263,7 @@ function roleForTenant(user, tenantId, adminRoute) {
   if (globalRole === "reader") return "viewer";
 
   const tenantRole = (user.tenant_roles || []).find((item) => item.tenant_id === tenantId)?.role;
+  if (!tenantRole && user.access_profile === "basic" && (user.member_links || []).some((item) => item.tenant_id === tenantId)) return "viewer";
   if (!tenantRole) throw new Error("user is not allowed for this tenant");
   if (!TENANT_ROLES.has(tenantRole)) throw new Error("user access profile has invalid tenant role");
   return tenantRole === "reader" ? "viewer" : tenantRole;
@@ -245,6 +271,10 @@ function roleForTenant(user, tenantId, adminRoute) {
 
 function firstTenantRole(user) {
   return (user.tenant_roles || []).find((item) => validTenantId(item.tenant_id));
+}
+
+function firstMemberLink(user) {
+  return (user.member_links || []).find((item) => validTenantId(item.tenant_id));
 }
 
 function tenantAccessCount(user) {

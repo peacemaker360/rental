@@ -22,6 +22,7 @@ from domain import (
     create_record,
     delete_record,
     demo_records,
+    email_hash,
     export_package,
     find_record,
     hydrate,
@@ -326,6 +327,7 @@ def normalize_association(
         "status": status,
         "region": optional_text(payload.get("region", current.get("region"))),
         "locale": clean_text(payload.get("locale", current.get("locale", "de-CH")), "de-CH"),
+        "contact": optional_text(payload.get("contact", current.get("contact"))),
         "contact_ref": optional_text(payload.get("contact_ref", current.get("contact_ref"))),
         "hitobito_group_ref": optional_text(payload.get("hitobito_group_ref", current.get("hitobito_group_ref"))),
         "inventory_ref": optional_text(payload.get("inventory_ref", current.get("inventory_ref"))),
@@ -525,7 +527,11 @@ def can_admin(context: RequestContext) -> bool:
 
 
 def can_manage_associations(context: RequestContext) -> bool:
-    return can_admin(context) and (context.mode in ("local", "open") or context.tenant_id == PLATFORM_TENANT_ID)
+    return can_admin(context) and (
+        context.mode in ("local", "open")
+        or context.tenant_id == PLATFORM_TENANT_ID
+        or context.global_role == "platform_admin"
+    )
 
 
 def can_manage_users(context: RequestContext) -> bool:
@@ -591,6 +597,7 @@ def context_payload(context: RequestContext) -> dict[str, Any]:
         "actor_id": context.actor_id,
         "role": context.role,
         "mode": context.mode,
+        "user_email": context.user_email,
         "tenant_locked": context.mode not in ("local", "open"),
         "capabilities": {
             "read": True,
@@ -616,6 +623,16 @@ async def tenant_metadata(repo: TenantRepository, tenant_id: str) -> dict[str, A
 
 async def tenant_summary(repo: TenantRepository, tenant_id: str, records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     return {**summary(records), "meta": await tenant_metadata(repo, tenant_id)}
+
+
+async def scoped_tenant_summary(
+    repo: TenantRepository,
+    tenant_id: str,
+    records: dict[str, list[dict[str, Any]]],
+    context: RequestContext,
+) -> dict[str, Any]:
+    data = basic_customer_summary(records, context) if context.access_profile == "basic" else summary(records)
+    return {**data, "meta": await tenant_metadata(repo, tenant_id)}
 
 
 async def ensure_association(repo: TenantRepository, tenant_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
@@ -873,22 +890,69 @@ def basic_instrument_ids(records: dict[str, list[dict[str, Any]]], member_id: st
     }
 
 
+def basic_member_id(records: dict[str, list[dict[str, Any]]], context: RequestContext) -> str | None:
+    if context.member_id:
+        return context.member_id
+    if not context.user_email:
+        return None
+    user_hash = email_hash(context.user_email)
+    match = next(
+        (
+            item for item in records["members"]
+            if item.get("is_active") is not False and item.get("access_email_hash") == user_hash
+        ),
+        None,
+    )
+    return match.get("id") if match else None
+
+
+def basic_customer_summary(records: dict[str, list[dict[str, Any]]], context: RequestContext) -> dict[str, Any]:
+    member_id = basic_member_id(records, context)
+    if not member_id:
+        return {
+            "instruments": 0,
+            "available_instruments": 0,
+            "members": 0,
+            "active_rentals": 0,
+            "overdue_rentals": 0,
+            "service_attention": 0,
+        }
+    instrument_ids = basic_instrument_ids(records, member_id)
+    hydrated = hydrate(records)
+    active_rentals = [
+        item for item in hydrated["rentals"]
+        if item.get("member_id") == member_id and item.get("status") != "returned"
+    ]
+    return {
+        "instruments": len(instrument_ids),
+        "available_instruments": 0,
+        "members": 1,
+        "active_rentals": len(active_rentals),
+        "overdue_rentals": len([item for item in active_rentals if item.get("status") == "overdue"]),
+        "service_attention": len([
+            item for item in hydrated["instruments"]
+            if item.get("id") in instrument_ids and item.get("service_condition") in ("watch", "needs_service", "in_service")
+        ]),
+    }
+
+
 def basic_access_matches(entity: str, item: dict[str, Any], records: dict[str, list[dict[str, Any]]], context: RequestContext) -> bool:
     if context.access_profile != "basic":
         return True
-    if not context.member_id:
+    member_id = basic_member_id(records, context)
+    if not member_id:
         return False
-    instrument_ids = basic_instrument_ids(records, context.member_id)
+    instrument_ids = basic_instrument_ids(records, member_id)
     if entity == "members":
-        return item.get("id") == context.member_id
+        return item.get("id") == member_id
     if entity == "rentals":
-        return item.get("member_id") == context.member_id
+        return item.get("member_id") == member_id
     if entity == "instruments":
         return item.get("id") in instrument_ids
     if entity == "service_records":
         return item.get("instrument_id") in instrument_ids
     if entity == "history":
-        return item.get("member_id") == context.member_id or item.get("instrument_id") in instrument_ids
+        return item.get("member_id") == member_id or item.get("instrument_id") in instrument_ids
     return False
 
 
@@ -989,7 +1053,7 @@ async def handle_api_request(
         records = await repo.load_tenant(tenant_id)
 
         if len(parts) == 2 and parts[1] == "summary" and method == "GET":
-            return 200, await tenant_summary(repo, tenant_id, records)
+            return 200, await scoped_tenant_summary(repo, tenant_id, records, context)
 
         if len(parts) == 2 and parts[1] == "export" and method == "GET":
             if not can_admin(context):

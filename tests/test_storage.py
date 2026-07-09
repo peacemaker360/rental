@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from worker.storage import KVRepository, association_key, associations_index_key, entity_key, index_key, metadata_key, user_key, users_index_key
+from worker.storage import KVRepository, association_contact_key, association_key, associations_index_key, entity_key, index_key, metadata_key, user_key, users_index_key
 
 
 class FakeKV:
@@ -112,10 +112,12 @@ class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_association_registry_round_trip(self):
         kv = FakeKV()
-        repo = KVRepository(kv)
+        tenant_access_kv = FakeKV()
+        repo = KVRepository(kv, tenant_access_kv)
 
         saved = await repo.save_association("tenant-a", {
             "tenant_id": "tenant-a",
+            "contact": "board@example.test",
             "display_name": "Tenant A",
             "status": "active",
         })
@@ -123,6 +125,7 @@ class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["display_name"], "Tenant A")
         self.assertIn(associations_index_key(), kv.values)
         self.assertIn(association_key("tenant-a"), kv.values)
+        self.assertEqual(json.loads(tenant_access_kv.values[association_contact_key("tenant-a")])["contact"], "board@example.test")
         self.assertEqual((await repo.load_association("tenant-a"))["status"], "active")
         self.assertEqual([item["tenant_id"] for item in await repo.list_associations()], ["tenant-a"])
 

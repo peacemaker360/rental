@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime, timezone
+import hashlib
 import re
 from typing import Any
 from uuid import uuid4
@@ -44,6 +45,19 @@ def optional_text(value: Any) -> str | None:
     return text or None
 
 
+def normalize_email(value: Any) -> str:
+    return clean_text(value).lower()
+
+
+def email_hash(value: Any) -> str | None:
+    email = normalize_email(value)
+    if not email:
+        return None
+    if not EMAIL_PATTERN.fullmatch(email):
+        raise DomainError("access_email must be a valid email address")
+    return hashlib.sha256(email.encode("utf-8")).hexdigest()
+
+
 def require_text(payload: dict[str, Any], field: str) -> str:
     value = clean_text(payload.get(field))
     if not value:
@@ -77,7 +91,7 @@ def scan_blocked_fields(value: Any, path: str = "payload") -> list[str]:
     if isinstance(value, dict):
         for key, child in value.items():
             child_path = f"{path}.{key}"
-            if key.lower() in BLOCKED_MEMBER_FIELDS:
+            if key.lower() in BLOCKED_MEMBER_FIELDS and key.lower() != "access_email":
                 blocked.append(child_path)
             blocked.extend(scan_blocked_fields(child, child_path))
     elif isinstance(value, list):
@@ -188,6 +202,11 @@ def normalize_member(
         display_name = " ".join(part for part in (given_name, family_name) if part)
     if not display_name:
         raise DomainError("display_name is required")
+    access_email_hash = current.get("access_email_hash")
+    if "access_email" in payload:
+        access_email_hash = email_hash(payload.get("access_email"))
+    elif "access_email_hash" in payload:
+        access_email_hash = clean_text(payload.get("access_email_hash")) or None
 
     return {
         "id": current.get("id") or new_id("mem"),
@@ -197,6 +216,7 @@ def normalize_member(
         "family_name": family_name,
         "member_ref": optional_text(payload.get("member_ref", current.get("member_ref"))),
         "contact_hint": optional_text(payload.get("contact_hint", current.get("contact_hint"))),
+        "access_email_hash": access_email_hash,
         "groups": payload.get("groups", current.get("groups", [])) or [],
         "is_active": bool(payload.get("is_active", current.get("is_active", True))),
         "created_at": current.get("created_at") or now,

@@ -46,6 +46,10 @@ def access_request_key(request_id: str) -> str:
     return f"access_request:{request_id}" if not request_id.startswith("access_request:") else request_id
 
 
+def association_contact_key(tenant_id: str) -> str:
+    return f"association_contact:{tenant_id}"
+
+
 def empty_metadata(tenant_id: str) -> dict[str, Any]:
     return {"tenant_id": tenant_id, "revision": 0, "updated_at": None}
 
@@ -129,7 +133,19 @@ class KVRepository:
             tenant_ids.sort()
             await self._put_json(associations_index_key(), tenant_ids)
         await self._put_json(association_key(tenant_id), association)
+        await self.save_frontdoor_association_contact(tenant_id, association)
         return association
+
+    async def save_frontdoor_association_contact(self, tenant_id: str, association: dict[str, Any]) -> None:
+        if self.tenant_access_kv is None:
+            return
+        contact = association.get("contact")
+        value = {
+            "contact": contact,
+            "display_name": association.get("display_name"),
+            "tenant_id": tenant_id,
+        }
+        await self.tenant_access_kv.put(association_contact_key(tenant_id), json.dumps(value, separators=(",", ":"), sort_keys=True))
 
     async def list_users(self) -> list[dict[str, Any]]:
         user_ids = await self._get_json(users_index_key(), [])

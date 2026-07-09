@@ -15,7 +15,21 @@
           <span class="brand-mark">RD</span>
           <span id="mobileTenantLabel">Association</span>
         </a>
-        <a class="mobile-menu-button" href="#mainNav" aria-label="Open menu">☰</a>
+        <div class="mobile-appbar-actions">
+          <details id="mobileUserMenu" class="user-menu mobile-user-menu" hidden>
+            <summary aria-label="User access"></summary>
+            <div class="user-card">
+              <strong id="mobileUserMenuEmail">User</strong>
+              <dl>
+                <div><dt>Tenant</dt><dd id="mobileUserMenuTenant">-</dd></div>
+                <div><dt>Role</dt><dd id="mobileUserMenuRole">-</dd></div>
+                <div><dt>Access</dt><dd id="mobileUserMenuAccess">-</dd></div>
+              </dl>
+              <button type="button" class="ghost-button logout-button" data-logout data-i18n="actions.logout">Log out</button>
+            </div>
+          </details>
+          <a class="mobile-menu-button" href="#mainNav" aria-label="Open menu">☰</a>
+        </div>
       </header>
       <aside class="sidebar">
         <div class="brand">
@@ -39,6 +53,18 @@
           <div class="tenant-row">
             <input id="tenantInput" autocomplete="off" spellcheck="false" pattern="[a-z0-9][a-z0-9_-]{1,62}" title="2-63 lowercase letters, numbers, hyphens, or underscores" data-i18n-title="tenant.title">
             <button id="saveTenant" class="icon-button" title="Switch tenant" aria-label="Switch tenant" data-i18n-title="actions.switch_tenant" data-i18n-aria-label="actions.switch_tenant">↵</button>
+            <details id="userMenu" class="user-menu tenant-user-menu" hidden>
+              <summary aria-label="User access"></summary>
+              <div class="user-card">
+                <strong id="userMenuEmail">User</strong>
+                <dl>
+                  <div><dt>Tenant</dt><dd id="userMenuTenant">-</dd></div>
+                  <div><dt>Role</dt><dd id="userMenuRole">-</dd></div>
+                  <div><dt>Access</dt><dd id="userMenuAccess">-</dd></div>
+                </dl>
+                <button type="button" class="ghost-button logout-button" data-logout data-i18n="actions.logout">Log out</button>
+              </div>
+            </details>
           </div>
           <div class="tenant-meta" aria-live="polite">
             <span><span data-i18n="labels.revision">Revision</span> <strong id="tenantRevision">0</strong></span>
@@ -61,21 +87,25 @@
             <h1 id="viewTitle">Dashboard</h1>
           </div>
           <div class="topbar-actions">
-            <button id="seedButton" class="ghost-button" data-i18n="actions.load_demo">Load Demo</button>
-            <button id="exportButton" class="ghost-button" data-i18n="actions.export">Export</button>
-            <button id="importButton" class="ghost-button" data-i18n="actions.import">Import</button>
-            <button id="hitobitoImportButton" class="ghost-button" data-i18n="actions.import_hitobito">Hitobito</button>
-            <button id="refreshButton" class="icon-button" title="Refresh" aria-label="Refresh" data-i18n-title="actions.refresh" data-i18n-aria-label="actions.refresh">↻</button>
+            <button id="seedButton" class="ghost-button utility-action" data-icon="◎" data-i18n="actions.load_demo">Load Demo</button>
+            <button id="exportButton" class="ghost-button utility-action" data-icon="⇩" data-i18n="actions.export">Export</button>
+            <button id="importButton" class="ghost-button utility-action" data-icon="⇧" data-i18n="actions.import">Import</button>
+            <button id="hitobitoImportButton" class="ghost-button utility-action" data-icon="H" data-i18n="actions.import_hitobito">Hitobito</button>
+            <button id="refreshButton" class="icon-button utility-action" data-icon="↻" title="Refresh" aria-label="Refresh" data-i18n-title="actions.refresh" data-i18n-aria-label="actions.refresh">↻</button>
             <button id="primaryAction" class="primary-button">New Rental</button>
           </div>
         </header>
 
-        <section id="message" class="message" hidden></section>
+        <section id="message" class="message" hidden>
+          <span id="messageText"></span>
+          <button id="messageClose" type="button" class="message-close" aria-label="Close">×</button>
+        </section>
         <section id="view" class="view"></section>
         <input id="importFile" type="file" accept="application/json,.json" hidden>
         <input id="hitobitoFile" type="file" accept="application/json,.json" hidden>
         <input id="instrumentFile" type="file" accept="application/json,.json" hidden>
       </main>
+      <a class="to-top-button" href="#view" aria-label="Back to top">↑</a>
     </div>
 
     <dialog id="recordDialog" class="record-dialog">

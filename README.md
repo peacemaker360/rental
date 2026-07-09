@@ -225,11 +225,30 @@ signed tenant context for the Python Worker. It still accepts legacy
 `principal:{access_sub}` assignments as a migration fallback. See
 `docs/cloudflare-access-frontdoor.md`.
 
+For the hosted signup/no-access flow, keep the static shell public and protect
+the app APIs through the front door. Public routes are `GET /`, `GET
+/index.html`, `GET /styles.css`, `GET /app.js`, and `/api/access-requests`.
+Protected routes are `GET /auth/login` and `/api/*`, with an exception for
+`/api/access-requests`. The front door only permits unauthenticated `POST` on
+that public API path. `/auth/login` exists only to let Cloudflare Access
+challenge in a top-level browser navigation and then redirect back to `/`,
+avoiding raw JSON error screens for users who still need an access profile.
+
 Prepare low-PII `TENANT_ACCESS_KV` seed data with:
 
 ```bash
 npm run tenant-access -- assignments.json --format summary
 npm run tenant-access -- assignments.json --format kv-bulk --output /tmp/tenant-access-kv.json
+```
+
+Push JSON to the KV namespace with:
+
+```bash
+npx wrangler kv key put \
+  "user:<user_email>" \
+  '{"email":"<user_email>","status":"active","global_role":"platform_admin","access_profile":"full","tenant_roles":[],"member_links":[]}' \
+  --binding TENANT_ACCESS_KV \
+  --config wrangler.frontdoor.toml
 ```
 
 The assignment helper now accepts user-profile rows keyed by the Cloudflare
@@ -261,11 +280,12 @@ UI tenant switcher.
 Admins can use the `Admin Center` view to manage association records and user
 access profiles across tenants. The association registry stores operational
 details only: tenant slug, display name, short name, status, region, locale,
-contact reference, Hitobito group reference, inventory reference, and notes. It
-intentionally avoids email and phone fields; use references to the association
-roster or Hitobito instead. Association and user rows open drilldowns with
-operational state, tenant roles, and member links. In local/debug mode, admins
-can open an association from that view to switch the current tenant.
+public contact, contact reference, Hitobito group reference, inventory
+reference, and notes. The public contact can be an association email or phone
+shown back to users after they submit a join request; keep member-level contact
+details in the roster or Hitobito. Association and user rows open drilldowns
+with operational state, tenant roles, and member links. In local/debug mode,
+admins can open an association from that view to switch the current tenant.
 
 User access profiles identify users by the email loaded from Cloudflare Access,
 then configure global reader/operator/admin/platform-admin roles, per-tenant
@@ -279,7 +299,11 @@ Admin Center immediately mirrors the `user:{email}` profile used by the
 Cloudflare Access front door. The export button remains useful for audits and
 bulk migration, but it is no longer required for normal user saves.
 Users can belong to more than one association through multiple `tenant_roles`
-and `member_links`. Platform/global admins can manage all users; tenant admins
+and `member_links`. Admins can choose member links from tenant/member selectors
+instead of editing raw JSON. For the `basic` access profile, an explicit member
+link is optional when the member has an Access email configured: the backend
+stores only a hash of that email and auto-matches it against the Cloudflare
+Access email claim. Platform/global admins can manage all users; tenant admins
 can manage users and join requests only for their own association tenant.
 Authenticated users without a profile can use the start screen to request to
 join a tenant. Those requests appear in Admin Center for the relevant tenant
@@ -291,10 +315,11 @@ registry details are preserved unless edited through the Admin Center or an
 import file explicitly includes `display_name` or `association_name` metadata.
 
 In deployed signed/header modes, association registry management remains
-platform-scoped: the authenticated context must have role `admin` and tenant id
-`platform-admin`. Tenant admins can still administer records and users inside
-their own association tenant, but they cannot list or edit the cross-tenant
-association registry or export the full frontdoor access KV.
+platform-scoped: the authenticated context must have role `admin` plus the
+global `platform_admin` role, or use the dedicated `platform-admin` tenant
+context. Tenant admins can still administer records and users inside their own
+association tenant, but they cannot list or edit the cross-tenant association
+registry or export the full frontdoor access KV.
 
 ### Backup And Migration
 
@@ -390,7 +415,9 @@ does not disappear silently.
 
 The new member model avoids storing email and phone numbers by default. It keeps
 only an operational display name, optional roster reference, optional roster
-note (`contact_hint` internally), and active flag. Member writes reject
+note (`contact_hint` internally), optional Access email hash, and active flag.
+Raw Access email is accepted only as member-write input for basic-profile
+matching and is discarded after hashing. Member writes reject other
 email/phone/address-style fields, email-looking member references, and
 phone-looking roster notes. Association registry names, references, and notes
 also reject contact-like values. Rental notes and service provider/notes reject

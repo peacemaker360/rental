@@ -17,10 +17,12 @@ const state = {
   associations: [],
   users: [],
   accessRequests: [],
+  accessRequestResult: null,
   summary: {},
   meta: {revision: 0, updated_at: null},
   context: null,
   authStatus: "checking",
+  isLoading: true,
   authError: ""
 };
 
@@ -28,6 +30,8 @@ const viewTitle = document.querySelector("#viewTitle");
 const view = document.querySelector("#view");
 const adminNavItem = document.querySelector('[data-view="admin"]');
 const message = document.querySelector("#message");
+const messageText = document.querySelector("#messageText");
+const messageClose = document.querySelector("#messageClose");
 const primaryAction = document.querySelector("#primaryAction");
 const seedButton = document.querySelector("#seedButton");
 const exportButton = document.querySelector("#exportButton");
@@ -37,6 +41,16 @@ const hitobitoImportButton = document.querySelector("#hitobitoImportButton");
 const hitobitoFile = document.querySelector("#hitobitoFile");
 const instrumentFile = document.querySelector("#instrumentFile");
 const refreshButton = document.querySelector("#refreshButton");
+const userMenu = document.querySelector("#userMenu");
+const userMenuEmail = document.querySelector("#userMenuEmail");
+const userMenuTenant = document.querySelector("#userMenuTenant");
+const userMenuRole = document.querySelector("#userMenuRole");
+const userMenuAccess = document.querySelector("#userMenuAccess");
+const mobileUserMenu = document.querySelector("#mobileUserMenu");
+const mobileUserMenuEmail = document.querySelector("#mobileUserMenuEmail");
+const mobileUserMenuTenant = document.querySelector("#mobileUserMenuTenant");
+const mobileUserMenuRole = document.querySelector("#mobileUserMenuRole");
+const mobileUserMenuAccess = document.querySelector("#mobileUserMenuAccess");
 const tenantInput = document.querySelector("#tenantInput");
 const tenantLabel = document.querySelector("#tenantLabel");
 const mobileTenantLabel = document.querySelector("#mobileTenantLabel");
@@ -86,6 +100,7 @@ const translations = {
     "actions.export_tenant_access": "Export Access KV",
     "actions.refresh": "Refresh",
     "actions.retry_sign_in": "Retry sign-in",
+    "actions.logout": "Log out",
     "actions.request_join": "Request to join",
     "actions.approve": "Approve",
     "actions.deny": "Deny",
@@ -134,6 +149,10 @@ const translations = {
     "fields.family_name": "Family name",
     "fields.member_ref": "Roster ref",
     "fields.contact_hint": "Roster note",
+    "fields.access_email": "Access email",
+    "fields.access_email_configured": "Access email configured",
+    "fields.access_email_help": "Leave empty to keep the configured email, or enter a new email to replace it.",
+    "fields.forever": "Forever",
     "fields.is_active": "Active",
     "fields.instrument_id": "Instrument",
     "fields.member_id": "Member",
@@ -157,6 +176,7 @@ const translations = {
     "fields.region": "Region",
     "fields.locale": "Locale",
     "fields.contact_ref": "Contact ref",
+    "fields.contact": "Contact",
     "fields.hitobito_group_ref": "Hitobito group ref",
     "fields.inventory_ref": "Inventory ref",
     "fields.tenant_role": "Tenant role",
@@ -189,6 +209,7 @@ const translations = {
     "stats.overdue": "Overdue",
     "stats.service_attention": "Service attention",
     "sections.open_rentals": "Open rentals",
+    "sections.my_rentals": "My rentals",
     "sections.attention": "Attention",
     "sections.instrument_details": "Instrument details",
     "sections.member_details": "Member details",
@@ -242,11 +263,13 @@ const translations = {
     "messages.instrument_export_downloaded": "Instrument inventory export downloaded",
     "messages.tenant_access_export_downloaded": "Access KV export downloaded",
     "messages.join_request_sent": "Join request sent",
+    "messages.join_request_pending": "Join request pending",
     "messages.access_request_approved": "Join request approved",
     "messages.access_request_denied": "Join request denied",
     "messages.instrument_import_complete": "Instrument import complete: {created} created, {updated} updated",
     "messages.import_blocked_pii": "Import blocked: remove contact fields before uploading ({fields})",
     "messages.import_invalid_json": "Import blocked: choose a valid JSON file",
+    "messages.invalid_email": "Enter a valid email address",
     "messages.write_blocked_pii": "Remove contact details before saving ({fields})",
     "messages.revision_conflict": "This tenant changed in another session. The latest data is loaded; review and try again.",
     "auth.start_title": "Start with your association account",
@@ -254,6 +277,11 @@ const translations = {
     "auth.registration_hint": "Need access? Ask your association administrator to register your Access email and assign you to the right association.",
     "auth.invalid_token": "Your sign-in could not be verified or your token is no longer valid.",
     "auth.no_profile": "If you already signed in, your user access profile may still be missing or disabled.",
+    "auth.email_help": "Use the same email you will use with Cloudflare Access.",
+    "auth.request_submitted": "Your access request was submitted.",
+    "auth.request_reference": "Reference",
+    "auth.request_status": "Status",
+    "auth.request_contact": "Association contact",
     "status.all": "all",
     "status.available": "available",
     "status.rented": "rented",
@@ -316,6 +344,7 @@ const translations = {
     "actions.export_tenant_access": "Access-KV exportieren",
     "actions.refresh": "Aktualisieren",
     "actions.retry_sign_in": "Anmeldung erneut versuchen",
+    "actions.logout": "Abmelden",
     "actions.request_join": "Beitritt anfragen",
     "actions.approve": "Freigeben",
     "actions.deny": "Ablehnen",
@@ -364,6 +393,10 @@ const translations = {
     "fields.family_name": "Nachname",
     "fields.member_ref": "Mitgliederreferenz",
     "fields.contact_hint": "Listenhinweis",
+    "fields.access_email": "Access-E-Mail",
+    "fields.access_email_configured": "Access-E-Mail hinterlegt",
+    "fields.access_email_help": "Leer lassen, um die hinterlegte E-Mail zu behalten, oder eine neue E-Mail zum Ersetzen eingeben.",
+    "fields.forever": "Unbefristet",
     "fields.is_active": "Aktiv",
     "fields.instrument_id": "Instrument",
     "fields.member_id": "Mitglied",
@@ -387,6 +420,7 @@ const translations = {
     "fields.region": "Region",
     "fields.locale": "Sprache/Region",
     "fields.contact_ref": "Kontaktreferenz",
+    "fields.contact": "Kontakt",
     "fields.hitobito_group_ref": "Hitobito-Gruppenreferenz",
     "fields.inventory_ref": "Inventarreferenz",
     "fields.tenant_role": "Mandantenrolle",
@@ -419,6 +453,7 @@ const translations = {
     "stats.overdue": "Überfällig",
     "stats.service_attention": "Servicebedarf",
     "sections.open_rentals": "Offene Ausleihen",
+    "sections.my_rentals": "Meine Ausleihen",
     "sections.attention": "Aufmerksamkeit",
     "sections.instrument_details": "Instrumentdetails",
     "sections.member_details": "Mitgliedsdetails",
@@ -472,11 +507,13 @@ const translations = {
     "messages.instrument_export_downloaded": "Instrumenteninventar exportiert",
     "messages.tenant_access_export_downloaded": "Access-KV exportiert",
     "messages.join_request_sent": "Beitrittsanfrage gesendet",
+    "messages.join_request_pending": "Beitrittsanfrage offen",
     "messages.access_request_approved": "Beitrittsanfrage freigegeben",
     "messages.access_request_denied": "Beitrittsanfrage abgelehnt",
     "messages.instrument_import_complete": "Instrumentenimport abgeschlossen: {created} erstellt, {updated} aktualisiert",
     "messages.import_blocked_pii": "Import blockiert: Kontaktfelder vor dem Hochladen entfernen ({fields})",
     "messages.import_invalid_json": "Import blockiert: Bitte eine gültige JSON-Datei auswählen",
+    "messages.invalid_email": "Bitte eine gültige E-Mail-Adresse eingeben",
     "messages.write_blocked_pii": "Kontaktdaten vor dem Speichern entfernen ({fields})",
     "messages.revision_conflict": "Dieser Mandant wurde in einer anderen Sitzung geändert. Die aktuellen Daten sind geladen; bitte prüfen und erneut versuchen.",
     "auth.start_title": "Mit dem Vereinszugang starten",
@@ -484,6 +521,11 @@ const translations = {
     "auth.registration_hint": "Brauchst du Zugriff? Bitte deine Vereinsadministration, deine Access-E-Mail zu registrieren und dem richtigen Verein zuzuweisen.",
     "auth.invalid_token": "Deine Anmeldung konnte nicht verifiziert werden oder dein Token ist nicht mehr gültig.",
     "auth.no_profile": "Falls du bereits angemeldet bist, fehlt dein Benutzerzugriff eventuell noch oder ist deaktiviert.",
+    "auth.email_help": "Verwende dieselbe E-Mail, die du auch fuer Cloudflare Access nutzt.",
+    "auth.request_submitted": "Deine Beitrittsanfrage wurde gesendet.",
+    "auth.request_reference": "Referenz",
+    "auth.request_status": "Status",
+    "auth.request_contact": "Kontakt der Organisation",
     "status.all": "alle",
     "status.available": "verfügbar",
     "status.rented": "ausgeliehen",
@@ -551,6 +593,7 @@ const schemas = {
     ["given_name", "fields.given_name", "text", false],
     ["family_name", "fields.family_name", "text", false],
     ["member_ref", "fields.member_ref", "text", false],
+    ["access_email", "fields.access_email", "email", false],
     ["contact_hint", "fields.contact_hint", "text", false, "full"],
     ["is_active", "fields.is_active", "checkbox", false]
   ],
@@ -578,6 +621,7 @@ const schemas = {
     ["status", "fields.status", "association_status", true],
     ["region", "fields.region", "text", false],
     ["locale", "fields.locale", "text", false],
+    ["contact", "fields.contact", "text", false],
     ["contact_ref", "fields.contact_ref", "text", false],
     ["hitobito_group_ref", "fields.hitobito_group_ref", "text", false],
     ["inventory_ref", "fields.inventory_ref", "text", false],
@@ -590,7 +634,7 @@ const schemas = {
     ["global_role", "fields.global_role", "global_role", true],
     ["access_profile", "fields.access_profile", "access_profile", true],
     ["tenant_roles", "fields.tenant_roles", "tenant_roles", false, "full"],
-    ["member_links", "fields.member_links", "json", false, "full"]
+    ["member_links", "fields.member_links", "member_links", false, "full"]
   ]
 };
 
@@ -662,22 +706,43 @@ function applyContext(context) {
   state.authStatus = "signed_in";
   state.authError = "";
   const switcherVisible = shouldShowTenantSwitcher();
+  state.tenant = context.mode === "local" || context.mode === "open"
+    ? localStorage.getItem("rentalTenant") || state.tenant || context.tenant_id
+    : context.tenant_id;
+  tenantInput.value = state.tenant;
   if (context.tenant_locked && !switcherVisible) {
-    state.tenant = context.tenant_id;
-    tenantInput.value = state.tenant;
     tenantInput.disabled = true;
     saveTenant.disabled = true;
     saveTenant.title = t("tenant.locked");
   } else {
     tenantInput.disabled = false;
     saveTenant.disabled = false;
-    state.tenant = localStorage.getItem("rentalTenant") || state.tenant || context.tenant_id;
-    tenantInput.value = state.tenant;
   }
   tenantLabel.textContent = state.tenant;
   if (mobileTenantLabel) mobileTenantLabel.textContent = state.tenant;
   applyMeta(context.meta);
   applyAccessChrome();
+}
+
+function renderUserMenu() {
+  const context = state.context;
+  const caps = capabilities();
+  const role = context?.global_role && context.global_role !== "none" ? context.global_role : context?.role || "viewer";
+  const roleLabel = context?.global_role && context.global_role !== "none"
+    ? t(`global_role.${role}`)
+    : role === "admin" ? t("tenant_role.admin") : role === "operator" ? t("tenant_role.operator") : t("tenant_role.reader");
+  const accessLabel = caps.admin ? t("tenant_role.admin") : caps.write ? t("tenant_role.operator") : t("tenant_role.reader");
+  [
+    [userMenu, userMenuEmail, userMenuTenant, userMenuRole, userMenuAccess],
+    [mobileUserMenu, mobileUserMenuEmail, mobileUserMenuTenant, mobileUserMenuRole, mobileUserMenuAccess]
+  ].forEach(([menu, emailNode, tenantNode, roleNode, accessNode]) => {
+    if (!menu) return;
+    menu.hidden = state.authStatus !== "signed_in";
+    if (emailNode) emailNode.textContent = context?.user_email || context?.actor_id || "User";
+    if (tenantNode) tenantNode.textContent = state.tenant;
+    if (roleNode) roleNode.textContent = roleLabel;
+    if (accessNode) accessNode.textContent = accessLabel;
+  });
 }
 
 function applyMeta(meta = state.meta) {
@@ -797,7 +862,7 @@ function assertLowPiiImport(payload) {
 }
 
 function assertLowPiiWrite(payload, entity) {
-  const allowedFields = entity === "user_access" ? new Set(["email"]) : new Set();
+  const allowedFields = entity === "user_access" ? new Set(["email"]) : entity === "associations" ? new Set(["contact"]) : new Set();
   const blocked = blockedPiiPaths(payload, "payload", [], allowedFields);
   if (!blocked.length) return;
   const visible = blocked.slice(0, 3).join(", ");
@@ -805,13 +870,14 @@ function assertLowPiiWrite(payload, entity) {
 }
 
 function showMessage(text, isError = false) {
-  message.textContent = text;
+  if (messageText) messageText.textContent = text;
+  else message.textContent = text;
   message.classList.toggle("is-error", isError);
   message.hidden = false;
   window.clearTimeout(showMessage.timer);
   showMessage.timer = window.setTimeout(() => {
     message.hidden = true;
-  }, 4200);
+  }, 60000);
 }
 
 async function handleMutationError(error) {
@@ -881,6 +947,10 @@ function accessProfilePill(profile) {
 
 function capabilities() {
   return state.context?.capabilities || {read: true, write: true, admin: true, platform_admin: true};
+}
+
+function isBasicProfile() {
+  return capabilities().access_profile === "basic";
 }
 
 function hasExistingTenantData() {
@@ -955,12 +1025,17 @@ function reconcileDetailSelection() {
 
 function render() {
   applyLanguage();
+  document.body.classList.toggle("is-loading", Boolean(state.isLoading));
   document.body.classList.toggle("is-auth-start", state.authStatus !== "signed_in");
   if (state.authStatus !== "signed_in") {
     renderAuthStart();
     return;
   }
   const caps = capabilities();
+  const basic = isBasicProfile();
+  if (basic && state.view !== "dashboard") {
+    switchView("dashboard");
+  }
   if (adminNavItem) adminNavItem.hidden = !caps.admin;
   if (state.view === "admin" && !caps.admin) {
     switchView("dashboard");
@@ -968,18 +1043,27 @@ function render() {
   viewTitle.textContent = t(`views.${state.view}`);
   tenantLabel.textContent = state.tenant;
   if (mobileTenantLabel) mobileTenantLabel.textContent = state.tenant;
-  primaryAction.hidden = state.view === "history" || (state.view === "admin" && !caps.admin);
+  primaryAction.hidden = basic || state.view === "history" || (state.view === "admin" && !caps.admin);
   primaryAction.textContent = state.view === "admin" ? t("actions.new_association") : state.view === "instruments" ? t("actions.new_instruments") : state.view === "members" ? t("actions.new_members") : state.view === "service_records" ? t("actions.new_service_records") : t("actions.new_rentals");
   primaryAction.disabled = state.view === "admin" ? !caps.platform_admin : !caps.write;
-  seedButton.hidden = hasExistingTenantData();
+  seedButton.hidden = basic || hasExistingTenantData();
   seedButton.disabled = !caps.admin || seedButton.hidden;
-  exportButton.disabled = !caps.admin;
-  importButton.disabled = !caps.admin;
+  exportButton.hidden = basic;
+  importButton.hidden = basic;
+  refreshButton.hidden = basic;
+  exportButton.disabled = !caps.admin || basic;
+  importButton.disabled = !caps.admin || basic;
+  hitobitoImportButton.hidden = basic || state.view !== "members";
   hitobitoImportButton.disabled = !caps.admin;
+  renderUserMenu();
 
   document.querySelectorAll(".nav-item").forEach((button) => {
-    if (button.dataset.view === "admin") {
+    if (basic) {
+      button.hidden = button.dataset.view !== "dashboard";
+    } else if (button.dataset.view === "admin") {
       button.hidden = !caps.admin;
+    } else {
+      button.hidden = false;
     }
     button.classList.toggle("is-active", button.dataset.view === state.view);
   });
@@ -1005,12 +1089,16 @@ function renderAuthStart() {
   exportButton.disabled = true;
   importButton.disabled = true;
   hitobitoImportButton.disabled = true;
+  if (userMenu) userMenu.hidden = true;
+  if (mobileUserMenu) mobileUserMenu.hidden = true;
   refreshButton.disabled = false;
   tenantRevision.textContent = "0";
   tenantUpdatedAt.textContent = "";
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.remove("is-active");
   });
+  const request = state.accessRequestResult;
+  const associationContact = request?.association?.contact;
   view.innerHTML = `
     <section class="auth-start" aria-labelledby="authStartTitle">
       <div class="auth-start-mark">RD</div>
@@ -1026,19 +1114,41 @@ function renderAuthStart() {
       </div>
       <div class="auth-start-actions">
         <form class="auth-request-form" data-join-request>
+          <label for="joinEmail">${t("fields.email")}</label>
+          <input id="joinEmail" name="email" type="email" autocomplete="email" required placeholder="name@example.org" aria-describedby="joinEmailHelp">
+          <p id="joinEmailHelp" class="muted">${t("auth.email_help")}</p>
           <label for="joinTenant">${t("labels.tenant")}</label>
-          <div class="tenant-row">
+          <div class="auth-request-row">
             <input id="joinTenant" name="tenant_id" autocomplete="organization" pattern="[a-z0-9][a-z0-9_-]{1,62}" required value="${escapeHtml(state.tenant)}">
             <button class="primary-button">${t("actions.request_join")}</button>
           </div>
         </form>
         <button class="primary-button" data-auth-retry>${t("actions.retry_sign_in")}</button>
       </div>
+      ${request ? `
+        <aside class="auth-request-result">
+          <div class="journey-head">
+            <strong>${t("auth.request_submitted")}</strong>
+            ${statusPill(request.status || "pending")}
+          </div>
+          <dl>
+            <div><dt>${t("auth.request_reference")}</dt><dd>${escapeHtml(request.id || "")}</dd></div>
+            <div><dt>${t("labels.tenant")}</dt><dd>${escapeHtml(request.tenant_id || "")}</dd></div>
+            <div><dt>${t("fields.email")}</dt><dd>${escapeHtml(request.email || "")}</dd></div>
+            <div><dt>${t("auth.request_status")}</dt><dd>${escapeHtml(t(`status.${request.status || "pending"}`))}</dd></div>
+            ${associationContact ? `<div><dt>${t("auth.request_contact")}</dt><dd>${escapeHtml(associationContact)}</dd></div>` : ""}
+          </dl>
+        </aside>
+      ` : ""}
     </section>
   `;
 }
 
 function renderDashboard() {
+  if (isBasicProfile()) {
+    renderBasicDashboard();
+    return;
+  }
   const rentals = state.records.rentals.filter((rental) => rental.status !== "returned").slice(0, 6);
   const overdue = state.records.rentals.filter((rental) => rental.status === "overdue");
   const serviceAttention = state.records.instruments
@@ -1069,6 +1179,60 @@ function renderDashboard() {
       </section>
     </div>
   `;
+}
+
+function renderBasicDashboard() {
+  const rentals = state.records.rentals
+    .filter((rental) => rental.status !== "returned")
+    .sort((a, b) => String(a.due_date || "").localeCompare(String(b.due_date || ""), locale(), {numeric: true, sensitivity: "base"}));
+  view.innerHTML = `
+    <section class="customer-rental-board">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">${t("app.eyebrow")}</p>
+          <h2>${t("sections.my_rentals")}</h2>
+        </div>
+      </div>
+      ${rentals.length ? `<div class="rental-card-grid">${rentals.map((rental) => renderCustomerRentalCard(rental)).join("")}</div>` : `<div class="empty">${t("empty.no_rentals")}</div>`}
+    </section>
+  `;
+}
+
+function renderCustomerRentalCard(rental) {
+  return `
+    <article class="rental-card">
+      <div class="journey-head">
+        <strong>${escapeHtml(rental.instrument_name || rental.instrument_id || "")}</strong>
+        ${statusPill(rental.status || "active")}
+      </div>
+      <div class="rental-card-meta">
+        <span>${escapeHtml(rental.instrument_type || "")}</span>
+      </div>
+      ${rental.note ? `<p>${escapeHtml(rental.note)}</p>` : ""}
+      ${renderCustomerRentalJourney(rental)}
+    </article>
+  `;
+}
+
+function renderCustomerRentalJourney(rental) {
+  const due = dateOrdinal(rental.due_date);
+  const today = todayOrdinal();
+  const daysUntilDue = due === null ? null : due - today;
+  const dueClass = rental.return_date
+    ? "is-done"
+    : daysUntilDue === null
+      ? "is-forever"
+      : daysUntilDue < 0
+        ? "is-overdue"
+        : daysUntilDue <= 31
+          ? "is-soon"
+          : "is-current";
+  const dueLabel = rental.due_date ? formatDate(rental.due_date) : t("fields.forever");
+  return `<div class="mini-journey">
+    <span class="is-done"><strong>${t("status.active")}</strong><small>${rental.start_date ? formatDate(rental.start_date) : ""}</small></span>
+    <span class="${dueClass}"><strong>${t("table.due")}</strong><small>${escapeHtml(dueLabel)}</small></span>
+    <span class="${rental.return_date ? "is-done" : ""}"><strong>${t("status.returned")}</strong><small>${rental.return_date ? formatDate(rental.return_date) : ""}</small></span>
+  </div>`;
 }
 
 function renderServiceAttentionList(items) {
@@ -1205,6 +1369,7 @@ function renderAssociationTable(items) {
               ${shouldShowTenantSwitcher() ? `<button class="primary-button" data-open-association="${item.tenant_id}">${t("actions.open")}</button>` : ""}
             </div></td>
           </tr>
+          ${renderInlineDetail("associations", item.tenant_id, 7)}
         `).join("")}</tbody>
       </table>
     </div>
@@ -1229,6 +1394,7 @@ function renderUserTable(items) {
               <button class="danger-button" data-delete-user="${item.id}">${t("actions.delete")}</button>
             </div></td>
           </tr>
+          ${renderInlineDetail("user_access", item.id, 6)}
         `).join("")}</tbody>
       </table>
     </div>
@@ -1277,6 +1443,7 @@ function renderAssociationDetail(tenantId) {
         </article>
       </div>
       <dl class="detail-list">
+        <div><dt>${t("fields.contact")}</dt><dd>${escapeHtml(item.contact || "")}</dd></div>
         <div><dt>${t("fields.contact_ref")}</dt><dd>${escapeHtml(item.contact_ref || "")}</dd></div>
         <div><dt>${t("fields.hitobito_group_ref")}</dt><dd>${escapeHtml(item.hitobito_group_ref || "")}</dd></div>
         <div><dt>${t("fields.inventory_ref")}</dt><dd>${escapeHtml(item.inventory_ref || "")}</dd></div>
@@ -1476,8 +1643,22 @@ function renderDetail(entity, id) {
   return "";
 }
 
+function renderAnyDetail(entity, id) {
+  if (entity === "associations") return renderAssociationDetail(id);
+  if (entity === "user_access") return renderUserDetail(id);
+  if (entity === "history") return renderHistoryDetail(state.records.history.find((item) => item.id === id));
+  return renderDetail(entity, id);
+}
+
 function detailCloseButton() {
   return `<button class="icon-button detail-close" data-close-detail aria-label="${escapeHtml(t("actions.close"))}" title="${escapeHtml(t("actions.close"))}"><span aria-hidden="true">&times;</span></button>`;
+}
+
+function renderInlineDetail(entity, id, colspan) {
+  if (state.detail?.entity !== entity || state.detail?.id !== id) return "";
+  const detail = renderAnyDetail(entity, id);
+  if (!detail) return "";
+  return `<tr class="inline-detail-row"><td colspan="${colspan}">${detail}</td></tr>`;
 }
 
 function renderInstrumentTable(items) {
@@ -1501,6 +1682,7 @@ function renderInstrumentTable(items) {
               ${caps.admin ? `<button class="danger-button" data-delete="instruments" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
             </div></td>
           </tr>
+          ${renderInlineDetail("instruments", item.id, 8)}
         `).join("")}</tbody>
       </table>
     </div>
@@ -1587,6 +1769,7 @@ function renderServiceTable(items) {
                 ${caps.admin ? `<button class="danger-button" data-delete="service_records" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
               </div></td>
             </tr>
+            ${renderInlineDetail("service_records", item.id, 6)}
           `;
         }).join("")}</tbody>
       </table>
@@ -1665,6 +1848,7 @@ function renderMemberTable(items) {
               ${caps.admin ? `<button class="danger-button" data-delete="members" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
             </div></td>
           </tr>
+          ${renderInlineDetail("members", item.id, 5)}
         `).join("")}</tbody>
       </table>
     </div>
@@ -1716,6 +1900,7 @@ function renderRentalTable(items, compact = false) {
               ${caps.admin ? `<button class="danger-button" data-delete="rentals" data-id="${item.id}">${t("actions.delete")}</button>` : ""}`}
             </div></td>
           </tr>
+          ${renderInlineDetail("rentals", item.id, 6)}
         `).join("")}</tbody>
       </table>
     </div>
@@ -1774,6 +1959,7 @@ function renderHistory() {
                 <td data-label="${t("table.service")}">${renderHistoryServiceCell(item)}</td>
                 <td data-label="${t("table.rental")}">${escapeHtml(item.rental_id)}</td>
               </tr>
+              ${renderInlineDetail("history", item.id, 6)}
             `).join("")}</tbody>
           </table>
         </div>
@@ -1878,11 +2064,11 @@ function openDialog(entity, record = {}) {
   dialogTitle.textContent = hasId ? t("dialog.edit", {entity: singular(entity)}) : t("dialog.new", {entity: singular(entity)});
   recordForm.dataset.entity = entity;
   recordForm.dataset.id = record.id || (entity === "associations" ? record.tenant_id : "") || "";
-  formFields.innerHTML = schemas[entity].map(([name, label, type, required, span]) => renderField(name, label, type, required, span, record[name])).join("");
+  formFields.innerHTML = schemas[entity].map(([name, label, type, required, span]) => renderField(name, label, type, required, span, record[name], record)).join("");
   dialog.showModal();
 }
 
-function renderField(name, label, type, required, span, value) {
+function renderField(name, label, type, required, span, value, record = {}) {
   const requiredAttr = required ? "required" : "";
   const full = span === "full" ? " full" : "";
   if (type === "hidden") {
@@ -1903,6 +2089,16 @@ function renderField(name, label, type, required, span, value) {
         ${roles.map((role) => renderTenantRoleRow(role)).join("")}
       </div>
       <button type="button" class="ghost-button" data-add-tenant-role>${t("actions.add_tenant_role")}</button>
+    </div>`;
+  }
+  if (type === "member_links") {
+    const links = Array.isArray(value) && value.length ? value : [{tenant_id: state.tenant, member_id: ""}];
+    return `<div class="field${full} tenant-role-field" data-member-links-field>
+      <label>${t(label)}</label>
+      <div class="tenant-role-list">
+        ${links.map((link) => renderMemberLinkRow(link)).join("")}
+      </div>
+      <button type="button" class="ghost-button" data-add-member-link>${t("fields.member_links")}</button>
     </div>`;
   }
   if (type === "condition") {
@@ -1929,6 +2125,9 @@ function renderField(name, label, type, required, span, value) {
     return `<div class="field${full}"><label for="${name}">${t(label)}</label><select id="${name}" name="${name}" ${requiredAttr}>
       ${["full", "basic"].map((profile) => `<option value="${profile}" ${profile === (value || "full") ? "selected" : ""}>${t(`access_profile.${profile}`)}</option>`).join("")}
     </select></div>`;
+  }
+  if (type === "email" && name === "access_email" && record.access_email_hash && !value) {
+    return `<div class="field${full}"><label for="${name}">${t(label)}</label><input id="${name}" name="${name}" type="email" value="" placeholder="${escapeHtml(t("fields.access_email_configured"))}" aria-describedby="${name}Help" ${requiredAttr}><p id="${name}Help" class="muted">${t("fields.access_email_help")}</p></div>`;
   }
   if (type === "checkbox") {
     return `<div class="field${full}"><label for="${name}">${t(label)}</label><select id="${name}" name="${name}"><option value="true" ${value !== false ? "selected" : ""}>${t("actions.yes")}</option><option value="false" ${value === false ? "selected" : ""}>${t("actions.no")}</option></select></div>`;
@@ -1970,12 +2169,40 @@ function renderTenantRoleRow(role = {}) {
   const tenantId = role.tenant_id || "";
   const selectedRole = role.role || "reader";
   return `<div class="tenant-role-row">
-    <input name="tenant_roles_tenant_id" placeholder="${t("labels.tenant")}" value="${escapeHtml(tenantId)}" pattern="[a-z0-9][a-z0-9_-]{1,62}">
+    ${renderTenantSelect("tenant_roles_tenant_id", tenantId)}
     <select name="tenant_roles_role">
       ${["reader", "operator", "admin"].map((item) => `<option value="${item}" ${item === selectedRole ? "selected" : ""}>${t(`tenant_role.${item}`)}</option>`).join("")}
     </select>
     <button type="button" class="icon-button" data-remove-tenant-role title="${t("actions.delete")}" aria-label="${t("actions.delete")}">×</button>
   </div>`;
+}
+
+function renderMemberLinkRow(link = {}) {
+  const tenantId = link.tenant_id || state.tenant;
+  const memberId = link.member_id || "";
+  return `<div class="tenant-role-row member-link-row">
+    ${renderTenantSelect("member_links_tenant_id", tenantId)}
+    ${renderMemberLinkSelect(memberId)}
+    <button type="button" class="icon-button" data-remove-member-link title="${t("actions.delete")}" aria-label="${t("actions.delete")}">×</button>
+  </div>`;
+}
+
+function renderTenantSelect(name, value) {
+  const tenantIds = new Set([state.tenant, value, ...state.associations.map((item) => item.tenant_id)].filter(Boolean));
+  return `<select name="${name}">
+    <option value="">${t("select.placeholder")}</option>
+    ${[...tenantIds].sort((a, b) => a.localeCompare(b, locale(), {numeric: true, sensitivity: "base"})).map((tenantId) => `<option value="${escapeHtml(tenantId)}" ${tenantId === value ? "selected" : ""}>${escapeHtml(tenantId)}</option>`).join("")}
+  </select>`;
+}
+
+function renderMemberLinkSelect(value) {
+  const members = state.records.members.filter((item) => item.is_active !== false || item.id === value);
+  const hasCurrentValue = value && !members.some((item) => item.id === value);
+  return `<select name="member_links_member_id">
+    <option value="">${t("select.placeholder")}</option>
+    ${hasCurrentValue ? `<option value="${escapeHtml(value)}" selected>${escapeHtml(value)}</option>` : ""}
+    ${members.map((item) => `<option value="${item.id}" ${item.id === value ? "selected" : ""}>${escapeHtml(item.display_name)} (${escapeHtml(item.id)})</option>`).join("")}
+  </select>`;
 }
 
 function singular(entity) {
@@ -2000,6 +2227,15 @@ function formPayload(form) {
     delete payload.tenant_roles_tenant_id;
     delete payload.tenant_roles_role;
   }
+  if (form.querySelector("[data-member-links-field]")) {
+    const tenantIds = [...form.querySelectorAll('[name="member_links_tenant_id"]')].map((input) => input.value.trim().toLowerCase());
+    const memberIds = [...form.querySelectorAll('[name="member_links_member_id"]')].map((select) => select.value.trim());
+    payload.member_links = tenantIds
+      .map((tenantId, index) => tenantId && memberIds[index] ? {tenant_id: tenantId, member_id: memberIds[index]} : null)
+      .filter(Boolean);
+    delete payload.member_links_tenant_id;
+    delete payload.member_links_member_id;
+  }
   ["tenant_roles", "member_links"].forEach((key) => {
     if (key in payload && typeof payload[key] === "string") payload[key] = JSON.parse(payload[key] || "[]");
   });
@@ -2019,6 +2255,16 @@ languageButtons.forEach((button) => {
     localStorage.setItem("rentalLang", state.lang);
     render();
   });
+});
+
+messageClose?.addEventListener("click", () => {
+  window.clearTimeout(showMessage.timer);
+  message.hidden = true;
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-logout]")) return;
+  window.location.assign("/cdn-cgi/access/logout");
 });
 
 view.addEventListener("input", (event) => {
@@ -2055,13 +2301,26 @@ view.addEventListener("click", async (event) => {
       }
       return;
     }
+    if (target.dataset.addMemberLink !== undefined) {
+      const list = target.closest("[data-member-links-field]")?.querySelector(".tenant-role-list");
+      if (list) list.insertAdjacentHTML("beforeend", renderMemberLinkRow());
+      return;
+    }
+    if (target.dataset.removeMemberLink !== undefined) {
+      const list = target.closest(".tenant-role-list");
+      target.closest(".tenant-role-row")?.remove();
+      if (list && !list.querySelector(".tenant-role-row")) {
+        list.insertAdjacentHTML("beforeend", renderMemberLinkRow());
+      }
+      return;
+    }
     if (target.dataset.closeDetail !== undefined) {
       state.detail = null;
       render();
       return;
     }
     if (target.dataset.authRetry !== undefined) {
-      window.location.reload();
+      window.location.assign("/auth/login");
       return;
     }
     if (target.dataset.status) {
@@ -2182,14 +2441,22 @@ view.addEventListener("keydown", (event) => {
 view.addEventListener("submit", async (event) => {
   if (!event.target.matches("[data-join-request]")) return;
   event.preventDefault();
-  const tenant = new FormData(event.target).get("tenant_id")?.toString().trim().toLowerCase();
+  const formData = new FormData(event.target);
+  const email = formData.get("email")?.toString().trim().toLowerCase();
+  const tenant = formData.get("tenant_id")?.toString().trim().toLowerCase();
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    showMessage(t("messages.invalid_email"), true);
+    return;
+  }
   if (!tenantPattern.test(tenant)) {
     showMessage(t("tenant.invalid"), true);
     return;
   }
   try {
-    await accessRequestApi({tenant_id: tenant});
-    showMessage(t("messages.join_request_sent"));
+    const result = await accessRequestApi({email, tenant_id: tenant});
+    state.accessRequestResult = result.data;
+    render();
+    showMessage(t("messages.join_request_pending"));
   } catch (error) {
     showMessage(error.message, true);
   }
@@ -2256,6 +2523,17 @@ recordForm.addEventListener("click", (event) => {
     target.closest(".tenant-role-row")?.remove();
     if (list && !list.querySelector(".tenant-role-row")) {
       list.insertAdjacentHTML("beforeend", renderTenantRoleRow());
+    }
+  }
+  if (target.dataset.addMemberLink !== undefined) {
+    const list = target.closest("[data-member-links-field]")?.querySelector(".tenant-role-list");
+    if (list) list.insertAdjacentHTML("beforeend", renderMemberLinkRow());
+  }
+  if (target.dataset.removeMemberLink !== undefined) {
+    const list = target.closest(".tenant-role-list");
+    target.closest(".tenant-role-row")?.remove();
+    if (list && !list.querySelector(".tenant-role-row")) {
+      list.insertAdjacentHTML("beforeend", renderMemberLinkRow());
     }
   }
 });
@@ -2420,14 +2698,14 @@ instrumentFile.addEventListener("change", async () => {
 
 refreshButton.addEventListener("click", () => {
   if (state.authStatus !== "signed_in") {
-    window.location.reload();
+    window.location.assign("/auth/login");
     return;
   }
   loadData().catch((error) => showMessage(error.message, true));
 });
 
 saveTenant.addEventListener("click", () => {
-  if (state.context?.tenant_locked) return;
+  if (state.context?.tenant_locked && !shouldShowTenantSwitcher()) return;
   const tenant = tenantInput.value.trim() || "demo-association";
   if (!tenantPattern.test(tenant)) {
     showMessage(t("tenant.invalid"), true);
@@ -2439,7 +2717,7 @@ saveTenant.addEventListener("click", () => {
 });
 
 function openAssociation(tenant) {
-  if (state.context?.tenant_locked) return;
+  if (state.context?.tenant_locked && !shouldShowTenantSwitcher()) return;
   if (!tenantPattern.test(tenant)) {
     showMessage(t("tenant.invalid"), true);
     return;
@@ -2453,6 +2731,7 @@ function openAssociation(tenant) {
 
 async function init() {
   applyLanguage();
+  render();
   let context;
   try {
     context = await apiContext();
@@ -2460,19 +2739,24 @@ async function init() {
     state.authStatus = "signed_out";
     state.authError = error.message || "";
     state.context = null;
+    state.isLoading = false;
     render();
     return;
   }
   applyContext(context);
   try {
     await loadData();
+    state.isLoading = false;
+    render();
   } catch (error) {
+    state.isLoading = false;
     render();
     showMessage(error.message, true);
   }
 }
 
 init().catch((error) => {
+  state.isLoading = false;
   render();
   showMessage(error.message, true);
 });
