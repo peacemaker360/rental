@@ -582,6 +582,21 @@ h3 {
   background: rgba(255, 255, 255, 0.82);
 }
 
+.auth-start-steps .auth-step-current {
+  border-color: #bddbd4;
+  background: rgba(233, 243, 240, 0.9);
+}
+
+.auth-start-steps .auth-step-done span {
+  background: #dff1df;
+  color: #285c29;
+}
+
+.auth-start-steps .auth-step-waiting span {
+  background: #d9e0dd;
+  color: #536663;
+}
+
 .auth-start-steps span {
   display: grid;
   place-items: center;
@@ -606,6 +621,13 @@ h3 {
   gap: 12px;
   flex-wrap: wrap;
   justify-content: flex-start;
+}
+
+.auth-session-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .auth-request-form {

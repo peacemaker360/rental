@@ -22,6 +22,7 @@ const state = {
   meta: {revision: 0, updated_at: null},
   context: null,
   authStatus: "checking",
+  authReason: "checking",
   isLoading: true,
   authError: ""
 };
@@ -70,6 +71,7 @@ const phoneLikeImportValueFields = new Set(["display_name", "contact_hint", "des
 const importEmailPattern = /[^@\s]+@[^@\s]+\.[^@\s]+/;
 const importPhonePattern = /(?=(?:\D*\d){7,})\+?[\d][\d\s()./-]{6,}\d/;
 const languageButtons = document.querySelectorAll("[data-lang]");
+const accessRequestStorageKey = "rentalAccessRequest";
 
 const translations = {
   en: {
@@ -274,11 +276,15 @@ const translations = {
     "messages.write_blocked_pii": "Remove contact details before saving ({fields})",
     "messages.revision_conflict": "This tenant changed in another session. The latest data is loaded; review and try again.",
     "auth.start_title": "Start with your association account",
-    "auth.start_lead": "Rental Desk is available after Cloudflare Access has confirmed your email and tenant permissions.",
-    "auth.registration_hint": "Need access? Ask your association administrator to register your Access email and assign you to the right association.",
-    "auth.invalid_token": "Your sign-in could not be verified or your token is no longer valid.",
-    "auth.no_profile": "If you already signed in, your user access profile may still be missing or disabled.",
-    "auth.email_help": "Use the same email you will use with Cloudflare Access.",
+    "auth.start_lead": "Rental Desk is available after your sign-in email and association permissions are confirmed.",
+    "auth.sign_in": "Sign-in",
+    "auth.signed_in": "Signed in",
+    "auth.sign_in_needed": "Sign in to check whether your association access is ready.",
+    "auth.registration_hint": "Need access? Ask your association administrator to register your sign-in email and assign you to the right association.",
+    "auth.invalid_token": "Your sign-in could not be verified or is no longer valid.",
+    "auth.no_profile": "You are signed in, but your app access is still missing or disabled.",
+    "auth.pending_hint": "Your request is pending. You can retry sign-in or submit another request if the details changed.",
+    "auth.email_help": "Use the same email you use to sign in.",
     "auth.request_submitted": "Your access request was submitted.",
     "auth.request_reference": "Reference",
     "auth.request_status": "Status",
@@ -519,11 +525,15 @@ const translations = {
     "messages.write_blocked_pii": "Kontaktdaten vor dem Speichern entfernen ({fields})",
     "messages.revision_conflict": "Dieser Mandant wurde in einer anderen Sitzung geändert. Die aktuellen Daten sind geladen; bitte prüfen und erneut versuchen.",
     "auth.start_title": "Mit dem Vereinszugang starten",
-    "auth.start_lead": "Die Verleihverwaltung ist verfügbar, sobald Cloudflare Access deine E-Mail und Mandantenrechte bestätigt hat.",
-    "auth.registration_hint": "Brauchst du Zugriff? Bitte deine Vereinsadministration, deine Access-E-Mail zu registrieren und dem richtigen Verein zuzuweisen.",
-    "auth.invalid_token": "Deine Anmeldung konnte nicht verifiziert werden oder dein Token ist nicht mehr gültig.",
-    "auth.no_profile": "Falls du bereits angemeldet bist, fehlt dein Benutzerzugriff eventuell noch oder ist deaktiviert.",
-    "auth.email_help": "Verwende dieselbe E-Mail, die du auch fuer Cloudflare Access nutzt.",
+    "auth.start_lead": "Die Verleihverwaltung ist verfügbar, sobald deine Anmelde-E-Mail und Vereinsrechte bestätigt sind.",
+    "auth.sign_in": "Anmeldung",
+    "auth.signed_in": "Angemeldet",
+    "auth.sign_in_needed": "Melde dich an, um zu prüfen, ob dein Vereinszugriff bereit ist.",
+    "auth.registration_hint": "Brauchst du Zugriff? Bitte deine Vereinsadministration, deine Anmelde-E-Mail zu registrieren und dem richtigen Verein zuzuweisen.",
+    "auth.invalid_token": "Deine Anmeldung konnte nicht verifiziert werden oder ist nicht mehr gültig.",
+    "auth.no_profile": "Du bist angemeldet, aber dein App-Zugriff fehlt noch oder ist deaktiviert.",
+    "auth.pending_hint": "Deine Anfrage ist offen. Du kannst die Anmeldung erneut versuchen oder eine neue Anfrage senden, falls sich Details geändert haben.",
+    "auth.email_help": "Verwende dieselbe E-Mail, die du auch fuer die Anmeldung nutzt.",
     "auth.request_submitted": "Deine Beitrittsanfrage wurde gesendet.",
     "auth.request_reference": "Referenz",
     "auth.request_status": "Status",
@@ -704,9 +714,64 @@ function accessRequestApi(payload) {
   });
 }
 
+function loadStoredAccessRequest() {
+  try {
+    const raw = localStorage.getItem(accessRequestStorageKey);
+    if (!raw) return null;
+    const request = JSON.parse(raw);
+    return request && typeof request === "object" ? request : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredAccessRequest(request) {
+  if (!request || typeof request !== "object") return;
+  localStorage.setItem(accessRequestStorageKey, JSON.stringify(request));
+}
+
+function authReasonFromError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (error?.status === 401 || (message.includes("missing") && message.includes("token"))) return "missing_token";
+  if (message.includes("no user access profile")) return "no_profile";
+  return "auth_error";
+}
+
+function hasLikelySignInToken() {
+  return state.authStatus === "signed_out" && state.authReason !== "missing_token";
+}
+
+function currentAuthStartState() {
+  return state.accessRequestResult ? "pending_request" : state.authReason;
+}
+
+function authStartSteps() {
+  const hasRequest = Boolean(state.accessRequestResult);
+  const authState = currentAuthStartState();
+  const hasToken = hasLikelySignInToken();
+  return [
+    {
+      state: hasToken ? "done" : "current",
+      title: t("auth.sign_in"),
+      body: hasToken ? t("auth.signed_in") : t("auth.sign_in_needed")
+    },
+    {
+      state: authState === "pending_request" || authState === "no_profile" ? "current" : "waiting",
+      title: t("entities.user_access"),
+      body: authState === "pending_request" ? t("auth.pending_hint") : authState === "missing_token" ? t("auth.invalid_token") : t("auth.no_profile")
+    },
+    {
+      state: hasRequest ? "current" : "waiting",
+      title: t("entities.association"),
+      body: t("auth.registration_hint")
+    }
+  ];
+}
+
 function applyContext(context) {
   state.context = context;
   state.authStatus = "signed_in";
+  state.authReason = "signed_in";
   state.authError = "";
   const switcherVisible = shouldShowTenantSwitcher();
   state.tenant = context.mode === "local" || context.mode === "open"
@@ -1102,6 +1167,7 @@ function renderAuthStart() {
   });
   const request = state.accessRequestResult;
   const associationContact = request?.association?.contact;
+  const steps = authStartSteps();
   view.innerHTML = `
     <section class="auth-start" aria-labelledby="authStartTitle">
       <div class="auth-start-mark">RD</div>
@@ -1111,9 +1177,13 @@ function renderAuthStart() {
         <p>${t("auth.start_lead")}</p>
       </div>
       <div class="auth-start-steps" aria-label="${escapeHtml(t("auth.start_title"))}">
-        <div><span>1</span><strong>Cloudflare Access</strong><p>${t("auth.invalid_token")}</p></div>
-        <div><span>2</span><strong>${t("entities.user_access")}</strong><p>${t("auth.no_profile")}</p></div>
-        <div><span>3</span><strong>${t("entities.association")}</strong><p>${t("auth.registration_hint")}</p></div>
+        ${steps.map((step, index) => `
+          <div class="auth-step auth-step-${step.state}">
+            <span>${index + 1}</span>
+            <strong>${escapeHtml(step.title)}</strong>
+            <p>${escapeHtml(step.body)}</p>
+          </div>
+        `).join("")}
       </div>
       <div class="auth-start-actions">
         <form class="auth-request-form" data-join-request>
@@ -1126,7 +1196,10 @@ function renderAuthStart() {
             <button class="primary-button">${t("actions.request_join")}</button>
           </div>
         </form>
-        <button class="primary-button" data-auth-retry>${t("actions.retry_sign_in")}</button>
+        <div class="auth-session-actions">
+          <button type="button" class="primary-button" data-auth-retry>${t("actions.retry_sign_in")}</button>
+          ${hasLikelySignInToken() ? `<button type="button" class="ghost-button" data-logout>${t("actions.logout")}</button>` : ""}
+        </div>
       </div>
       ${request ? `
         <aside class="auth-request-result">
@@ -2467,6 +2540,7 @@ view.addEventListener("submit", async (event) => {
   try {
     const result = await accessRequestApi({email, tenant_id: tenant});
     state.accessRequestResult = result.data;
+    saveStoredAccessRequest(result.data);
     render();
     showMessage(t("messages.join_request_pending"));
   } catch (error) {
@@ -2742,6 +2816,7 @@ function openAssociation(tenant) {
 }
 
 async function init() {
+  state.accessRequestResult = loadStoredAccessRequest();
   applyLanguage();
   render();
   let context;
@@ -2749,6 +2824,7 @@ async function init() {
     context = await apiContext();
   } catch (error) {
     state.authStatus = "signed_out";
+    state.authReason = authReasonFromError(error);
     state.authError = error.message || "";
     state.context = null;
     state.isLoading = false;
