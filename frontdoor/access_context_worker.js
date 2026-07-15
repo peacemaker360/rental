@@ -38,7 +38,12 @@ export default {
       if (!url.pathname.startsWith("/api/")) {
         return forwardToBackend(request, env, null);
       }
-      const assignment = await loadTenantAssignment(claims, env, url);
+      let assignment;
+      try {
+        assignment = await loadTenantAssignment(claims, env, url);
+      } catch (error) {
+        return jsonResponse(authenticatedErrorBody(error, claims), error.status || 403);
+      }
       const context = {
         access_profile: assignment.access_profile || "full",
         actor_id: assignment.actor_id || `access:${await shortDigest(assignment.email || claims.sub || "unknown")}`,
@@ -59,6 +64,13 @@ export default {
     }
   }
 };
+
+function authenticatedErrorBody(error, claims) {
+  const body = {error: error.message || "frontdoor request failed"};
+  const email = cleanEmail(claims?.email);
+  if (validEmail(email)) body.user_email = email;
+  return body;
+}
 
 async function createAccessRequest(request, env, claims) {
   if (!env.TENANT_ACCESS_KV) throw new Error("TENANT_ACCESS_KV binding is required");

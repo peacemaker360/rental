@@ -23,6 +23,7 @@ const state = {
   context: null,
   authStatus: "checking",
   authReason: "checking",
+  authEmail: "",
   isLoading: true,
   authError: ""
 };
@@ -744,6 +745,11 @@ function authReasonFromError(error) {
   return "auth_error";
 }
 
+function authEmailFromError(error) {
+  const email = String(error?.data?.user_email || "").trim().toLowerCase();
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : "";
+}
+
 function hasLikelySignInToken() {
   return state.authStatus === "signed_out" && ["no_profile", "access_denied"].includes(state.authReason);
 }
@@ -785,6 +791,7 @@ function applyContext(context) {
   state.context = context;
   state.authStatus = "signed_in";
   state.authReason = "signed_in";
+  state.authEmail = context.user_email || "";
   state.authError = "";
   const switcherVisible = shouldShowTenantSwitcher();
   state.tenant = context.mode === "local" || context.mode === "open"
@@ -1181,6 +1188,7 @@ function renderAuthStart() {
   });
   const request = state.accessRequestResult;
   const associationContact = request?.association?.contact;
+  const emailValue = state.authEmail || request?.email || "";
   const steps = authStartSteps();
   view.innerHTML = `
     <section class="auth-start" aria-labelledby="authStartTitle">
@@ -1202,7 +1210,7 @@ function renderAuthStart() {
       <div class="auth-start-actions">
         <form class="auth-request-form" data-join-request>
           <label for="joinEmail">${t("fields.email")}</label>
-          <input id="joinEmail" name="email" type="email" autocomplete="email" required placeholder="name@example.org" aria-describedby="joinEmailHelp">
+          <input id="joinEmail" name="email" type="email" autocomplete="email" required placeholder="name@example.org" value="${escapeHtml(emailValue)}" aria-describedby="joinEmailHelp">
           <p id="joinEmailHelp" class="muted">${t("auth.email_help")}</p>
           <label for="joinTenant">${t("auth.association_code")}</label>
           <div class="auth-request-row">
@@ -2847,6 +2855,7 @@ async function init() {
   } catch (error) {
     state.authStatus = "signed_out";
     state.authReason = authReasonFromError(error);
+    state.authEmail = authEmailFromError(error);
     state.authError = error.message || "";
     state.context = null;
     state.isLoading = false;
