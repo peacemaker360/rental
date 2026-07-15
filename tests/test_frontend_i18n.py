@@ -106,6 +106,8 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('"auth.start_lead": "Rental Desk is available after your sign-in email and association permissions are confirmed."', self.app_js)
         self.assertIn('"auth.sign_in": "Sign-in"', self.app_js)
         self.assertIn('"auth.pending_hint": "Your request is pending.', self.app_js)
+        self.assertIn('"auth.association_code": "Association code"', self.app_js)
+        self.assertIn('"auth.association_code_placeholder": "association code"', self.app_js)
         self.assertIn('"messages.invalid_email": "Enter a valid email address"', self.app_js)
         self.assertIn('function accessRequestApi(payload)', self.app_js)
         self.assertIn('fetch("/api/access-requests"', self.app_js)
@@ -119,6 +121,11 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('"actions.request_join": "Beitritt anfragen"', self.app_js)
         self.assertIn('window.location.assign("/auth/login")', self.app_js)
         self.assertIn('data-logout>${t("actions.logout")}', self.app_js)
+        self.assertIn('function updateJoinRequestSubmit(form)', self.app_js)
+        self.assertIn('button.disabled = !tenantPattern.test(tenant);', self.app_js)
+        self.assertIn('event.target.matches(\'[data-join-request] [name="tenant_id"]\')', self.app_js)
+        self.assertIn('data-join-submit disabled', self.app_js)
+        self.assertIn('placeholder="${escapeHtml(t("auth.association_code_placeholder"))}"', self.app_js)
         self.assertIn('"auth.start_title": "Start with your association account"', self.app_js)
         self.assertIn('"auth.registration_hint": "Need access? Ask your association administrator', self.app_js)
         self.assertIn('"auth.start_title": "Mit dem Vereinszugang starten"', self.app_js)
@@ -130,6 +137,7 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn(".auth-request-result", self.styles_css)
         auth_start_source = self.app_js[self.app_js.index("function renderAuthStart()"):self.app_js.index("function renderDashboard()")]
         self.assertNotIn("Cloudflare", auth_start_source)
+        self.assertNotIn('value="${escapeHtml(state.tenant)}"', auth_start_source)
 
     def test_state_aware_landing_persists_access_requests(self):
         self.assertIn('const accessRequestStorageKey = "rentalAccessRequest";', self.app_js)
@@ -157,6 +165,8 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('if (target.dataset.logout !== undefined) {\n      window.location.assign("/cdn-cgi/access/logout");', self.app_js)
         self.assertIn('${hasLikelySignInToken() ? `<button type="button" class="ghost-button" data-logout>', self.app_js)
         self.assertIn(".auth-start-steps .auth-step-current", self.styles_css)
+        self.assertIn(".auth-start-steps .auth-step-done,\n.auth-start-steps .auth-step-waiting", self.styles_css)
+        self.assertIn(".primary-button:disabled", self.styles_css)
 
     def test_initial_loading_state_has_visual_placeholder(self):
         self.assertIn("isLoading: true", self.app_js)
@@ -416,6 +426,9 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('capabilities().access_profile === "basic"', self.app_js)
         self.assertIn('if (basic && state.view !== "dashboard")', self.app_js)
         self.assertIn('button.hidden = button.dataset.view !== "dashboard";', self.app_js)
+        self.assertIn('const userMenuVisible = state.authStatus === "signed_in";', self.app_js)
+        self.assertIn('if (tenantBox) tenantBox.hidden = !switcherVisible && !metaVisible && !userMenuVisible;', self.app_js)
+        self.assertIn('if (tenantRow) tenantRow.hidden = !switcherVisible && !userMenuVisible;', self.app_js)
         self.assertIn("function renderBasicDashboard()", self.app_js)
         self.assertIn("function renderCustomerRentalCard(rental)", self.app_js)
         self.assertIn("function renderCustomerRentalJourney(rental)", self.app_js)
@@ -439,7 +452,7 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn("context.tenant_switchable || hasGlobalRole() || Number(context.tenant_count || 0) > 1", self.app_js)
         self.assertIn("function shouldShowOperationalMeta()", self.app_js)
         self.assertIn("return Boolean(caps.write || caps.admin);", self.app_js)
-        self.assertIn("if (tenantBox) tenantBox.hidden = !switcherVisible && !metaVisible;", self.app_js)
+        self.assertIn("if (tenantBox) tenantBox.hidden = !switcherVisible && !metaVisible && !userMenuVisible;", self.app_js)
         self.assertIn("if (tenantMeta) tenantMeta.hidden = !metaVisible;", self.app_js)
 
     def test_signed_context_home_tenant_wins_over_local_storage(self):

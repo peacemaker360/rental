@@ -33,7 +33,7 @@ export default {
 
       const claims = await verifyAccessJwt(accessJwt, env);
       if (url.pathname === LOGIN_PATH) {
-        return redirectResponse("/");
+        return forwardToBackend(rewriteRequestPath(request, "/"), env, null);
       }
       if (!url.pathname.startsWith("/api/")) {
         return forwardToBackend(request, env, null);
@@ -94,16 +94,6 @@ async function createAccessRequest(request, env, claims) {
   }
   await env.TENANT_ACCESS_KV.put(id, JSON.stringify(item));
   return jsonResponse({data: item}, 201);
-}
-
-function redirectResponse(location, status = 302) {
-  return new Response("", {
-    status,
-    headers: {
-      "cache-control": "no-store",
-      "location": location
-    }
-  });
 }
 
 function jsonResponse(body, status) {
@@ -361,6 +351,13 @@ function forwardToBackend(request, env, signedHeaders) {
     }));
   }
   throw new Error("RENTAL_BACKEND service binding or RENTAL_BACKEND_URL is required");
+}
+
+function rewriteRequestPath(request, pathname) {
+  const url = new URL(request.url);
+  url.pathname = pathname;
+  url.search = "";
+  return new Request(url.toString(), request);
 }
 
 function stripUntrustedIdentityHeaders(headers) {

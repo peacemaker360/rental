@@ -290,6 +290,8 @@ const translations = {
     "auth.request_reference": "Reference",
     "auth.request_status": "Status",
     "auth.request_contact": "Association contact",
+    "auth.association_code": "Association code",
+    "auth.association_code_placeholder": "association code",
     "status.all": "all",
     "status.available": "available",
     "status.rented": "rented",
@@ -540,6 +542,8 @@ const translations = {
     "auth.request_reference": "Referenz",
     "auth.request_status": "Status",
     "auth.request_contact": "Kontakt der Organisation",
+    "auth.association_code": "Vereinscode",
+    "auth.association_code_placeholder": "Vereinscode",
     "status.all": "alle",
     "status.available": "verfügbar",
     "status.rented": "ausgeliehen",
@@ -771,6 +775,12 @@ function authStartSteps() {
   ];
 }
 
+function updateJoinRequestSubmit(form) {
+  const tenant = form?.querySelector('[name="tenant_id"]')?.value.trim().toLowerCase() || "";
+  const button = form?.querySelector("[data-join-submit]");
+  if (button) button.disabled = !tenantPattern.test(tenant);
+}
+
 function applyContext(context) {
   state.context = context;
   state.authStatus = "signed_in";
@@ -876,11 +886,12 @@ function shouldShowOperationalMeta() {
 function applyAccessChrome() {
   const switcherVisible = state.authStatus === "signed_in" && shouldShowTenantSwitcher();
   const metaVisible = state.authStatus === "signed_in" && shouldShowOperationalMeta();
-  if (tenantBox) tenantBox.hidden = !switcherVisible && !metaVisible;
+  const userMenuVisible = state.authStatus === "signed_in";
+  if (tenantBox) tenantBox.hidden = !switcherVisible && !metaVisible && !userMenuVisible;
   if (tenantInput) tenantInput.hidden = !switcherVisible;
   if (saveTenant) saveTenant.hidden = !switcherVisible;
   const tenantRow = tenantInput?.closest(".tenant-row");
-  if (tenantRow) tenantRow.hidden = !switcherVisible;
+  if (tenantRow) tenantRow.hidden = !switcherVisible && !userMenuVisible;
   const tenantLabelElement = tenantBox?.querySelector("label");
   if (tenantLabelElement) tenantLabelElement.hidden = !switcherVisible;
   if (tenantMeta) tenantMeta.hidden = !metaVisible;
@@ -1193,10 +1204,10 @@ function renderAuthStart() {
           <label for="joinEmail">${t("fields.email")}</label>
           <input id="joinEmail" name="email" type="email" autocomplete="email" required placeholder="name@example.org" aria-describedby="joinEmailHelp">
           <p id="joinEmailHelp" class="muted">${t("auth.email_help")}</p>
-          <label for="joinTenant">${t("labels.tenant")}</label>
+          <label for="joinTenant">${t("auth.association_code")}</label>
           <div class="auth-request-row">
-            <input id="joinTenant" name="tenant_id" autocomplete="organization" pattern="[a-z0-9][a-z0-9_-]{1,62}" required value="${escapeHtml(state.tenant)}">
-            <button class="primary-button">${t("actions.request_join")}</button>
+            <input id="joinTenant" name="tenant_id" autocomplete="off" spellcheck="false" autocapitalize="none" pattern="[a-z0-9][a-z0-9_-]{1,62}" required placeholder="${escapeHtml(t("auth.association_code_placeholder"))}">
+            <button class="primary-button" data-join-submit disabled>${t("actions.request_join")}</button>
           </div>
         </form>
         <div class="auth-session-actions">
@@ -2356,6 +2367,10 @@ document.addEventListener("click", (event) => {
 });
 
 view.addEventListener("input", (event) => {
+  if (event.target.matches('[data-join-request] [name="tenant_id"]')) {
+    updateJoinRequestSubmit(event.target.closest("[data-join-request]"));
+    return;
+  }
   if (event.target.matches("[data-search]")) {
     const cursor = event.target.selectionStart;
     state.search = event.target.value;

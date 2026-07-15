@@ -472,6 +472,18 @@ h3 {
   background: var(--accent-strong);
 }
 
+.primary-button:disabled,
+.ghost-button:disabled,
+.icon-button:disabled,
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.primary-button:disabled {
+  background: #8aa19c;
+}
+
 .ghost-button {
   background: #ffffff;
   border-color: var(--line);
@@ -587,9 +599,20 @@ h3 {
   background: rgba(233, 243, 240, 0.9);
 }
 
+.auth-start-steps .auth-step-done,
+.auth-start-steps .auth-step-waiting {
+  background: rgba(244, 247, 246, 0.72);
+  color: #5f6f6c;
+}
+
+.auth-start-steps .auth-step-done p,
+.auth-start-steps .auth-step-waiting p {
+  color: #73827f;
+}
+
 .auth-start-steps .auth-step-done span {
-  background: #dff1df;
-  color: #285c29;
+  background: #d9e0dd;
+  color: #536663;
 }
 
 .auth-start-steps .auth-step-waiting span {
