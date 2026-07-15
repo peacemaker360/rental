@@ -422,7 +422,8 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn("grid-template-columns: minmax(0, 1fr) 42px 42px;", self.styles_css)
         self.assertIn(".tenant-user-menu {\n    display: none;", self.styles_css)
         self.assertIn(".user-card {\n  position: absolute;", self.styles_css)
-        self.assertIn(".tenant-user-menu .user-card {\n  left: auto;\n  right: 0;", self.styles_css)
+        self.assertIn(".tenant-user-menu .user-card {\n  left: calc(-1 * (24px + 18px));\n  right: auto;", self.styles_css)
+        self.assertIn(".mobile-user-menu .user-card {\n    right: 0;\n    left: auto;", self.styles_css)
         self.assertIn("color: var(--ink);", self.styles_css)
         self.assertIn(".logout-button {\n  width: 100%;", self.styles_css)
 
@@ -446,6 +447,8 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('"sections.my_rentals": "Meine Ausleihen"', self.app_js)
         self.assertIn(".rental-card-grid", self.styles_css)
         self.assertIn(".mini-journey", self.styles_css)
+        self.assertIn("align-items: start;", self.styles_css)
+        self.assertIn(".mini-journey strong,\n.mini-journey small {\n  display: block;\n  min-height: 1.2em;", self.styles_css)
         self.assertIn(".mini-journey .is-soon::before", self.styles_css)
         self.assertIn(".mini-journey .is-overdue::before", self.styles_css)
 

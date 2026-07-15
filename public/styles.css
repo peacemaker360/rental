@@ -400,10 +400,10 @@ h3 {
 }
 
 .tenant-user-menu .user-card {
-  left: auto;
-  right: 0;
+  left: calc(-1 * (24px + 18px));
+  right: auto;
   top: calc(100% + 8px);
-  width: min(260px, calc(100vw - 28px));
+  width: min(260px, calc(100vw - 36px));
 }
 
 .mobile-user-menu {
@@ -1216,7 +1216,7 @@ tr:last-child td {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  align-items: center;
+  align-items: start;
   font-size: 0.78rem;
   font-weight: 800;
   color: var(--muted);
@@ -1244,6 +1244,9 @@ tr:last-child td {
 
 .mini-journey strong,
 .mini-journey small {
+  display: block;
+  min-height: 1.2em;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
