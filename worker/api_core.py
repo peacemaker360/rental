@@ -759,20 +759,26 @@ async def handle_admin_access_requests(
     tenant_role = clean_text(body.get("tenant_role", "reader")).lower()
     member_links = body.get("member_links", [])
     existing = await repo.load_user(user_id_for_email(request["email"]))
+    default_access_profile = existing.get("access_profile", "basic") if existing else "basic"
+    access_profile = clean_text(body.get("access_profile", default_access_profile), default_access_profile).lower()
     if can_manage_all_users(context):
+        tenant_roles = body.get("tenant_roles")
+        if tenant_roles is None:
+            tenant_roles = [item for item in (existing or {}).get("tenant_roles", []) if item.get("tenant_id") != request["tenant_id"]]
+            tenant_roles.append({"tenant_id": request["tenant_id"], "role": tenant_role})
         user = normalize_user_access({
             "email": request["email"],
             "status": "active",
             "global_role": clean_text(body.get("global_role", "none"), "none").lower(),
-            "access_profile": clean_text(body.get("access_profile", "full"), "full").lower(),
-            "tenant_roles": body.get("tenant_roles", [{"tenant_id": request["tenant_id"], "role": tenant_role}]),
+            "access_profile": access_profile,
+            "tenant_roles": tenant_roles,
             "member_links": member_links,
         }, existing)
     else:
         user = normalize_tenant_admin_user_access({
             "email": request["email"],
             "status": "active",
-            "access_profile": clean_text(body.get("access_profile", "full"), "full").lower(),
+            "access_profile": access_profile,
             "tenant_role": tenant_role,
             "member_links": member_links,
         }, context, existing)

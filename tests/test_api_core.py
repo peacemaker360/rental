@@ -974,6 +974,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status, 200)
         self.assertEqual(approved["data"]["email"], "new@example.test")
+        self.assertEqual(approved["data"]["access_profile"], "basic")
         self.assertEqual(approved["data"]["tenant_roles"], [{"tenant_id": "tenant-a", "role": "reader"}])
         self.assertNotIn("access_request:1234567890abcdef12345678", repo.access_requests)
 
@@ -985,6 +986,32 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         status, denied = await handle_api_request("POST", "/api/admin/access-requests/access_request:abcdef1234567890abcdef12/deny", "", {}, repo, platform_admin)
         self.assertEqual(status, 200)
         self.assertEqual(denied["denied"], "access_request:abcdef1234567890abcdef12")
+
+    async def test_access_request_approval_keeps_existing_access_profile(self):
+        repo = MemoryRepository()
+        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="signed")
+        status, existing = await handle_api_request("POST", "/api/admin/users", "", {
+            "email": "known@example.test",
+            "access_profile": "full",
+            "tenant_roles": [{"tenant_id": "tenant-a", "role": "reader"}],
+        }, repo, platform_admin)
+        self.assertEqual(status, 201)
+        repo.access_requests["access_request:1234567890abcdef12345678"] = {
+            "id": "access_request:1234567890abcdef12345678",
+            "email": existing["data"]["email"],
+            "tenant_id": "tenant-b",
+            "status": "pending",
+            "requested_at": "2026-07-04T00:00:00Z",
+        }
+
+        status, approved = await handle_api_request("POST", "/api/admin/access-requests/access_request:1234567890abcdef12345678/approve", "", {}, repo, platform_admin)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(approved["data"]["access_profile"], "full")
+        self.assertEqual(approved["data"]["tenant_roles"], [
+            {"tenant_id": "tenant-a", "role": "reader"},
+            {"tenant_id": "tenant-b", "role": "reader"},
+        ])
 
     async def test_non_admin_cannot_use_association_admin_center(self):
         repo = MemoryRepository()
