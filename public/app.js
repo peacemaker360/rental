@@ -60,6 +60,7 @@ const tenantRevision = document.querySelector("#tenantRevision");
 const tenantUpdatedAt = document.querySelector("#tenantUpdatedAt");
 const tenantBox = document.querySelector(".tenant-box");
 const tenantMeta = document.querySelector(".tenant-meta");
+const associationHelp = document.querySelector("#associationHelp");
 const saveTenant = document.querySelector("#saveTenant");
 const dialog = document.querySelector("#recordDialog");
 const recordForm = document.querySelector("#recordForm");
@@ -90,6 +91,7 @@ const translations = {
     "labels.revision": "Revision",
     "labels.updated_at": "Updated {date}",
     "labels.sort": "Sort",
+    "labels.need_help": "Need help?",
     "tenant.title": "2-63 lowercase letters, numbers, hyphens, or underscores",
     "tenant.locked": "Tenant is provided by the signed-in context",
     "tenant.invalid": "Tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores",
@@ -342,6 +344,7 @@ const translations = {
     "labels.revision": "Revision",
     "labels.updated_at": "Aktualisiert {date}",
     "labels.sort": "Sortierung",
+    "labels.need_help": "Brauchst du Hilfe?",
     "tenant.title": "2-63 Kleinbuchstaben, Zahlen, Bindestriche oder Unterstriche",
     "tenant.locked": "Der Mandant wird durch die Anmeldung vorgegeben",
     "tenant.invalid": "Mandant muss aus 2-63 Kleinbuchstaben, Zahlen, Bindestrichen oder Unterstrichen bestehen",
@@ -904,6 +907,27 @@ function applyAccessChrome() {
   if (tenantMeta) tenantMeta.hidden = !metaVisible;
 }
 
+function renderAssociationHelp() {
+  if (!associationHelp) return;
+  const association = state.summary?.association || {};
+  const contact = association.contact || "";
+  const visible = state.authStatus === "signed_in" && isBasicProfile() && Boolean(contact);
+  associationHelp.hidden = !visible;
+  if (!visible) {
+    associationHelp.innerHTML = "";
+    return;
+  }
+  const label = association.display_name || state.tenant;
+  const contactHtml = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contact)
+    ? `<a href="mailto:${escapeHtml(contact)}">${escapeHtml(contact)}</a>`
+    : `<span>${escapeHtml(contact)}</span>`;
+  associationHelp.innerHTML = `
+    <span>${t("labels.need_help")}</span>
+    <strong>${escapeHtml(label)}</strong>
+    ${contactHtml}
+  `;
+}
+
 function downloadJson(filename, data) {
   const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
   const url = URL.createObjectURL(blob);
@@ -1145,6 +1169,7 @@ function render() {
   hitobitoImportButton.hidden = basic || state.view !== "members";
   hitobitoImportButton.disabled = !caps.admin;
   renderUserMenu();
+  renderAssociationHelp();
 
   document.querySelectorAll(".nav-item").forEach((button) => {
     if (basic) {
@@ -1180,6 +1205,7 @@ function renderAuthStart() {
   hitobitoImportButton.disabled = true;
   if (userMenu) userMenu.hidden = true;
   if (mobileUserMenu) mobileUserMenu.hidden = true;
+  if (associationHelp) associationHelp.hidden = true;
   refreshButton.disabled = false;
   tenantRevision.textContent = "0";
   tenantUpdatedAt.textContent = "";

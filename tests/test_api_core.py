@@ -121,6 +121,12 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_basic_access_profile_sees_only_related_records(self):
         repo = MemoryRepository()
+        repo.associations["tenant-a"] = {
+            "tenant_id": "tenant-a",
+            "display_name": "Tenant A Band",
+            "status": "active",
+            "contact": "help@example.test",
+        }
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-user", role="admin")
         status, member_a = await handle_api_request("POST", "/api/tenant-a/members", "", {
             "display_name": "Member A",
@@ -193,6 +199,11 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(auto_summary["members"], 1)
         self.assertEqual(auto_summary["instruments"], 1)
         self.assertEqual(auto_summary["active_rentals"], 1)
+        self.assertEqual(auto_summary["association"], {
+            "tenant_id": "tenant-a",
+            "display_name": "Tenant A Band",
+            "contact": "help@example.test",
+        })
 
         status, body = await handle_api_request("POST", "/api/tenant-a/members", "", {
             "display_name": "Should Not Write",

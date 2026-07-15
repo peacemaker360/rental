@@ -621,8 +621,22 @@ async def tenant_metadata(repo: TenantRepository, tenant_id: str) -> dict[str, A
     return {"tenant_id": tenant_id, "revision": metadata.get("revision", 0), "updated_at": metadata.get("updated_at")}
 
 
+async def public_association_summary(repo: TenantRepository, tenant_id: str) -> dict[str, Any] | None:
+    load_association = getattr(repo, "load_association", None)
+    if load_association is None:
+        return None
+    association = await load_association(tenant_id)
+    if not association or not association.get("contact"):
+        return None
+    return {
+        "tenant_id": tenant_id,
+        "display_name": association.get("display_name") or tenant_id,
+        "contact": association.get("contact"),
+    }
+
+
 async def tenant_summary(repo: TenantRepository, tenant_id: str, records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    return {**summary(records), "meta": await tenant_metadata(repo, tenant_id)}
+    return {**summary(records), "meta": await tenant_metadata(repo, tenant_id), "association": await public_association_summary(repo, tenant_id)}
 
 
 async def scoped_tenant_summary(
@@ -632,7 +646,7 @@ async def scoped_tenant_summary(
     context: RequestContext,
 ) -> dict[str, Any]:
     data = basic_customer_summary(records, context) if context.access_profile == "basic" else summary(records)
-    return {**data, "meta": await tenant_metadata(repo, tenant_id)}
+    return {**data, "meta": await tenant_metadata(repo, tenant_id), "association": await public_association_summary(repo, tenant_id)}
 
 
 async def ensure_association(repo: TenantRepository, tenant_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:

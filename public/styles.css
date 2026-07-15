@@ -203,6 +203,38 @@ label {
   font-size: 0.82rem;
 }
 
+.association-help {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(216, 234, 213, 0.35);
+  border-radius: 8px;
+  background: rgba(216, 234, 213, 0.12);
+  color: #dbe5df;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.association-help[hidden] {
+  display: none;
+}
+
+.association-help span:first-child {
+  color: #b8c7c0;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.association-help strong {
+  color: #ffffff;
+}
+
+.association-help a {
+  color: #ffffff;
+  font-weight: 800;
+}
+
 input,
 select,
 textarea {
