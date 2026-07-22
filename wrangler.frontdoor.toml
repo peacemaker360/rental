@@ -1,6 +1,12 @@
 name = "association-rental-frontdoor"
 main = "frontdoor/access_context_worker.js"
 compatibility_date = "2026-06-26"
+workers_dev = false
+
+routes = [
+  { pattern = "rental.kittythecat.ch/api/*", zone_name = "kittythecat.ch" },
+  { pattern = "rental.kittythecat.ch/auth/*", zone_name = "kittythecat.ch" }
+]
 
 kv_namespaces = [
   { binding = "TENANT_ACCESS_KV", id = "3e699bb348d544aa8fbd56d69990ec97", preview_id = "64c4c75c68df47858d12892e2fba1e14" }

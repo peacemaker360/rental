@@ -55,6 +55,23 @@ GET /auth/login
 /api/*
 ```
 
+Access policies and Worker routes are separate Cloudflare configuration. The
+same protected paths must also be routed to `association-rental-frontdoor`.
+`wrangler.frontdoor.toml` is the source of truth for these production routes:
+
+```toml
+workers_dev = false
+
+routes = [
+  { pattern = "rental.kittythecat.ch/api/*", zone_name = "kittythecat.ch" },
+  { pattern = "rental.kittythecat.ch/auth/*", zone_name = "kittythecat.ch" }
+]
+```
+
+The `/auth/*` Worker route includes both protected `/auth/login` and public
+`/auth/logout`. The route determines which Worker executes; the Access
+application independently determines whether Cloudflare challenges the request.
+
 Add an exception so `/api/access-requests` remains public even if `/api/*` is
 protected. The front door only accepts unauthenticated `POST` requests on that
 path; other methods still go through the normal protected API path. The public
@@ -268,6 +285,10 @@ npm run deploy
 npm run deploy:frontdoor
 ```
 
-Bind the public route to the front door. The backend Worker can remain reachable
-only as a service binding, while local development can still use `npm run dev`
-or `python3 scripts/local_dev_server.py`.
+The frontdoor deploy publishes its `/api/*` and `/auth/*` routes from
+`wrangler.frontdoor.toml`. In Workers & Pages, verify those two routes belong to
+`association-rental-frontdoor`; `/auth/logout` returning the static app shell
+with `200` means the `/auth/*` route is missing or still points elsewhere. The
+backend continues to serve `/` and static assets and is reached by the frontdoor
+through its service binding. Local development can still use `npm run dev` or
+`python3 scripts/local_dev_server.py`.

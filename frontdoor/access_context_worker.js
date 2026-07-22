@@ -17,16 +17,19 @@ export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
+      if (url.pathname === LOGOUT_PATH) {
+        return accessLogoutResponse(request, env);
+      }
+      if (url.pathname === LOGIN_PATH) {
+        return completeAccessLogin(request, env);
+      }
       if (url.pathname === "/api/health") {
         return forwardToBackend(request, env, null);
       }
       if (url.pathname === "/api/access-requests" && request.method === "POST") {
         return createAccessRequest(request, env, null);
       }
-      if (url.pathname === LOGOUT_PATH) {
-        return accessLogoutResponse(request, env);
-      }
-      if (!url.pathname.startsWith("/api/") && url.pathname !== LOGIN_PATH) {
+      if (!url.pathname.startsWith("/api/")) {
         return forwardToBackend(request, env, null);
       }
 
@@ -36,12 +39,6 @@ export default {
       }
 
       const claims = await verifyAccessJwt(accessJwt, env);
-      if (url.pathname === LOGIN_PATH) {
-        return forwardToBackend(rewriteRequestPath(request, "/"), env, null);
-      }
-      if (!url.pathname.startsWith("/api/")) {
-        return forwardToBackend(request, env, null);
-      }
       let assignment;
       try {
         assignment = await loadTenantAssignment(claims, env, url);
@@ -68,6 +65,15 @@ export default {
     }
   }
 };
+
+async function completeAccessLogin(request, env) {
+  const accessJwt = accessJwtFromRequest(request);
+  if (!accessJwt) {
+    return jsonResponse({error: "missing Cloudflare Access token"}, 401);
+  }
+  await verifyAccessJwt(accessJwt, env);
+  return forwardToBackend(rewriteRequestPath(request, "/"), env, null);
+}
 
 function accessLogoutResponse(request, env) {
   if (!["GET", "HEAD"].includes(request.method)) {

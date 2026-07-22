@@ -199,6 +199,14 @@ def validate_backend_wrangler(config: dict[str, Any], allow_placeholders: bool, 
 def validate_frontdoor_wrangler(config: dict[str, Any], allow_placeholders: bool, errors: list[str]) -> None:
     if config.get("main") != "frontdoor/access_context_worker.js":
         errors.append("wrangler.frontdoor.toml main must be frontdoor/access_context_worker.js")
+    if config.get("workers_dev") is not False:
+        errors.append("wrangler.frontdoor.toml workers_dev must be false for production routing")
+
+    route_patterns = {str(item.get("pattern", "")) for item in config.get("routes", [])}
+    for pattern in ("rental.kittythecat.ch/api/*", "rental.kittythecat.ch/auth/*"):
+        if pattern not in route_patterns:
+            errors.append(f"wrangler.frontdoor.toml routes must include {pattern}")
+
     namespace = namespace_by_binding(config, "TENANT_ACCESS_KV")
     if not namespace:
         errors.append("wrangler.frontdoor.toml must bind TENANT_ACCESS_KV")

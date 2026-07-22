@@ -60,6 +60,13 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertEqual(config["services"][0]["binding"], "RENTAL_BACKEND")
         self.assertIn("CF_ACCESS_TEAM_DOMAIN", config["vars"])
         self.assertIn("CF_ACCESS_AUD", config["vars"])
+        self.assertFalse(config["workers_dev"])
+        route_patterns = {item["pattern"] for item in config["routes"]}
+        self.assertEqual(route_patterns, {
+            "rental.kittythecat.ch/api/*",
+            "rental.kittythecat.ch/auth/*",
+        })
+        self.assertTrue(all(item["zone_name"] == "kittythecat.ch" for item in config["routes"]))
 
     def test_package_exposes_frontdoor_scripts(self):
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
@@ -111,10 +118,15 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("function accessLogoutResponse(request, env)", source)
         self.assertIn('location: `https://${teamDomain}/cdn-cgi/access/logout`', source)
         self.assertIn('"cache-control": "no-store"', source)
+        self.assertLess(source.index("url.pathname === LOGOUT_PATH"), source.index("url.pathname === LOGIN_PATH"))
+        self.assertLess(source.index("url.pathname === LOGIN_PATH"), source.index('url.pathname === "/api/health"'))
         self.assertIn('url.pathname === "/api/access-requests" && request.method === "POST"', source)
         self.assertIn("return createAccessRequest(request, env, null)", source)
-        self.assertIn('!url.pathname.startsWith("/api/") && url.pathname !== LOGIN_PATH', source)
+        self.assertIn('!url.pathname.startsWith("/api/")', source)
         self.assertIn('url.pathname === LOGIN_PATH', source)
+        self.assertIn("return completeAccessLogin(request, env)", source)
+        self.assertIn("async function completeAccessLogin(request, env)", source)
+        self.assertIn("await verifyAccessJwt(accessJwt, env)", source)
         self.assertIn('return forwardToBackend(rewriteRequestPath(request, "/"), env, null)', source)
         self.assertIn("function rewriteRequestPath(request, pathname)", source)
         self.assertNotIn('return redirectResponse("/")', source)

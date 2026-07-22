@@ -235,7 +235,9 @@ Cloudflare Access challenge in a top-level browser navigation, then serves the
 app shell internally without another browser redirect. `/auth/logout` redirects
 to the configured Access team-domain logout endpoint so logout still works when
 the application cookie is path-scoped. See the frontdoor guide for the required
-custom-domain callback and cookie checks.
+custom-domain callback and cookie checks. Access policies do not assign Worker
+code: `wrangler.frontdoor.toml` separately routes the custom-domain `/api/*` and
+`/auth/*` paths through `association-rental-frontdoor`.
 
 Prepare low-PII `TENANT_ACCESS_KV` seed data with:
 
