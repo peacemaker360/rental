@@ -227,12 +227,15 @@ signed tenant context for the Python Worker. It still accepts legacy
 
 For the hosted signup/no-access flow, keep the static shell public and protect
 the app APIs through the front door. Public routes are `GET /`, `GET
-/index.html`, `GET /styles.css`, `GET /app.js`, and `/api/access-requests`.
-Protected routes are `GET /auth/login` and `/api/*`, with an exception for
-`/api/access-requests`. The front door only permits unauthenticated `POST` on
-that public API path. `/auth/login` exists only to let Cloudflare Access
-challenge in a top-level browser navigation and then redirect back to `/`,
-avoiding raw JSON error screens for users who still need an access profile.
+/index.html`, `GET /styles.css`, `GET /app.js`, `GET /auth/logout`, and
+`/api/access-requests`. Protected routes are `GET /auth/login` and `/api/*`,
+with an exception for `/api/access-requests`. The front door only permits
+unauthenticated `POST` on that public API path. `/auth/login` exists only to let
+Cloudflare Access challenge in a top-level browser navigation, then serves the
+app shell internally without another browser redirect. `/auth/logout` redirects
+to the configured Access team-domain logout endpoint so logout still works when
+the application cookie is path-scoped. See the frontdoor guide for the required
+custom-domain callback and cookie checks.
 
 Prepare low-PII `TENANT_ACCESS_KV` seed data with:
 

@@ -670,6 +670,10 @@ h3 {
   margin-bottom: 6px;
 }
 
+.auth-step-action {
+  margin-top: 12px;
+}
+
 .auth-start-actions {
   display: flex;
   align-items: flex-end;

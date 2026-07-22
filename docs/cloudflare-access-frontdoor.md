@@ -44,6 +44,7 @@ GET /
 GET /index.html
 GET /styles.css
 GET /app.js
+GET /auth/logout
 /api/access-requests
 ```
 
@@ -59,22 +60,54 @@ protected. The front door only accepts unauthenticated `POST` requests on that
 path; other methods still go through the normal protected API path. The public
 join-request endpoint asks for an email and tenant id and stores only a pending
 request in `TENANT_ACCESS_KV`; it does not grant app access. `/auth/login` is a
-lightweight protected route: after Access succeeds, the front door redirects the
-browser back to `/`. This gives the UI a real sign-in target without sending
-users to a raw JSON API response.
+lightweight protected route: after Access succeeds, the front door serves the
+static shell internally at that URL, and the frontend replaces the visible URL
+with `/` without another network redirect. This gives the UI a real sign-in
+target without sending users to a raw JSON API response or adding a redirect
+between differently protected paths.
+
+`/auth/logout` remains public and redirects to the team-domain Access logout
+endpoint derived from `CF_ACCESS_TEAM_DOMAIN`. The team-domain endpoint revokes
+the global Access session even when an application cookie is scoped to `/api`
+or `/auth/login` and therefore would not be sent to a relative
+`/cdn-cgi/access/logout` request.
 
 The expected first-visit flow is:
 
 ```text
-1. User opens / and sees the public landing/sign-up screen.
-2. User submits POST /api/access-requests with email and tenant id, or chooses
-   Retry sign-in.
-3. Retry sign-in navigates to /auth/login, where Cloudflare Access can
+1. User opens / and sees the public sign-in screen.
+2. Sign in navigates to /auth/login, where Cloudflare Access can
    challenge in a top-level browser navigation.
-4. After Access succeeds, /auth/login redirects to /.
-5. The app calls /api/context. Users with an active profile enter the app; users
-   without one stay on the landing screen instead of seeing raw JSON.
+3. After Access succeeds, /auth/login serves the app shell and the frontend
+   calls /api/context.
+4. Users with an active profile enter the app. Authenticated users without a
+   profile see the access-request form with their verified email prefilled.
+5. A user may submit POST /api/access-requests with a tenant id, retry sign-in,
+   or log out and start with a different identity.
 ```
+
+## Avoid Authentication Redirect Loops
+
+Configure the Access application as a self-hosted public-hostname application
+for the browser-visible hostname, for example `rental.example.org`. Protect
+`/auth/login` and `/api` on that hostname with the same application and audience
+used by `CF_ACCESS_AUD`. Keep the shell and `/auth/logout` public.
+
+After authentication, inspect the Network panel. The final
+`/cdn-cgi/access/authorized` request must run on the browser-visible application
+hostname and set its application cookie there. If `Cf-Access-Domain` or the
+callback `Location` points to a `workers.dev` hostname while the browser returns
+to a custom domain, the application was likely attached to the Worker hostname
+or configured as an unnecessary multi-domain application. Remove that Worker
+hostname from this Access application or create the application directly for
+the custom public hostname. Otherwise the custom-domain `/auth/login` request
+can immediately restart authentication because it did not receive the matching
+application cookie.
+
+Also leave the Cookie Path Attribute disabled unless path-isolated sessions are
+intentional, and use a SameSite value compatible with the selected identity
+flow. Test the corrected setup in a normal browser window first; private-window
+tracking protection can interfere with Access cookies and XHR redirects.
 
 ## User Access KV
 

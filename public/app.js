@@ -104,6 +104,7 @@ const translations = {
     "actions.import_instruments": "Import Inventory",
     "actions.export_tenant_access": "Export Access KV",
     "actions.refresh": "Refresh",
+    "actions.sign_in": "Sign in",
     "actions.retry_sign_in": "Retry sign-in",
     "actions.logout": "Log out",
     "actions.request_join": "Request to join",
@@ -283,6 +284,7 @@ const translations = {
     "auth.sign_in": "Sign-in",
     "auth.signed_in": "Signed in",
     "auth.sign_in_needed": "Sign in to check whether your association access is ready.",
+    "auth.access_check": "After sign-in, we check your app access.",
     "auth.registration_hint": "Need access? Ask your association administrator to register your sign-in email and assign you to the right association.",
     "auth.invalid_token": "Your sign-in could not be verified or is no longer valid.",
     "auth.no_profile": "You are signed in, but your app access is still missing or disabled.",
@@ -357,6 +359,7 @@ const translations = {
     "actions.import_instruments": "Inventar importieren",
     "actions.export_tenant_access": "Access-KV exportieren",
     "actions.refresh": "Aktualisieren",
+    "actions.sign_in": "Anmelden",
     "actions.retry_sign_in": "Anmeldung erneut versuchen",
     "actions.logout": "Abmelden",
     "actions.request_join": "Beitritt anfragen",
@@ -536,6 +539,7 @@ const translations = {
     "auth.sign_in": "Anmeldung",
     "auth.signed_in": "Angemeldet",
     "auth.sign_in_needed": "Melde dich an, um zu prüfen, ob dein Vereinszugriff bereit ist.",
+    "auth.access_check": "Nach der Anmeldung prüfen wir deinen App-Zugang.",
     "auth.registration_hint": "Brauchst du Zugriff? Bitte deine Vereinsadministration, deine Anmelde-E-Mail zu registrieren und dem richtigen Verein zuzuweisen.",
     "auth.invalid_token": "Deine Anmeldung konnte nicht verifiziert werden oder ist nicht mehr gültig.",
     "auth.no_profile": "Du bist angemeldet, aber dein App-Zugriff fehlt noch oder ist deaktiviert.",
@@ -769,15 +773,16 @@ function authStartSteps() {
     {
       state: hasToken ? "done" : "current",
       title: t("auth.sign_in"),
-      body: hasToken ? t("auth.signed_in") : t("auth.sign_in_needed")
+      body: hasToken ? t("auth.signed_in") : t("auth.sign_in_needed"),
+      action: hasToken ? "" : "sign_in"
     },
     {
-      state: authState === "pending_request" || authState === "no_profile" || authState === "access_denied" ? "current" : "waiting",
+      state: hasToken && (authState === "pending_request" || authState === "no_profile" || authState === "access_denied") ? "current" : "waiting",
       title: t("entities.user_access"),
-      body: authState === "pending_request" ? t("auth.pending_hint") : authState === "missing_token" ? t("auth.invalid_token") : authState === "access_denied" ? t("auth.access_denied") : t("auth.no_profile")
+      body: !hasToken ? t("auth.access_check") : authState === "pending_request" ? t("auth.pending_hint") : authState === "access_denied" ? t("auth.access_denied") : t("auth.no_profile")
     },
     {
-      state: hasRequest ? "current" : "waiting",
+      state: hasToken && hasRequest ? "current" : "waiting",
       title: t("entities.association"),
       body: t("auth.registration_hint")
     }
@@ -1216,6 +1221,7 @@ function renderAuthStart() {
   const associationContact = request?.association?.contact;
   const emailValue = state.authEmail || request?.email || "";
   const steps = authStartSteps();
+  const showAccessRequestForm = hasLikelySignInToken();
   view.innerHTML = `
     <section class="auth-start" aria-labelledby="authStartTitle">
       <div class="auth-start-mark">RD</div>
@@ -1230,10 +1236,11 @@ function renderAuthStart() {
             <span>${index + 1}</span>
             <strong>${escapeHtml(step.title)}</strong>
             <p>${escapeHtml(step.body)}</p>
+            ${step.action === "sign_in" ? `<button type="button" class="primary-button auth-step-action" data-auth-retry>${t("actions.sign_in")}</button>` : ""}
           </div>
         `).join("")}
       </div>
-      <div class="auth-start-actions">
+      ${showAccessRequestForm ? `<div class="auth-start-actions">
         <form class="auth-request-form" data-join-request>
           <label for="joinEmail">${t("fields.email")}</label>
           <input id="joinEmail" name="email" type="email" autocomplete="email" required placeholder="name@example.org" value="${escapeHtml(emailValue)}" aria-describedby="joinEmailHelp">
@@ -1248,7 +1255,7 @@ function renderAuthStart() {
           <button type="button" class="primary-button" data-auth-retry>${t("actions.retry_sign_in")}</button>
           ${hasLikelySignInToken() ? `<button type="button" class="ghost-button" data-logout>${t("actions.logout")}</button>` : ""}
         </div>
-      </div>
+      </div>` : ""}
       ${request ? `
         <aside class="auth-request-result">
           <div class="journey-head">
@@ -2397,7 +2404,7 @@ messageClose?.addEventListener("click", () => {
 
 document.addEventListener("click", (event) => {
   if (!event.target.closest("[data-logout]")) return;
-  window.location.assign("/cdn-cgi/access/logout");
+  window.location.assign("/auth/logout");
 });
 
 view.addEventListener("input", (event) => {
@@ -2457,7 +2464,7 @@ view.addEventListener("click", async (event) => {
       return;
     }
     if (target.dataset.logout !== undefined) {
-      window.location.assign("/cdn-cgi/access/logout");
+      window.location.assign("/auth/logout");
       return;
     }
     if (target.dataset.authRetry !== undefined) {
@@ -2885,10 +2892,12 @@ async function init() {
     state.authError = error.message || "";
     state.context = null;
     state.isLoading = false;
+    if (hasLikelySignInToken()) normalizeAuthPath();
     render();
     return;
   }
   applyContext(context);
+  normalizeAuthPath();
   try {
     await loadData();
     state.isLoading = false;
@@ -2897,6 +2906,12 @@ async function init() {
     state.isLoading = false;
     render();
     showMessage(error.message, true);
+  }
+}
+
+function normalizeAuthPath() {
+  if (window.location.pathname === "/auth/login") {
+    window.history.replaceState(null, "", "/");
   }
 }
 
