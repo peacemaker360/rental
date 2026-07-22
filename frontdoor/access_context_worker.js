@@ -7,8 +7,7 @@ const ALLOWED_ROLES = new Set(["viewer", "operator", "admin"]);
 const GLOBAL_ROLES = new Set(["none", "reader", "operator", "admin", "platform_admin"]);
 const TENANT_ROLES = new Set(["reader", "operator", "admin"]);
 const ACCESS_PROFILES = new Set(["full", "basic"]);
-const LOGIN_PATH = "/auth/login";
-const LOGOUT_PATH = "/auth/logout";
+const LOGIN_PATH = "/api/auth/login";
 
 let cachedJwks = null;
 let cachedJwksUntil = 0;
@@ -17,9 +16,6 @@ export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
-      if (url.pathname === LOGOUT_PATH) {
-        return accessLogoutResponse(request, env);
-      }
       if (url.pathname === LOGIN_PATH) {
         return completeAccessLogin(request, env);
       }
@@ -73,23 +69,6 @@ async function completeAccessLogin(request, env) {
   }
   await verifyAccessJwt(accessJwt, env);
   return forwardToBackend(rewriteRequestPath(request, "/"), env, null);
-}
-
-function accessLogoutResponse(request, env) {
-  if (!["GET", "HEAD"].includes(request.method)) {
-    return jsonResponse({error: "method not allowed"}, 405);
-  }
-  const teamDomain = String(env.CF_ACCESS_TEAM_DOMAIN || "").trim().toLowerCase();
-  if (!/^[a-z0-9.-]+\.cloudflareaccess\.com$/.test(teamDomain)) {
-    throw new Error("CF_ACCESS_TEAM_DOMAIN must be a cloudflareaccess.com hostname");
-  }
-  return new Response(null, {
-    status: 302,
-    headers: {
-      "cache-control": "no-store",
-      location: `https://${teamDomain}/cdn-cgi/access/logout`
-    }
-  });
 }
 
 function authenticatedErrorBody(error, claims) {

@@ -671,7 +671,7 @@ function api(path, options = {}) {
   if (["POST", "PUT", "DELETE"].includes(method) && options.expectRevision !== false) {
     headers["x-rental-expected-revision"] = String(Number(state.meta.revision || 0));
   }
-  return fetch(`/api/${state.tenant}${path}`, {...options, method, headers}).then(async (response) => {
+  return fetch(`/api/${state.tenant}${path}`, {...options, method, headers, credentials: "same-origin"}).then(async (response) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (data.meta) applyMeta(data.meta);
@@ -685,7 +685,10 @@ function api(path, options = {}) {
 }
 
 async function apiContext() {
-  const response = await fetch("/api/context", {headers: {"content-type": "application/json"}});
+  const response = await fetch("/api/context", {
+    credentials: "same-origin",
+    headers: {"content-type": "application/json"}
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || `Request failed (${response.status})`);
@@ -699,7 +702,7 @@ async function apiContext() {
 function adminApi(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const headers = {"content-type": "application/json", ...(options.headers || {})};
-  return fetch(`/api/admin${path}`, {...options, method, headers}).then(async (response) => {
+  return fetch(`/api/admin${path}`, {...options, method, headers, credentials: "same-origin"}).then(async (response) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(data.error || `Request failed (${response.status})`);
@@ -713,6 +716,7 @@ function adminApi(path, options = {}) {
 
 function accessRequestApi(payload) {
   return fetch("/api/access-requests", {
+    credentials: "same-origin",
     method: "POST",
     headers: {"content-type": "application/json"},
     body: JSON.stringify(payload)
@@ -2468,7 +2472,7 @@ view.addEventListener("click", async (event) => {
       return;
     }
     if (target.dataset.authRetry !== undefined) {
-      window.location.assign("/auth/login");
+      window.location.assign("/api/auth/login");
       return;
     }
     if (target.dataset.status) {
@@ -2847,7 +2851,7 @@ instrumentFile.addEventListener("change", async () => {
 
 refreshButton.addEventListener("click", () => {
   if (state.authStatus !== "signed_in") {
-    window.location.assign("/auth/login");
+    window.location.assign("/api/auth/login");
     return;
   }
   loadData().catch((error) => showMessage(error.message, true));
@@ -2910,7 +2914,7 @@ async function init() {
 }
 
 function normalizeAuthPath() {
-  if (window.location.pathname === "/auth/login") {
+  if (window.location.pathname === "/api/auth/login") {
     window.history.replaceState(null, "", "/");
   }
 }

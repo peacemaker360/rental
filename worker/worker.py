@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import urlparse
 
 from workers import Response, WorkerEntrypoint
@@ -24,6 +25,8 @@ JSON_HEADERS = {
     "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type,authorization,x-rental-context,x-rental-context-signature,x-rental-expected-revision,x-rental-tenant-id,x-rental-actor-id,x-rental-role,x-rental-access-profile,x-rental-member-id,x-rental-user-email",
 }
+AUTH_LOGOUT_PATH = "/auth/logout"
+ACCESS_TEAM_DOMAIN_PATTERN = re.compile(r"^[a-z0-9.-]+\.cloudflareaccess\.com$")
 
 
 def json_response(data, status=200):
@@ -56,12 +59,39 @@ def worker_auth_mode(env, hostname: str) -> str:
     return "signed"
 
 
+def access_logout_response(env, method: str):
+    if method not in ("GET", "HEAD"):
+        return json_response({"error": "method not allowed"}, 405)
+    team_domain = str(getattr(env, "CF_ACCESS_TEAM_DOMAIN", "")).strip().lower()
+    if not ACCESS_TEAM_DOMAIN_PATTERN.fullmatch(team_domain):
+        return json_response({"error": "logout is not configured"}, 503)
+    return Response(
+        "",
+        status=302,
+        headers={
+            "location": f"https://{team_domain}/cdn-cgi/access/logout",
+            "cache-control": "no-store",
+            "pragma": "no-cache",
+            "referrer-policy": "no-referrer",
+            "set-cookie": (
+                "CF_Authorization=; Max-Age=0; "
+                "Expires=Thu, 01 Jan 1970 00:00:00 GMT; "
+                "Path=/; Secure; HttpOnly; SameSite=Lax"
+            ),
+            "x-rental-auth-handler": "backend",
+        },
+    )
+
+
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
         if request.method == "OPTIONS":
             return Response("", status=204, headers=JSON_HEADERS)
 
         parsed = urlparse(request.url)
+        if parsed.path == AUTH_LOGOUT_PATH:
+            return access_logout_response(self.env, request.method)
+
         parts = parse_api_path(parsed.path)
         if not parts:
             if is_api_request_path(parsed.path):

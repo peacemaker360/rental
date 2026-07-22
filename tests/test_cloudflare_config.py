@@ -46,11 +46,12 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertEqual(config["main"], "worker/worker.py")
         self.assertEqual(config["compatibility_flags"], ["python_workers"])
         self.assertEqual(config["vars"]["RENTAL_AUTH_MODE"], "auto")
+        self.assertEqual(config["vars"]["CF_ACCESS_TEAM_DOMAIN"], "kittythecat.cloudflareaccess.com")
         self.assertNotIn("kv_namespaces", config["vars"])
         self.assertEqual(config["kv_namespaces"][0]["binding"], "RENTAL_KV")
         self.assertTrue(any(item["binding"] == "TENANT_ACCESS_KV" for item in config["kv_namespaces"]))
         self.assertEqual(config["assets"]["binding"], "ASSETS")
-        self.assertEqual(config["assets"]["run_worker_first"], ["/api/*"])
+        self.assertEqual(config["assets"]["run_worker_first"], ["/api/*", "/auth/logout"])
 
     def test_frontdoor_wrangler_binds_backend_and_assignment_kv(self):
         config = tomllib.loads((ROOT / "wrangler.frontdoor.toml").read_text(encoding="utf-8"))
@@ -62,10 +63,7 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("CF_ACCESS_AUD", config["vars"])
         self.assertFalse(config["workers_dev"])
         route_patterns = {item["pattern"] for item in config["routes"]}
-        self.assertEqual(route_patterns, {
-            "rental.kittythecat.ch/api/*",
-            "rental.kittythecat.ch/auth/*",
-        })
+        self.assertEqual(route_patterns, {"rental.kittythecat.ch/api/*"})
         self.assertTrue(all(item["zone_name"] == "kittythecat.ch" for item in config["routes"]))
 
     def test_package_exposes_frontdoor_scripts(self):
@@ -112,13 +110,7 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("valid email is required", source)
         self.assertIn("user:${email}", source)
         self.assertIn("resolveUserAssignment", source)
-        self.assertIn('const LOGIN_PATH = "/auth/login"', source)
-        self.assertIn('const LOGOUT_PATH = "/auth/logout"', source)
-        self.assertIn("return accessLogoutResponse(request, env)", source)
-        self.assertIn("function accessLogoutResponse(request, env)", source)
-        self.assertIn('location: `https://${teamDomain}/cdn-cgi/access/logout`', source)
-        self.assertIn('"cache-control": "no-store"', source)
-        self.assertLess(source.index("url.pathname === LOGOUT_PATH"), source.index("url.pathname === LOGIN_PATH"))
+        self.assertIn('const LOGIN_PATH = "/api/auth/login"', source)
         self.assertLess(source.index("url.pathname === LOGIN_PATH"), source.index('url.pathname === "/api/health"'))
         self.assertIn('url.pathname === "/api/access-requests" && request.method === "POST"', source)
         self.assertIn("return createAccessRequest(request, env, null)", source)
@@ -170,6 +162,28 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("await request.text()", source)
         self.assertIn("json.loads(raw)", source)
         self.assertIn('return json_response({"error": str(exc)}, 400)', source)
+
+    def test_backend_worker_redirects_logout_to_access_team_domain(self):
+        module = load_worker_module_for_test()
+        response = module.access_logout_response(
+            types.SimpleNamespace(CF_ACCESS_TEAM_DOMAIN="kittythecat.cloudflareaccess.com"),
+            "GET",
+        )
+
+        self.assertEqual(response.kwargs["status"], 302)
+        self.assertEqual(
+            response.kwargs["headers"]["location"],
+            "https://kittythecat.cloudflareaccess.com/cdn-cgi/access/logout",
+        )
+        self.assertEqual(response.kwargs["headers"]["cache-control"], "no-store")
+        self.assertIn("CF_Authorization=; Max-Age=0", response.kwargs["headers"]["set-cookie"])
+        self.assertEqual(response.kwargs["headers"]["x-rental-auth-handler"], "backend")
+
+    def test_backend_worker_rejects_unconfigured_logout(self):
+        module = load_worker_module_for_test()
+        response = module.access_logout_response(types.SimpleNamespace(), "GET")
+
+        self.assertEqual(response.kwargs["status"], 503)
 
     def test_backend_worker_cors_allows_trusted_access_profile_headers(self):
         module = load_worker_module_for_test()

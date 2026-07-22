@@ -35,11 +35,14 @@ class DeployPreflightTests(unittest.TestCase):
                 "id": "replace-with-kv-id",
                 "preview_id": "replace-with-preview-kv-id",
             }],
-            "vars": {"RENTAL_AUTH_MODE": "auto"},
+            "vars": {
+                "RENTAL_AUTH_MODE": "auto",
+                "CF_ACCESS_TEAM_DOMAIN": "example.cloudflareaccess.com",
+            },
             "assets": {
                 "directory": "./public",
                 "binding": "ASSETS",
-                "run_worker_first": ["/api/*"],
+                "run_worker_first": ["/api/*", "/auth/logout"],
             },
         }, False, errors)
 

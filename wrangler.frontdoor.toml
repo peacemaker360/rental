@@ -4,8 +4,7 @@ compatibility_date = "2026-06-26"
 workers_dev = false
 
 routes = [
-  { pattern = "rental.kittythecat.ch/api/*", zone_name = "kittythecat.ch" },
-  { pattern = "rental.kittythecat.ch/auth/*", zone_name = "kittythecat.ch" }
+  { pattern = "rental.kittythecat.ch/api/*", zone_name = "kittythecat.ch" }
 ]
 
 kv_namespaces = [

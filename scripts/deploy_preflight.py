@@ -180,6 +180,11 @@ def validate_backend_wrangler(config: dict[str, Any], allow_placeholders: bool, 
         errors.append("wrangler.toml must include python_workers compatibility flag")
     if config.get("vars", {}).get("RENTAL_AUTH_MODE") != "auto":
         errors.append("wrangler.toml must set RENTAL_AUTH_MODE=auto")
+    team_domain = str(config.get("vars", {}).get("CF_ACCESS_TEAM_DOMAIN", ""))
+    if not team_domain:
+        errors.append("wrangler.toml vars.CF_ACCESS_TEAM_DOMAIN is required for logout")
+    elif not allow_placeholders and looks_placeholder(team_domain):
+        errors.append("wrangler.toml vars.CF_ACCESS_TEAM_DOMAIN still uses a placeholder")
 
     namespace = namespace_by_binding(config, "RENTAL_KV")
     if not namespace:
@@ -194,6 +199,8 @@ def validate_backend_wrangler(config: dict[str, Any], allow_placeholders: bool, 
         errors.append("wrangler.toml assets.binding must be ASSETS")
     if "/api/*" not in assets.get("run_worker_first", []):
         errors.append("wrangler.toml assets.run_worker_first must include /api/*")
+    if "/auth/logout" not in assets.get("run_worker_first", []):
+        errors.append("wrangler.toml assets.run_worker_first must include /auth/logout")
 
 
 def validate_frontdoor_wrangler(config: dict[str, Any], allow_placeholders: bool, errors: list[str]) -> None:
@@ -203,9 +210,11 @@ def validate_frontdoor_wrangler(config: dict[str, Any], allow_placeholders: bool
         errors.append("wrangler.frontdoor.toml workers_dev must be false for production routing")
 
     route_patterns = {str(item.get("pattern", "")) for item in config.get("routes", [])}
-    for pattern in ("rental.kittythecat.ch/api/*", "rental.kittythecat.ch/auth/*"):
-        if pattern not in route_patterns:
-            errors.append(f"wrangler.frontdoor.toml routes must include {pattern}")
+    api_pattern = "rental.kittythecat.ch/api/*"
+    if api_pattern not in route_patterns:
+        errors.append(f"wrangler.frontdoor.toml routes must include {api_pattern}")
+    if "rental.kittythecat.ch/auth/*" in route_patterns:
+        errors.append("wrangler.frontdoor.toml must leave /auth/* on the backend Worker")
 
     namespace = namespace_by_binding(config, "TENANT_ACCESS_KV")
     if not namespace:

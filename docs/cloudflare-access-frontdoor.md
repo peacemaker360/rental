@@ -51,7 +51,6 @@ GET /auth/logout
 Protect these routes with Cloudflare Access:
 
 ```text
-GET /auth/login
 /api/*
 ```
 
@@ -63,39 +62,39 @@ same protected paths must also be routed to `association-rental-frontdoor`.
 workers_dev = false
 
 routes = [
-  { pattern = "rental.kittythecat.ch/api/*", zone_name = "kittythecat.ch" },
-  { pattern = "rental.kittythecat.ch/auth/*", zone_name = "kittythecat.ch" }
+  { pattern = "rental.kittythecat.ch/api/*", zone_name = "kittythecat.ch" }
 ]
 ```
 
-The `/auth/*` Worker route includes both protected `/auth/login` and public
-`/auth/logout`. The route determines which Worker executes; the Access
-application independently determines whether Cloudflare challenges the request.
+The Access application and frontdoor Worker both cover the same `/api/*`
+surface. The backend Worker handles public `/auth/logout` before static assets,
+so logout does not depend on a second frontdoor route.
 
 Add an exception so `/api/access-requests` remains public even if `/api/*` is
 protected. The front door only accepts unauthenticated `POST` requests on that
 path; other methods still go through the normal protected API path. The public
 join-request endpoint asks for an email and tenant id and stores only a pending
-request in `TENANT_ACCESS_KV`; it does not grant app access. `/auth/login` is a
-lightweight protected route: after Access succeeds, the front door serves the
-static shell internally at that URL, and the frontend replaces the visible URL
-with `/` without another network redirect. This gives the UI a real sign-in
-target without sending users to a raw JSON API response or adding a redirect
-between differently protected paths.
+request in `TENANT_ACCESS_KV`; it does not grant app access.
+`/api/auth/login` is a lightweight protected route: after Access succeeds, the
+front door serves the static shell internally at that URL, and the frontend
+replaces the visible URL with `/` without another network redirect. This gives
+the UI a real sign-in target without sending users to a raw JSON API response
+or introducing a second Access application path.
 
-`/auth/logout` remains public and redirects to the team-domain Access logout
-endpoint derived from `CF_ACCESS_TEAM_DOMAIN`. The team-domain endpoint revokes
-the global Access session even when an application cookie is scoped to `/api`
-or `/auth/login` and therefore would not be sent to a relative
-`/cdn-cgi/access/logout` request.
+`/auth/logout` remains public and is handled by the primary Python Worker. It
+redirects to the team-domain Access logout endpoint derived from
+`CF_ACCESS_TEAM_DOMAIN`. It first expires the application-domain authorization
+cookie, then the team endpoint revokes the global session. The response is
+marked `no-store`; a response header of `x-rental-auth-handler: backend`
+confirms that static SPA fallback did not handle the request.
 
 The expected first-visit flow is:
 
 ```text
 1. User opens / and sees the public sign-in screen.
-2. Sign in navigates to /auth/login, where Cloudflare Access can
+2. Sign in navigates to /api/auth/login, where Cloudflare Access can
    challenge in a top-level browser navigation.
-3. After Access succeeds, /auth/login serves the app shell and the frontend
+3. After Access succeeds, /api/auth/login serves the app shell and the frontend
    calls /api/context.
 4. Users with an active profile enter the app. Authenticated users without a
    profile see the access-request form with their verified email prefilled.
@@ -105,26 +104,27 @@ The expected first-visit flow is:
 
 ## Avoid Authentication Redirect Loops
 
-Configure the Access application as a self-hosted public-hostname application
-for the browser-visible hostname, for example `rental.example.org`. Protect
-`/auth/login` and `/api` on that hostname with the same application and audience
-used by `CF_ACCESS_AUD`. Keep the shell and `/auth/logout` public.
+Configure one Access self-hosted application for the browser-visible hostname,
+for example `rental.example.org`, covering `/api/*`. Its audience must match
+`CF_ACCESS_AUD`. Add a more-specific bypass for `POST /api/access-requests` and
+keep the shell plus `/auth/logout` public. Do not add a separate Access entry for
+`/auth/login`; sign-in now uses `/api/auth/login` inside the API application.
 
 After authentication, inspect the Network panel. The final
 `/cdn-cgi/access/authorized` request must run on the browser-visible application
 hostname and set its application cookie there. If `Cf-Access-Domain` or the
 callback `Location` points to a `workers.dev` hostname while the browser returns
-to a custom domain, the application was likely attached to the Worker hostname
-or configured as an unnecessary multi-domain application. Remove that Worker
-hostname from this Access application or create the application directly for
-the custom public hostname. Otherwise the custom-domain `/auth/login` request
-can immediately restart authentication because it did not receive the matching
-application cookie.
+to a custom domain, the application is still attached to the Worker hostname or
+configured as an unnecessary multi-domain application. Remove that Worker
+hostname and re-save the application for the public custom hostname. Otherwise
+the custom-domain `/api/auth/login` request immediately restarts authentication
+because it did not receive the matching application cookie.
 
-Also leave the Cookie Path Attribute disabled unless path-isolated sessions are
-intentional, and use a SameSite value compatible with the selected identity
-flow. Test the corrected setup in a normal browser window first; private-window
-tracking protection can interfere with Access cookies and XHR redirects.
+Leave the Cookie Path Attribute disabled, set SameSite to `None` or `Lax`, and
+disable Binding Cookie when `Authenticate with Cloudflare One Client` is in use.
+Cloudflare documents all three as possible redirect-loop causes. Test the
+corrected setup in a normal browser window first; private-window tracking
+protection can interfere with Access cookies and XHR redirects.
 
 ## User Access KV
 
@@ -271,7 +271,9 @@ npx wrangler secret put RENTAL_CONTEXT_SECRET
 npx wrangler secret put RENTAL_CONTEXT_SECRET --config wrangler.frontdoor.toml
 ```
 
-Set these front-door vars in `wrangler.frontdoor.toml`:
+Set the Access team domain in both Worker configurations; the backend uses it
+for logout and the front door uses it for JWT validation. Set the audience in
+`wrangler.frontdoor.toml`:
 
 ```toml
 CF_ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
@@ -285,10 +287,11 @@ npm run deploy
 npm run deploy:frontdoor
 ```
 
-The frontdoor deploy publishes its `/api/*` and `/auth/*` routes from
-`wrangler.frontdoor.toml`. In Workers & Pages, verify those two routes belong to
-`association-rental-frontdoor`; `/auth/logout` returning the static app shell
-with `200` means the `/auth/*` route is missing or still points elsewhere. The
-backend continues to serve `/` and static assets and is reached by the frontdoor
-through its service binding. Local development can still use `npm run dev` or
+The frontdoor deploy publishes only `/api/*` from `wrangler.frontdoor.toml`.
+Verify that route belongs to `association-rental-frontdoor`. The backend keeps
+the custom domain, serves `/` and static assets, and runs first for
+`/auth/logout`. A deployed logout request must return `302`, `Cache-Control:
+no-store`, `x-rental-auth-handler: backend`, and a `Location` on the Access team
+domain. A cached `200` HTML response means the backend deployment predates this
+change. Local development can still use `npm run dev` or
 `python3 scripts/local_dev_server.py`.

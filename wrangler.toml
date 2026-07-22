@@ -12,12 +12,13 @@ kv_namespaces = [
 # Localhost keeps tenant switching open. Deployed auto mode requires
 # RENTAL_CONTEXT_SECRET and signed x-rental-context headers.
 RENTAL_AUTH_MODE = "auto"
+CF_ACCESS_TEAM_DOMAIN = "kittythecat.cloudflareaccess.com"
 
 [assets]
 directory = "./public"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
+run_worker_first = ["/api/*", "/auth/logout"]
 
 [observability.logs]
 enabled = false
