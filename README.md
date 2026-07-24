@@ -231,11 +231,14 @@ the app APIs through the front door. Public routes are `GET /`, `GET
 `POST /api/access-requests`. Protect `/api/*`, with a more-specific bypass for
 the join-request endpoint. Sign-in uses the top-level `/api/auth/login` route,
 so the browser authenticates against the same Access application and audience
-as every other API request. After Access succeeds, the front door serves the app
-shell internally without another browser redirect. The primary Worker owns
-`/auth/logout` and redirects to the configured Access team-domain logout
-endpoint, so it remains available without an Access cookie or a separate
-frontdoor route. Access policies do not assign Worker code:
+as every other API request. After Access succeeds, the front door validates the
+application token and redirects to the public app root without running tenant
+authorization on the login path. The primary Worker owns `/auth/logout`, clears
+the application cookie, and redirects through the configured Access team-domain
+logout endpoint with a return URL to `/?auth=logged-out`. The frontend consumes
+that marker before making an API request, clears authenticated data, and restores
+the clean `/` address so logout cannot briefly show stale records. Access
+policies do not assign Worker code:
 `wrangler.frontdoor.toml` routes only the custom-domain `/api/*` path through
 `association-rental-frontdoor`.
 

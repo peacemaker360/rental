@@ -132,7 +132,7 @@ def validate_package(package: dict[str, Any], errors: list[str]) -> None:
         "dev": "uv run pywrangler dev",
         "deploy": "uv run pywrangler deploy",
         "dev:python": "python3 scripts/local_dev_server.py",
-        "test": "PYTHONPATH=.:worker python3 -m unittest discover -s tests",
+        "test": "node --test tests/test_frontdoor.mjs && PYTHONPATH=.:worker python3 -m unittest discover -s tests",
         "smoke:python": "PYTHONPATH=.:worker python3 scripts/smoke_local.py",
         "smoke:signed": "PYTHONPATH=.:worker python3 scripts/smoke_local.py --signed",
         "tenant-access": "python3 scripts/tenant_access_assignments.py",

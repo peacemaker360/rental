@@ -16,7 +16,7 @@ export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
-      if (url.pathname === LOGIN_PATH) {
+      if (isLoginPath(url.pathname)) {
         return completeAccessLogin(request, env);
       }
       if (url.pathname === "/api/health") {
@@ -63,12 +63,31 @@ export default {
 };
 
 async function completeAccessLogin(request, env) {
+  if (!["GET", "HEAD"].includes(request.method)) {
+    return jsonResponse({error: "method not allowed"}, 405);
+  }
   const accessJwt = accessJwtFromRequest(request);
   if (!accessJwt) {
     return jsonResponse({error: "missing Cloudflare Access token"}, 401);
   }
   await verifyAccessJwt(accessJwt, env);
-  return forwardToBackend(rewriteRequestPath(request, "/"), env, null);
+  return loginRedirectResponse(request);
+}
+
+function loginRedirectResponse(request) {
+  return new Response(null, {
+    status: 303,
+    headers: {
+      "cache-control": "no-store",
+      location: new URL("/", request.url).toString(),
+      pragma: "no-cache",
+      "x-rental-auth-handler": "login-redirect"
+    }
+  });
+}
+
+function isLoginPath(pathname) {
+  return pathname.replace(/\/+$/, "") === LOGIN_PATH;
 }
 
 function authenticatedErrorBody(error, claims) {
@@ -299,7 +318,7 @@ function tenantAccessCount(user) {
 function routeTenant(url) {
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] !== "api") return null;
-  if (!parts[1] || parts[1] === "context" || parts[1] === "health" || parts[1] === "admin") return null;
+  if (!parts[1] || ["admin", "auth", "context", "health"].includes(parts[1])) return null;
   return parts[1];
 }
 
@@ -371,13 +390,6 @@ function forwardToBackend(request, env, signedHeaders) {
   throw new Error("RENTAL_BACKEND service binding or RENTAL_BACKEND_URL is required");
 }
 
-function rewriteRequestPath(request, pathname) {
-  const url = new URL(request.url);
-  url.pathname = pathname;
-  url.search = "";
-  return new Request(url.toString(), request);
-}
-
 function stripUntrustedIdentityHeaders(headers) {
   headers.delete(ACCESS_JWT_HEADER);
   headers.delete("cf-access-authenticated-user-email");
@@ -406,3 +418,5 @@ function base64UrlDecodeBytes(value) {
   const binary = atob(padded);
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
+
+export {isLoginPath, loginRedirectResponse, routeTenant};

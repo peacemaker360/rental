@@ -43,6 +43,8 @@ const hitobitoImportButton = document.querySelector("#hitobitoImportButton");
 const hitobitoFile = document.querySelector("#hitobitoFile");
 const instrumentFile = document.querySelector("#instrumentFile");
 const refreshButton = document.querySelector("#refreshButton");
+const sessionButton = document.querySelector("#sessionButton");
+const mobileSessionButton = document.querySelector("#mobileSessionButton");
 const userMenu = document.querySelector("#userMenu");
 const userMenuEmail = document.querySelector("#userMenuEmail");
 const userMenuTenant = document.querySelector("#userMenuTenant");
@@ -74,6 +76,9 @@ const importEmailPattern = /[^@\s]+@[^@\s]+\.[^@\s]+/;
 const importPhonePattern = /(?=(?:\D*\d){7,})\+?[\d][\d\s()./-]{6,}\d/;
 const languageButtons = document.querySelectorAll("[data-lang]");
 const accessRequestStorageKey = "rentalAccessRequest";
+const logoutPendingStorageKey = "rentalLogoutPending";
+const logoutReturnParam = "auth";
+const logoutReturnValue = "logged-out";
 
 const translations = {
   en: {
@@ -748,6 +753,67 @@ function saveStoredAccessRequest(request) {
   localStorage.setItem(accessRequestStorageKey, JSON.stringify(request));
 }
 
+function resetAuthenticatedState() {
+  state.context = null;
+  state.authStatus = "signed_out";
+  state.authReason = "missing_token";
+  state.authEmail = "";
+  state.authError = "";
+  state.isLoading = false;
+  state.detail = null;
+  state.summary = {};
+  state.meta = {revision: 0, updated_at: null};
+  state.records = {
+    instruments: [],
+    members: [],
+    rentals: [],
+    service_records: [],
+    history: []
+  };
+  state.associations = [];
+  state.users = [];
+  state.accessRequests = [];
+  window.clearTimeout(showMessage.timer);
+  message.hidden = true;
+  if (dialog?.open) dialog.close();
+  applyAccessChrome();
+}
+
+function logoutReturnPending() {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get(logoutReturnParam) === logoutReturnValue) return true;
+  try {
+    return sessionStorage.getItem(logoutPendingStorageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function consumeLogoutReturn() {
+  if (!logoutReturnPending()) return false;
+  try {
+    sessionStorage.removeItem(logoutPendingStorageKey);
+  } catch {
+    // The URL marker still makes the logout return safe without session storage.
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.delete(logoutReturnParam);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}` || "/");
+  resetAuthenticatedState();
+  return true;
+}
+
+function beginLogout() {
+  try {
+    sessionStorage.setItem(logoutPendingStorageKey, "1");
+  } catch {
+    // The backend return marker is the fallback for restricted storage modes.
+  }
+  resetAuthenticatedState();
+  render();
+  window.location.replace("/auth/logout");
+}
+
 function authReasonFromError(error) {
   const message = String(error?.message || "").toLowerCase();
   if (error?.status === 401 || message.includes("missing signed tenant context") || (message.includes("missing") && message.includes("token"))) return "missing_token";
@@ -842,6 +908,19 @@ function renderUserMenu() {
     if (tenantNode) tenantNode.textContent = state.tenant;
     if (roleNode) roleNode.textContent = roleLabel;
     if (accessNode) accessNode.textContent = accessLabel;
+  });
+}
+
+function renderSessionButtons() {
+  const checking = state.authStatus === "checking";
+  const signedIn = state.authStatus === "signed_in";
+  const label = t(signedIn ? "actions.logout" : "actions.sign_in");
+  [sessionButton, mobileSessionButton].forEach((button) => {
+    if (!button) return;
+    button.hidden = checking;
+    button.textContent = label;
+    button.title = label;
+    button.setAttribute("aria-label", label);
   });
 }
 
@@ -1147,6 +1226,7 @@ function reconcileDetailSelection() {
 
 function render() {
   applyLanguage();
+  renderSessionButtons();
   document.body.classList.toggle("is-loading", Boolean(state.isLoading));
   document.body.classList.toggle("is-auth-start", state.authStatus !== "signed_in");
   if (state.authStatus !== "signed_in") {
@@ -2407,8 +2487,15 @@ messageClose?.addEventListener("click", () => {
 });
 
 document.addEventListener("click", (event) => {
-  if (!event.target.closest("[data-logout]")) return;
-  window.location.assign("/auth/logout");
+  const logout = event.target.closest("[data-logout]");
+  const sessionAction = event.target.closest("[data-session-action]");
+  if (!logout && !sessionAction) return;
+  const loggingOut = Boolean(logout) || state.authStatus === "signed_in";
+  if (loggingOut) {
+    beginLogout();
+    return;
+  }
+  window.location.assign("/api/auth/login");
 });
 
 view.addEventListener("input", (event) => {
@@ -2468,7 +2555,7 @@ view.addEventListener("click", async (event) => {
       return;
     }
     if (target.dataset.logout !== undefined) {
-      window.location.assign("/auth/logout");
+      beginLogout();
       return;
     }
     if (target.dataset.authRetry !== undefined) {
@@ -2884,6 +2971,11 @@ function openAssociation(tenant) {
 
 async function init() {
   state.accessRequestResult = loadStoredAccessRequest();
+  if (consumeLogoutReturn()) {
+    applyLanguage();
+    render();
+    return;
+  }
   applyLanguage();
   render();
   let context;
@@ -2914,10 +3006,14 @@ async function init() {
 }
 
 function normalizeAuthPath() {
-  if (window.location.pathname === "/api/auth/login") {
+  if (window.location.pathname.replace(/\/+$/, "") === "/api/auth/login") {
     window.history.replaceState(null, "", "/");
   }
 }
+
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) window.location.reload();
+});
 
 init().catch((error) => {
   state.isLoading = false;

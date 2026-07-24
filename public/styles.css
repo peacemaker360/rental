@@ -170,6 +170,34 @@ button {
   color: #19312b;
 }
 
+.session-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border: 1px solid #6f8781;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: transparent;
+  color: #f8fbf8;
+  font-weight: 800;
+}
+
+.session-button:hover,
+.session-button:focus-visible {
+  border-color: #d8ead5;
+  background: rgba(216, 234, 213, 0.12);
+}
+
+.session-button[hidden],
+.mobile-session-button {
+  display: none;
+}
+
+.sidebar-session-button {
+  width: 100%;
+}
+
 label {
   display: block;
   color: var(--muted);
@@ -1434,6 +1462,14 @@ tr:last-child td {
     flex: 0 0 auto;
   }
 
+  .mobile-session-button {
+    display: flex;
+    min-height: 34px;
+    padding: 0 10px;
+    border-color: #49625d;
+    font-size: 0.82rem;
+  }
+
   .mobile-user-menu {
     display: block;
   }
@@ -1471,6 +1507,10 @@ tr:last-child td {
   }
 
   .tenant-user-menu {
+    display: none;
+  }
+
+  .sidebar-session-button {
     display: none;
   }
 

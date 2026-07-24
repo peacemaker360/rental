@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from workers import Response, WorkerEntrypoint
 
@@ -59,17 +59,20 @@ def worker_auth_mode(env, hostname: str) -> str:
     return "signed"
 
 
-def access_logout_response(env, method: str):
+def access_logout_response(env, method: str, request_url: str):
     if method not in ("GET", "HEAD"):
         return json_response({"error": "method not allowed"}, 405)
     team_domain = str(getattr(env, "CF_ACCESS_TEAM_DOMAIN", "")).strip().lower()
     if not ACCESS_TEAM_DOMAIN_PATTERN.fullmatch(team_domain):
         return json_response({"error": "logout is not configured"}, 503)
+    parsed_url = urlparse(request_url)
+    return_url = f"{parsed_url.scheme}://{parsed_url.netloc}/?auth=logged-out"
+    logout_query = urlencode({"returnTo": return_url})
     return Response(
         "",
         status=302,
         headers={
-            "location": f"https://{team_domain}/cdn-cgi/access/logout",
+            "location": f"https://{team_domain}/cdn-cgi/access/logout?{logout_query}",
             "cache-control": "no-store",
             "pragma": "no-cache",
             "referrer-policy": "no-referrer",
@@ -90,7 +93,7 @@ class Default(WorkerEntrypoint):
 
         parsed = urlparse(request.url)
         if parsed.path == AUTH_LOGOUT_PATH:
-            return access_logout_response(self.env, request.method)
+            return access_logout_response(self.env, request.method, request.url)
 
         parts = parse_api_path(parsed.path)
         if not parts:

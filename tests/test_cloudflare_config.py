@@ -111,17 +111,22 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("user:${email}", source)
         self.assertIn("resolveUserAssignment", source)
         self.assertIn('const LOGIN_PATH = "/api/auth/login"', source)
-        self.assertLess(source.index("url.pathname === LOGIN_PATH"), source.index('url.pathname === "/api/health"'))
+        self.assertLess(source.index("isLoginPath(url.pathname)"), source.index('url.pathname === "/api/health"'))
         self.assertIn('url.pathname === "/api/access-requests" && request.method === "POST"', source)
         self.assertIn("return createAccessRequest(request, env, null)", source)
         self.assertIn('!url.pathname.startsWith("/api/")', source)
-        self.assertIn('url.pathname === LOGIN_PATH', source)
+        self.assertIn("function isLoginPath(pathname)", source)
+        self.assertIn('pathname.replace(/\\/+$/, "") === LOGIN_PATH', source)
         self.assertIn("return completeAccessLogin(request, env)", source)
         self.assertIn("async function completeAccessLogin(request, env)", source)
         self.assertIn("await verifyAccessJwt(accessJwt, env)", source)
-        self.assertIn('return forwardToBackend(rewriteRequestPath(request, "/"), env, null)', source)
-        self.assertIn("function rewriteRequestPath(request, pathname)", source)
-        self.assertNotIn('return redirectResponse("/")', source)
+        self.assertIn("return loginRedirectResponse(request)", source)
+        self.assertIn("function loginRedirectResponse(request)", source)
+        self.assertIn("status: 303", source)
+        self.assertIn('location: new URL("/", request.url).toString()', source)
+        self.assertIn('"x-rental-auth-handler": "login-redirect"', source)
+        self.assertNotIn("function rewriteRequestPath", source)
+        self.assertIn('["admin", "auth", "context", "health"].includes(parts[1])', source)
         self.assertIn("function authenticatedErrorBody(error, claims)", source)
         self.assertIn("body.user_email = email", source)
         self.assertIn("return jsonResponse(authenticatedErrorBody(error, claims), error.status || 403)", source)
@@ -168,12 +173,13 @@ class CloudflareConfigTests(unittest.TestCase):
         response = module.access_logout_response(
             types.SimpleNamespace(CF_ACCESS_TEAM_DOMAIN="kittythecat.cloudflareaccess.com"),
             "GET",
+            "https://rental.kittythecat.ch/auth/logout",
         )
 
         self.assertEqual(response.kwargs["status"], 302)
         self.assertEqual(
             response.kwargs["headers"]["location"],
-            "https://kittythecat.cloudflareaccess.com/cdn-cgi/access/logout",
+            "https://kittythecat.cloudflareaccess.com/cdn-cgi/access/logout?returnTo=https%3A%2F%2Frental.kittythecat.ch%2F%3Fauth%3Dlogged-out",
         )
         self.assertEqual(response.kwargs["headers"]["cache-control"], "no-store")
         self.assertIn("CF_Authorization=; Max-Age=0", response.kwargs["headers"]["set-cookie"])
@@ -181,7 +187,11 @@ class CloudflareConfigTests(unittest.TestCase):
 
     def test_backend_worker_rejects_unconfigured_logout(self):
         module = load_worker_module_for_test()
-        response = module.access_logout_response(types.SimpleNamespace(), "GET")
+        response = module.access_logout_response(
+            types.SimpleNamespace(),
+            "GET",
+            "https://rental.kittythecat.ch/auth/logout",
+        )
 
         self.assertEqual(response.kwargs["status"], 503)
 

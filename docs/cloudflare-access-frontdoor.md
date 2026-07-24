@@ -76,17 +76,24 @@ path; other methods still go through the normal protected API path. The public
 join-request endpoint asks for an email and tenant id and stores only a pending
 request in `TENANT_ACCESS_KV`; it does not grant app access.
 `/api/auth/login` is a lightweight protected route: after Access succeeds, the
-front door serves the static shell internally at that URL, and the frontend
-replaces the visible URL with `/` without another network redirect. This gives
-the UI a real sign-in target without sending users to a raw JSON API response
-or introducing a second Access application path.
+front door validates the Access application token and responds with `303 See
+Other` to the current origin's `/`. It never resolves a tenant assignment for
+the login route, and `auth` is explicitly excluded from tenant path parsing.
+This gives the UI a real sign-in target without leaving the browser on a JSON
+API response or introducing a second Access application path. The response
+header `x-rental-auth-handler: login-redirect` identifies this handoff.
 
 `/auth/logout` remains public and is handled by the primary Python Worker. It
 redirects to the team-domain Access logout endpoint derived from
 `CF_ACCESS_TEAM_DOMAIN`. It first expires the application-domain authorization
-cookie, then the team endpoint revokes the global session. The response is
-marked `no-store`; a response header of `x-rental-auth-handler: backend`
-confirms that static SPA fallback did not handle the request.
+cookie, then the team endpoint revokes the global session and follows a
+`returnTo` URL to `/?auth=logged-out` on the current app origin. The frontend
+consumes that marker before checking context, clears authenticated records, and
+normalizes the address back to `/`. Logout replaces the authenticated history
+entry, and a page restored from the browser back-forward cache reloads before it
+can show stale data. The response is marked `no-store`; a response header of
+`x-rental-auth-handler: backend` confirms that static SPA fallback did not handle
+the request.
 
 The expected first-visit flow is:
 
@@ -94,8 +101,8 @@ The expected first-visit flow is:
 1. User opens / and sees the public sign-in screen.
 2. Sign in navigates to /api/auth/login, where Cloudflare Access can
    challenge in a top-level browser navigation.
-3. After Access succeeds, /api/auth/login serves the app shell and the frontend
-   calls /api/context.
+3. After Access succeeds, /api/auth/login validates the token and redirects to /.
+   The app shell then calls /api/context.
 4. Users with an active profile enter the app. Authenticated users without a
    profile see the access-request form with their verified email prefilled.
 5. A user may submit POST /api/access-requests with a tenant id, retry sign-in,
@@ -293,5 +300,7 @@ the custom domain, serves `/` and static assets, and runs first for
 `/auth/logout`. A deployed logout request must return `302`, `Cache-Control:
 no-store`, `x-rental-auth-handler: backend`, and a `Location` on the Access team
 domain. A cached `200` HTML response means the backend deployment predates this
-change. Local development can still use `npm run dev` or
+change. An authenticated `/api/auth/login` request must return `303`,
+`x-rental-auth-handler: login-redirect`, and `Location: https://<app-host>/`.
+Local development can still use `npm run dev` or
 `python3 scripts/local_dev_server.py`.
