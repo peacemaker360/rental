@@ -462,7 +462,8 @@ h3 {
 .tenant-user-menu .user-card {
   left: calc(-1 * (24px + 18px));
   right: auto;
-  top: calc(100% + 8px);
+  top: auto;
+  bottom: calc(100% + 8px);
   width: min(260px, calc(100vw - 36px));
 }
 

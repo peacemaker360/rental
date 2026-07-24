@@ -55,6 +55,7 @@ const mobileUserMenuEmail = document.querySelector("#mobileUserMenuEmail");
 const mobileUserMenuTenant = document.querySelector("#mobileUserMenuTenant");
 const mobileUserMenuRole = document.querySelector("#mobileUserMenuRole");
 const mobileUserMenuAccess = document.querySelector("#mobileUserMenuAccess");
+const userMenus = [userMenu, mobileUserMenu].filter(Boolean);
 const tenantInput = document.querySelector("#tenantInput");
 const tenantLabel = document.querySelector("#tenantLabel");
 const mobileTenantLabel = document.querySelector("#mobileTenantLabel");
@@ -904,6 +905,7 @@ function renderUserMenu() {
   ].forEach(([menu, emailNode, tenantNode, roleNode, accessNode]) => {
     if (!menu) return;
     menu.hidden = state.authStatus !== "signed_in";
+    if (menu.hidden) menu.open = false;
     if (emailNode) emailNode.textContent = context?.user_email || context?.actor_id || "User";
     if (tenantNode) tenantNode.textContent = state.tenant;
     if (roleNode) roleNode.textContent = roleLabel;
@@ -921,6 +923,12 @@ function renderSessionButtons() {
     button.textContent = label;
     button.title = label;
     button.setAttribute("aria-label", label);
+  });
+}
+
+function closeUserMenus(except = null) {
+  userMenus.forEach((menu) => {
+    if (menu !== except) menu.open = false;
   });
 }
 
@@ -2496,6 +2504,29 @@ document.addEventListener("click", (event) => {
     return;
   }
   window.location.assign("/api/auth/login");
+});
+
+userMenus.forEach((menu) => {
+  menu.addEventListener("toggle", () => {
+    if (menu.open) closeUserMenus(menu);
+  });
+});
+
+document.addEventListener("click", (event) => {
+  const menu = event.target.closest(".user-menu");
+  if (!menu) closeUserMenus();
+});
+
+document.addEventListener("focusin", (event) => {
+  closeUserMenus(event.target.closest(".user-menu"));
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const openMenu = userMenus.find((menu) => menu.open);
+  if (!openMenu) return;
+  openMenu.open = false;
+  openMenu.querySelector("summary")?.focus();
 });
 
 view.addEventListener("input", (event) => {

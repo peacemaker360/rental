@@ -453,12 +453,17 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn("grid-template-columns: minmax(0, 1fr) 42px 42px;", self.styles_css)
         self.assertIn(".tenant-user-menu {\n    display: none;", self.styles_css)
         self.assertIn(".user-card {\n  position: absolute;", self.styles_css)
-        self.assertIn(".tenant-user-menu .user-card {\n  left: calc(-1 * (24px + 18px));\n  right: auto;", self.styles_css)
+        self.assertIn(".tenant-user-menu .user-card {\n  left: calc(-1 * (24px + 18px));\n  right: auto;\n  top: auto;\n  bottom: calc(100% + 8px);", self.styles_css)
         self.assertIn(".mobile-user-menu .user-card {\n    right: 0;\n    left: auto;", self.styles_css)
         self.assertIn("color: var(--ink);", self.styles_css)
         self.assertIn(".logout-button {\n  width: 100%;", self.styles_css)
         self.assertIn(".sidebar-session-button {\n  width: 100%;", self.styles_css)
         self.assertIn(".mobile-session-button {\n    display: flex;", self.styles_css)
+        self.assertIn("function closeUserMenus(except = null)", self.app_js)
+        self.assertIn('menu.addEventListener("toggle", () => {', self.app_js)
+        self.assertIn('document.addEventListener("focusin", (event) => {', self.app_js)
+        self.assertIn('if (event.key !== "Escape") return;', self.app_js)
+        self.assertIn('if (menu.hidden) menu.open = false;', self.app_js)
 
     def test_basic_profile_gets_customer_dashboard_and_hidden_chrome(self):
         self.assertIn("function isBasicProfile()", self.app_js)
