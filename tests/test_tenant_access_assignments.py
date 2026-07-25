@@ -92,6 +92,8 @@ class TenantAccessAssignmentTests(unittest.TestCase):
     def test_assignment_validates_tenant_and_role(self):
         with self.assertRaisesRegex(ValueError, "tenant id must use"):
             normalize_assignment({"access_sub": "sub-1", "tenant_id": "Bad Tenant", "role": "viewer"})
+        with self.assertRaisesRegex(ValueError, "reserved for a system route"):
+            normalize_assignment({"access_sub": "sub-1", "tenant_id": "auth", "role": "viewer"})
         with self.assertRaisesRegex(ValueError, "role must be one of"):
             normalize_assignment({"access_sub": "sub-1", "tenant_id": "tenant-a", "role": "owner"})
 

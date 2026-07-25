@@ -8,6 +8,8 @@ const GLOBAL_ROLES = new Set(["none", "reader", "operator", "admin", "platform_a
 const TENANT_ROLES = new Set(["reader", "operator", "admin"]);
 const ACCESS_PROFILES = new Set(["full", "basic"]);
 const LOGIN_PATH = "/api/auth/login";
+const TENANT_ROUTE_PREFIX = "tid-";
+const RESERVED_TENANT_IDS = new Set(["access-requests", "admin", "auth", "context", "health", "platform-admin"]);
 
 let cachedJwks = null;
 let cachedJwksUntil = 0;
@@ -103,7 +105,7 @@ async function createAccessRequest(request, env, claims) {
   const email = cleanEmail(claims?.email || payload.email);
   if (!validEmail(email)) throw new Error("valid email is required");
   const tenantId = String(payload.tenant_id || "").trim().toLowerCase();
-  if (!validTenantId(tenantId)) throw new Error("tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores");
+  if (!validAssociationTenantId(tenantId)) throw new Error("tenant id is invalid or reserved");
   const now = new Date().toISOString();
   const id = `access_request:${await shortDigest(`${email}:${tenantId}`)}`;
   const item = {
@@ -222,7 +224,7 @@ async function loadTenantAssignment(claims, env, url) {
 }
 
 function resolveLegacyAssignment(assignment, email) {
-  if (!validTenantId(assignment.tenant_id || "")) throw new Error("tenant assignment has invalid tenant id");
+  if (!validAssociationTenantId(assignment.tenant_id || "")) throw new Error("tenant assignment has invalid tenant id");
   if (!ALLOWED_ROLES.has(assignment.role)) {
     throw new Error("tenant assignment has invalid role");
   }
@@ -266,7 +268,7 @@ function validateUserProfile(user) {
   if (!GLOBAL_ROLES.has(globalRole)) throw new Error("user access profile has invalid global role");
   const accessProfile = user.access_profile || "full";
   if (!ACCESS_PROFILES.has(accessProfile)) throw new Error("user access profile has invalid access profile");
-  if (user.default_tenant && !validTenantId(user.default_tenant)) {
+  if (user.default_tenant && !validAssociationTenantId(user.default_tenant)) {
     throw new Error("user access profile has invalid default tenant");
   }
   if (user.tenant_roles && !Array.isArray(user.tenant_roles)) {
@@ -275,8 +277,12 @@ function validateUserProfile(user) {
   if (user.member_links && !Array.isArray(user.member_links)) {
     throw new Error("user access profile member links must be a list");
   }
+  for (const item of user.tenant_roles || []) {
+    if (!validAssociationTenantId(item.tenant_id)) throw new Error("user access profile has invalid tenant-role tenant");
+    if (!TENANT_ROLES.has(item.role)) throw new Error("user access profile has invalid tenant role");
+  }
   for (const item of user.member_links || []) {
-    if (!validTenantId(item.tenant_id)) throw new Error("user access profile has invalid member-link tenant");
+    if (!validAssociationTenantId(item.tenant_id)) throw new Error("user access profile has invalid member-link tenant");
     if (!opaqueMemberId(item.member_id)) throw new Error("user access profile has invalid member id");
   }
 }
@@ -297,20 +303,20 @@ function roleForTenant(user, tenantId, adminRoute) {
 }
 
 function firstTenantRole(user) {
-  return (user.tenant_roles || []).find((item) => validTenantId(item.tenant_id));
+  return (user.tenant_roles || []).find((item) => validAssociationTenantId(item.tenant_id));
 }
 
 function firstMemberLink(user) {
-  return (user.member_links || []).find((item) => validTenantId(item.tenant_id));
+  return (user.member_links || []).find((item) => validAssociationTenantId(item.tenant_id));
 }
 
 function tenantAccessCount(user) {
   const tenantIds = new Set();
   for (const item of user.tenant_roles || []) {
-    if (validTenantId(item.tenant_id)) tenantIds.add(item.tenant_id);
+    if (validAssociationTenantId(item.tenant_id)) tenantIds.add(item.tenant_id);
   }
   for (const item of user.member_links || []) {
-    if (validTenantId(item.tenant_id)) tenantIds.add(item.tenant_id);
+    if (validAssociationTenantId(item.tenant_id)) tenantIds.add(item.tenant_id);
   }
   return tenantIds.size;
 }
@@ -318,12 +324,19 @@ function tenantAccessCount(user) {
 function routeTenant(url) {
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts[0] !== "api") return null;
-  if (!parts[1] || ["admin", "auth", "context", "health"].includes(parts[1])) return null;
-  return parts[1];
+  const routeSegment = parts[1] || "";
+  if (!routeSegment.startsWith(TENANT_ROUTE_PREFIX)) return null;
+  const tenantId = routeSegment.slice(TENANT_ROUTE_PREFIX.length);
+  if (!validAssociationTenantId(tenantId)) throw new Error("tenant route has invalid or reserved tenant id");
+  return tenantId;
 }
 
 function validTenantId(value) {
   return /^[a-z0-9][a-z0-9_-]{1,62}$/.test(value || "");
+}
+
+function validAssociationTenantId(value) {
+  return validTenantId(value) && !RESERVED_TENANT_IDS.has(value);
 }
 
 function validEmail(value) {
@@ -419,4 +432,4 @@ function base64UrlDecodeBytes(value) {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
-export {isLoginPath, loginRedirectResponse, routeTenant};
+export {isLoginPath, loginRedirectResponse, routeTenant, validAssociationTenantId};

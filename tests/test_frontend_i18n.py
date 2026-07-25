@@ -133,7 +133,7 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn('function authEmailFromError(error)', self.app_js)
         self.assertIn('const emailValue = state.authEmail || request?.email || "";', self.app_js)
         self.assertIn('value="${escapeHtml(emailValue)}"', self.app_js)
-        self.assertIn('button.disabled = !tenantPattern.test(tenant);', self.app_js)
+        self.assertIn('button.disabled = !validAssociationTenantId(tenant);', self.app_js)
         self.assertIn('event.target.matches(\'[data-join-request] [name="tenant_id"]\')', self.app_js)
         self.assertIn('data-join-submit disabled', self.app_js)
         self.assertIn('placeholder="${escapeHtml(t("auth.association_code_placeholder"))}"', self.app_js)
@@ -184,6 +184,11 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn(".auth-start-steps .auth-step-current", self.styles_css)
         self.assertIn(".auth-start-steps .auth-step-done,\n.auth-start-steps .auth-step-waiting", self.styles_css)
         self.assertIn(".primary-button:disabled", self.styles_css)
+        self.assertIn('const tenantRoutePrefix = "tid-";', self.app_js)
+        self.assertIn("const reservedTenantIds = new Set", self.app_js)
+        self.assertIn("function validAssociationTenantId(tenant)", self.app_js)
+        self.assertIn('fetch(`/api/${tenantRoutePrefix}${state.tenant}${path}`', self.app_js)
+        self.assertIn("const tenantAvailable = validAssociationTenantId(state.tenant);", self.app_js)
 
     def test_logout_return_clears_stale_authenticated_state(self):
         self.assertIn('const logoutPendingStorageKey = "rentalLogoutPending";', self.app_js)

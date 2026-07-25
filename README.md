@@ -145,7 +145,14 @@ npm run deploy
 
 ### Cloudflare Worker Shape
 
-The Worker exposes tenant-scoped endpoints:
+Tenant data routes use an explicit `tid-` segment, for example
+`/api/tid-music-club/summary`. The stored tenant id remains `music-club`; the
+prefix exists only in the URL so tenant names can never collide with system
+routes. Unprefixed tenant routes are rejected. The ids `access-requests`,
+`admin`, `auth`, `context`, `health`, and `platform-admin` are reserved and
+cannot be created as associations.
+
+The Worker exposes:
 
 - `GET /api/health`
 - `GET /api/context`
@@ -154,23 +161,23 @@ The Worker exposes tenant-scoped endpoints:
 - `GET|POST /api/admin/users`
 - `GET /api/admin/users/export/tenant-access`
 - `GET|PUT|DELETE /api/admin/users/{user_id}`
-- `POST /api/{tenant}/bootstrap`
-- `GET /api/{tenant}/summary`
-- `GET /api/{tenant}/export`
-- `PUT /api/{tenant}/import`
-- `PUT /api/{tenant}/members/import/hitobito`
-- `GET /api/{tenant}/instruments/export`
-- `PUT /api/{tenant}/instruments/import`
-- `GET|POST /api/{tenant}/instruments`
-- `GET|PUT|DELETE /api/{tenant}/instruments/{id}`
-- `GET|POST /api/{tenant}/members`
-- `GET|PUT|DELETE /api/{tenant}/members/{id}`
-- `GET|POST /api/{tenant}/rentals`
-- `GET|PUT|DELETE /api/{tenant}/rentals/{id}`
-- `POST /api/{tenant}/rentals/{id}/return`
-- `GET|POST /api/{tenant}/service_records`
-- `GET|PUT|DELETE /api/{tenant}/service_records/{id}`
-- `GET /api/{tenant}/history`
+- `POST /api/tid-{tenant}/bootstrap`
+- `GET /api/tid-{tenant}/summary`
+- `GET /api/tid-{tenant}/export`
+- `PUT /api/tid-{tenant}/import`
+- `PUT /api/tid-{tenant}/members/import/hitobito`
+- `GET /api/tid-{tenant}/instruments/export`
+- `PUT /api/tid-{tenant}/instruments/import`
+- `GET|POST /api/tid-{tenant}/instruments`
+- `GET|PUT|DELETE /api/tid-{tenant}/instruments/{id}`
+- `GET|POST /api/tid-{tenant}/members`
+- `GET|PUT|DELETE /api/tid-{tenant}/members/{id}`
+- `GET|POST /api/tid-{tenant}/rentals`
+- `GET|PUT|DELETE /api/tid-{tenant}/rentals/{id}`
+- `POST /api/tid-{tenant}/rentals/{id}/return`
+- `GET|POST /api/tid-{tenant}/service_records`
+- `GET|PUT|DELETE /api/tid-{tenant}/service_records/{id}`
+- `GET /api/tid-{tenant}/history`
 
 Collection reads accept `search=` and `status=` query parameters. Instrument and
 service-record status filters also understand service conditions such as `watch`
@@ -344,9 +351,9 @@ Exports include instruments, low-PII members, rentals, rental and service
 history, and instrument service records. Keep these workflows as first-class
 features during future cleanup:
 
-- instrument import/export via `GET /api/{tenant}/instruments/export` and
-  `PUT /api/{tenant}/instruments/import` for association inventory handover
-- member import from Hitobito via `PUT /api/{tenant}/members/import/hitobito`,
+- instrument import/export via `GET /api/tid-{tenant}/instruments/export` and
+  `PUT /api/tid-{tenant}/instruments/import` for association inventory handover
+- member import from Hitobito via `PUT /api/tid-{tenant}/members/import/hitobito`,
   mapped to low-PII members with stable `member_ref` values like
   `hitobito:{id}`
 - tenant JSON import/export for backup and migration dry runs
@@ -386,7 +393,7 @@ descriptions with contact-like values are omitted the same way.
 
 Tenant write operations update lightweight metadata with a monotonically
 increasing `revision` and `updated_at` timestamp. `GET /api/context`,
-`GET /api/{tenant}/summary`, collection responses, write responses, and exports
+`GET /api/tid-{tenant}/summary`, collection responses, write responses, and exports
 include this metadata as `meta`. The local JSON runner stores the same metadata
 next to tenant records.
 
@@ -401,7 +408,7 @@ Instruments can have service records with service date, next service date,
 condition, job type, provider, cost, and notes. The static UI opens drilldowns
 from instrument rows and from the standalone Service list, visualizing rental
 and service events as a journey.
-`GET /api/{tenant}/service_records` and detail reads hydrate each service record
+`GET /api/tid-{tenant}/service_records` and detail reads hydrate each service record
 with the instrument name, serial number, and next-service due status for direct
 API debugging and exports from client tools.
 Upcoming or overdue service dates contribute to service attention alongside the

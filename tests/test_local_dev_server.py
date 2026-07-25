@@ -63,6 +63,13 @@ class LocalDevServerTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(ValueError, "tenant id must use"):
                 repo.tenant_file("../tenant")
 
+    def test_tenant_file_rejects_reserved_system_tenant_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = JsonFileRepository(Path(tmp))
+
+            with self.assertRaisesRegex(ValueError, "reserved for a system route"):
+                repo.tenant_file("auth")
+
     def test_configured_handler_supports_signed_context_debugging(self):
         with tempfile.TemporaryDirectory() as tmp:
             handler = configured_handler(

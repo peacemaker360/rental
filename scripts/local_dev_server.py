@@ -16,7 +16,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "worker"))
 sys.path.insert(0, str(ROOT))
 
-from worker.api_core import context_from_headers, handle_api_request, is_api_request_path, parse_api_path, validate_tenant_id
+from worker.api_core import (
+    context_from_headers,
+    handle_api_request,
+    is_api_request_path,
+    is_tenant_api_parts,
+    parse_api_path,
+    validate_association_tenant_id,
+)
 from worker.domain import ENTITY_TYPES, empty_records, utc_now
 from worker.storage import empty_metadata
 
@@ -53,7 +60,7 @@ class JsonFileRepository:
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
     def tenant_file(self, tenant_id: str) -> Path:
-        error = validate_tenant_id(tenant_id)
+        error = validate_association_tenant_id(tenant_id)
         if error:
             raise ValueError(error)
         return self.data_dir / f"{tenant_id}.json"
@@ -260,7 +267,7 @@ class RentalDevHandler(BaseHTTPRequestHandler):
         headers = {}
         if parts != ["health"]:
             headers = {key: value for key, value in self.headers.items()}
-            path_tenant_id = None if parts == ["context"] or parts[0] == "admin" else parts[0]
+            path_tenant_id = parts[0] if is_tenant_api_parts(parts) else None
             context, error = context_from_headers(path_tenant_id, headers, self.auth_mode, self.context_secret)
             if error:
                 self.send_json({"error": error}, HTTPStatus.FORBIDDEN)

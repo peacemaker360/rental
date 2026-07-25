@@ -11,7 +11,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from worker.api_core import ALLOWED_ROLES, USER_ACCESS_PROFILES, USER_GLOBAL_ROLES, USER_TENANT_ROLES, normalize_email, validate_actor_id, validate_tenant_id
+from worker.api_core import (
+    ALLOWED_ROLES,
+    USER_ACCESS_PROFILES,
+    USER_GLOBAL_ROLES,
+    USER_TENANT_ROLES,
+    normalize_email,
+    validate_actor_id,
+    validate_association_tenant_id,
+)
 from worker.domain import DomainError
 
 
@@ -62,7 +70,7 @@ def normalize_assignment(row: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(principal_error.replace("actor_id", "principal"))
 
     tenant_id = clean_text(row.get("tenant_id") or row.get("tenant"))
-    tenant_error = validate_tenant_id(tenant_id)
+    tenant_error = validate_association_tenant_id(tenant_id)
     if tenant_error:
         raise ValueError(tenant_error)
 
@@ -110,7 +118,7 @@ def normalize_user_profile(row: dict[str, Any]) -> dict[str, Any]:
     }
     default_tenant = clean_text(row.get("default_tenant"))
     if default_tenant:
-        tenant_error = validate_tenant_id(default_tenant)
+        tenant_error = validate_association_tenant_id(default_tenant)
         if tenant_error:
             raise ValueError(tenant_error)
         value["default_tenant"] = default_tenant
@@ -140,7 +148,7 @@ def normalize_tenant_roles(value: Any) -> list[dict[str, str]]:
     result = []
     for row in rows:
         tenant_id = clean_text(row.get("tenant_id"))
-        tenant_error = validate_tenant_id(tenant_id)
+        tenant_error = validate_association_tenant_id(tenant_id)
         if tenant_error:
             raise ValueError(tenant_error)
         role = clean_text(row.get("role"))
@@ -160,7 +168,7 @@ def normalize_member_links(value: Any) -> list[dict[str, str]]:
     result = []
     for row in rows:
         tenant_id = clean_text(row.get("tenant_id"))
-        tenant_error = validate_tenant_id(tenant_id)
+        tenant_error = validate_association_tenant_id(tenant_id)
         if tenant_error:
             raise ValueError(tenant_error)
         member_id = clean_text(row.get("member_id"))

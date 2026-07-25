@@ -70,6 +70,8 @@ const recordForm = document.querySelector("#recordForm");
 const formFields = document.querySelector("#formFields");
 const dialogTitle = document.querySelector("#dialogTitle");
 const tenantPattern = /^[a-z0-9][a-z0-9_-]{1,62}$/;
+const tenantRoutePrefix = "tid-";
+const reservedTenantIds = new Set(["access-requests", "admin", "auth", "context", "health", "platform-admin"]);
 const blockedImportPiiFields = new Set(["email", "phone", "telephone", "mobile", "address", "birthday", "birthdate"]);
 const emailLikeImportValueFields = new Set(["display_name", "given_name", "family_name", "member_ref", "contact_hint", "description", "note", "provider", "actor", "contact_ref", "hitobito_group_ref", "inventory_ref"]);
 const phoneLikeImportValueFields = new Set(["display_name", "contact_hint", "description", "note", "provider", "actor", "contact_ref", "hitobito_group_ref", "inventory_ref"]);
@@ -98,9 +100,9 @@ const translations = {
     "labels.updated_at": "Updated {date}",
     "labels.sort": "Sort",
     "labels.need_help": "Need help?",
-    "tenant.title": "2-63 lowercase letters, numbers, hyphens, or underscores",
+    "tenant.title": "2-63 lowercase letters, numbers, hyphens, or underscores; system route names are reserved",
     "tenant.locked": "Tenant is provided by the signed-in context",
-    "tenant.invalid": "Tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores",
+    "tenant.invalid": "Tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores and cannot be a reserved system name",
     "actions.switch_tenant": "Switch tenant",
     "actions.load_demo": "Load Demo",
     "actions.export": "Export",
@@ -353,9 +355,9 @@ const translations = {
     "labels.updated_at": "Aktualisiert {date}",
     "labels.sort": "Sortierung",
     "labels.need_help": "Brauchst du Hilfe?",
-    "tenant.title": "2-63 Kleinbuchstaben, Zahlen, Bindestriche oder Unterstriche",
+    "tenant.title": "2-63 Kleinbuchstaben, Zahlen, Bindestriche oder Unterstriche; Systemrouten sind reserviert",
     "tenant.locked": "Der Mandant wird durch die Anmeldung vorgegeben",
-    "tenant.invalid": "Mandant muss aus 2-63 Kleinbuchstaben, Zahlen, Bindestrichen oder Unterstrichen bestehen",
+    "tenant.invalid": "Mandant muss aus 2-63 Kleinbuchstaben, Zahlen, Bindestrichen oder Unterstrichen bestehen und darf keine reservierte Systembezeichnung sein",
     "actions.switch_tenant": "Mandant wechseln",
     "actions.load_demo": "Demo laden",
     "actions.export": "Export",
@@ -672,12 +674,15 @@ const schemas = {
 };
 
 function api(path, options = {}) {
+  if (!validAssociationTenantId(state.tenant)) {
+    return Promise.reject(new Error(t("tenant.invalid")));
+  }
   const method = (options.method || "GET").toUpperCase();
   const headers = {"content-type": "application/json", ...(options.headers || {})};
   if (["POST", "PUT", "DELETE"].includes(method) && options.expectRevision !== false) {
     headers["x-rental-expected-revision"] = String(Number(state.meta.revision || 0));
   }
-  return fetch(`/api/${state.tenant}${path}`, {...options, method, headers, credentials: "same-origin"}).then(async (response) => {
+  return fetch(`/api/${tenantRoutePrefix}${state.tenant}${path}`, {...options, method, headers, credentials: "same-origin"}).then(async (response) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (data.meta) applyMeta(data.meta);
@@ -863,7 +868,11 @@ function authStartSteps() {
 function updateJoinRequestSubmit(form) {
   const tenant = form?.querySelector('[name="tenant_id"]')?.value.trim().toLowerCase() || "";
   const button = form?.querySelector("[data-join-submit]");
-  if (button) button.disabled = !tenantPattern.test(tenant);
+  if (button) button.disabled = !validAssociationTenantId(tenant);
+}
+
+function validAssociationTenantId(tenant) {
+  return tenantPattern.test(tenant || "") && !reservedTenantIds.has(tenant);
 }
 
 function applyContext(context) {
@@ -1191,13 +1200,15 @@ async function loadData() {
   const associationsPromise = capabilities().platform_admin ? adminApi("/associations").catch(() => ({data: []})) : Promise.resolve({data: []});
   const usersPromise = capabilities().admin ? adminApi("/users").catch(() => ({data: []})) : Promise.resolve({data: []});
   const requestsPromise = capabilities().admin ? adminApi("/access-requests").catch(() => ({data: []})) : Promise.resolve({data: []});
+  const tenantAvailable = validAssociationTenantId(state.tenant);
+  const emptyCollection = Promise.resolve({data: []});
   const [summary, instruments, members, rentals, serviceRecords, history, associations, users, accessRequests] = await Promise.all([
-    api("/summary"),
-    api("/instruments"),
-    api("/members"),
-    api("/rentals"),
-    api("/service_records"),
-    api("/history"),
+    tenantAvailable ? api("/summary") : Promise.resolve({meta: {revision: 0, updated_at: null}}),
+    tenantAvailable ? api("/instruments") : emptyCollection,
+    tenantAvailable ? api("/members") : emptyCollection,
+    tenantAvailable ? api("/rentals") : emptyCollection,
+    tenantAvailable ? api("/service_records") : emptyCollection,
+    tenantAvailable ? api("/history") : emptyCollection,
     associationsPromise,
     usersPromise,
     requestsPromise
@@ -2718,7 +2729,7 @@ view.addEventListener("submit", async (event) => {
     showMessage(t("messages.invalid_email"), true);
     return;
   }
-  if (!tenantPattern.test(tenant)) {
+  if (!validAssociationTenantId(tenant)) {
     showMessage(t("tenant.invalid"), true);
     return;
   }
@@ -2758,6 +2769,9 @@ recordForm.addEventListener("submit", async (event) => {
   try {
     assertLowPiiWrite(payload, entity);
     if (entity === "associations") {
+      if (!validAssociationTenantId(String(payload.tenant_id || ""))) {
+        throw new Error(t("tenant.invalid"));
+      }
       if (id) {
         await adminApi(`/associations/${id}`, {method: "PUT", body: JSON.stringify(payload)});
       } else {
@@ -2978,7 +2992,7 @@ refreshButton.addEventListener("click", () => {
 saveTenant.addEventListener("click", () => {
   if (state.context?.tenant_locked && !shouldShowTenantSwitcher()) return;
   const tenant = tenantInput.value.trim() || "demo-association";
-  if (!tenantPattern.test(tenant)) {
+  if (!validAssociationTenantId(tenant)) {
     showMessage(t("tenant.invalid"), true);
     return;
   }
@@ -2989,7 +3003,7 @@ saveTenant.addEventListener("click", () => {
 
 function openAssociation(tenant) {
   if (state.context?.tenant_locked && !shouldShowTenantSwitcher()) return;
-  if (!tenantPattern.test(tenant)) {
+  if (!validAssociationTenantId(tenant)) {
     showMessage(t("tenant.invalid"), true);
     return;
   }

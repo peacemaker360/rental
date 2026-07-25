@@ -176,6 +176,13 @@ front door validates status, global role, access profile, default tenant, and
 that tenant roles and member links are lists. Member-link ids must be opaque
 local member identifiers, not emails or phone numbers.
 
+Tenant data routes are structurally namespaced as `/api/tid-<tenant>/...`.
+The front door extracts a requested tenant only from that prefix; paths such as
+`/api/auth/...` and `/api/admin/...` can never be interpreted as tenant ids.
+Unprefixed legacy tenant paths fail closed. Association and assignment writes
+also reject the reserved ids `access-requests`, `admin`, `auth`, `context`,
+`health`, and `platform-admin`.
+
 Legacy subject assignments are still accepted as a migration fallback:
 
 ```text

@@ -11,6 +11,7 @@ from api_core import (
     context_from_headers,
     handle_api_request,
     is_api_request_path,
+    is_tenant_api_parts,
     parse_api_path,
 )
 from storage import KVRepository
@@ -106,7 +107,7 @@ class Default(WorkerEntrypoint):
         headers = {}
         if parts != ["health"]:
             headers = {key: value for key, value in request.headers.items()}
-            path_tenant_id = None if parts == ["context"] or parts[0] == "admin" else parts[0]
+            path_tenant_id = parts[0] if is_tenant_api_parts(parts) else None
             context, error = context_from_headers(
                 path_tenant_id,
                 headers,

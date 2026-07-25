@@ -82,6 +82,11 @@ class TenantRepository(Protocol):
 
 TENANT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,62}$")
 TENANT_ID_MESSAGE = "tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores"
+TENANT_ROUTE_PREFIX = "tid-"
+SYSTEM_API_ROOTS = frozenset({"access-requests", "admin", "auth", "context", "health"})
+PLATFORM_TENANT_ID = "platform-admin"
+RESERVED_TENANT_IDS = SYSTEM_API_ROOTS | {PLATFORM_TENANT_ID}
+RESERVED_TENANT_ID_MESSAGE = "tenant id is reserved for a system route"
 ALLOWED_ROLES = {"viewer", "operator", "admin"}
 USER_GLOBAL_ROLES = {"none", "reader", "operator", "admin", "platform_admin"}
 USER_TENANT_ROLES = {"reader", "operator", "admin"}
@@ -90,7 +95,6 @@ USER_STATUSES = {"active", "disabled"}
 SIGNED_CONTEXT_MAX_AGE_SECONDS = 60 * 60
 EXPECTED_REVISION_HEADER = "x-rental-expected-revision"
 ASSOCIATION_STATUSES = {"active", "paused", "archived"}
-PLATFORM_TENANT_ID = "platform-admin"
 
 
 @dataclass(frozen=True)
@@ -111,7 +115,15 @@ def parse_api_path(pathname: str) -> list[str]:
     parts = [part for part in pathname.split("/") if part]
     if not parts or parts[0] != "api":
         return []
-    return parts[1:]
+    route = parts[1:]
+    if not route or route[0] in SYSTEM_API_ROOTS:
+        return route
+    if not route[0].startswith(TENANT_ROUTE_PREFIX):
+        return []
+    tenant_id = route[0][len(TENANT_ROUTE_PREFIX):]
+    if validate_association_tenant_id(tenant_id):
+        return []
+    return [tenant_id, *route[1:]]
 
 
 def is_api_request_path(pathname: str) -> bool:
@@ -126,6 +138,19 @@ def validate_tenant_id(tenant_id: str | None) -> str | None:
     if is_valid_tenant_id(tenant_id):
         return None
     return TENANT_ID_MESSAGE
+
+
+def validate_association_tenant_id(tenant_id: str | None) -> str | None:
+    error = validate_tenant_id(tenant_id)
+    if error:
+        return error
+    if tenant_id in RESERVED_TENANT_IDS:
+        return RESERVED_TENANT_ID_MESSAGE
+    return None
+
+
+def is_tenant_api_parts(parts: list[str]) -> bool:
+    return bool(parts and parts[0] not in SYSTEM_API_ROOTS)
 
 
 def validate_actor_id(actor_id: Any) -> str | None:
@@ -205,7 +230,7 @@ def normalize_tenant_role_items(value: Any) -> list[dict[str, str]]:
         if not isinstance(item, dict):
             raise DomainError("tenant_roles entries must be objects")
         tenant_id = clean_text(item.get("tenant_id"))
-        error = validate_tenant_id(tenant_id)
+        error = validate_association_tenant_id(tenant_id)
         if error:
             raise DomainError(error)
         role = clean_text(item.get("role")).lower()
@@ -232,7 +257,7 @@ def normalize_member_link_items(value: Any) -> list[dict[str, str]]:
         if not isinstance(item, dict):
             raise DomainError("member_links entries must be objects")
         tenant_id = clean_text(item.get("tenant_id"))
-        error = validate_tenant_id(tenant_id)
+        error = validate_association_tenant_id(tenant_id)
         if error:
             raise DomainError(error)
         member_id = clean_text(item.get("member_id"))
@@ -307,7 +332,7 @@ def normalize_association(
         *low_pii_fields,
     )
     tenant_id = clean_text(current.get("tenant_id") or payload.get("tenant_id"))
-    error = validate_tenant_id(tenant_id)
+    error = validate_association_tenant_id(tenant_id)
     if error:
         raise DomainError(error, 400)
 
@@ -1051,8 +1076,11 @@ async def handle_api_request(
         except DomainError as exc:
             return exc.status, {"error": str(exc)}
 
+    if not is_tenant_api_parts(parts):
+        return 404, {"error": "route not found"}
+
     tenant_id = parts[0]
-    error = validate_tenant_id(tenant_id)
+    error = validate_association_tenant_id(tenant_id)
     if error:
         return 404, {"error": error}
     context = context or RequestContext(tenant_id=tenant_id)

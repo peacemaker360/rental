@@ -146,7 +146,7 @@ def run_smoke(verbose: bool = False) -> None:
             status, health = request_json(base_url, "/api/health")
             assert status == 200 and health["ok"] is True
 
-            status, bootstrap = request_json(base_url, "/api/smoke-tenant/bootstrap", "POST", {})
+            status, bootstrap = request_json(base_url, "/api/tid-smoke-tenant/bootstrap", "POST", {})
             assert status == 201
             assert bootstrap["meta"]["revision"] == 1
 
@@ -211,7 +211,7 @@ def run_smoke(verbose: bool = False) -> None:
             assert status == 200
             assert not any(item["id"] == user_id for item in users["data"])
 
-            status, exported = request_json(base_url, "/api/smoke-tenant/export")
+            status, exported = request_json(base_url, "/api/tid-smoke-tenant/export")
             assert status == 200 and exported["summary"]["instruments"] == 2
             assert exported["meta"]["revision"] == 1
             assert len(exported["records"]["service_records"]) == 2
@@ -219,20 +219,20 @@ def run_smoke(verbose: bool = False) -> None:
             assert any(record.get("service_record_id") for record in exported["records"]["history"])
             assert any(record.get("service_condition") == "needs_service" for record in exported["records"]["history"])
 
-            status, instrument_export = request_json(base_url, "/api/smoke-tenant/instruments/export")
+            status, instrument_export = request_json(base_url, "/api/tid-smoke-tenant/instruments/export")
             assert status == 200
             assert instrument_export["schema"] == "association-rental-instruments"
             assert instrument_export["summary"]["instruments"] == 2
             assert "members" not in instrument_export["records"]
 
-            status, imported = request_json(base_url, "/api/smoke-import/import", "PUT", exported)
+            status, imported = request_json(base_url, "/api/tid-smoke-import/import", "PUT", exported)
             assert status == 200 and imported["summary"]["members"] == 2
             assert imported["meta"]["revision"] == 1
             assert imported["summary"]["service_attention"] == 1
 
             status, hitobito = request_json(
                 base_url,
-                "/api/smoke-import/members/import/hitobito",
+                "/api/tid-smoke-import/members/import/hitobito",
                 "PUT",
                 {
                     "people": [{
@@ -251,7 +251,7 @@ def run_smoke(verbose: bool = False) -> None:
 
             status, instrument_import = request_json(
                 base_url,
-                "/api/smoke-import/instruments/import",
+                "/api/tid-smoke-import/instruments/import",
                 "PUT",
                 {
                     "instruments": [
@@ -267,7 +267,7 @@ def run_smoke(verbose: bool = False) -> None:
 
             expect_http_error(
                 base_url,
-                "/api/smoke-import/instruments/import",
+                "/api/tid-smoke-import/instruments/import",
                 "PUT",
                 {"instruments": [{"name": "Private Donation Clarinet", "serial": "CL-PII", "email": "donor@example.test"}]},
                 400,
@@ -276,7 +276,7 @@ def run_smoke(verbose: bool = False) -> None:
 
             expect_http_error(
                 base_url,
-                "/api/smoke-import/members",
+                "/api/tid-smoke-import/members",
                 "POST",
                 {"display_name": "Stale Member"},
                 409,
@@ -286,7 +286,7 @@ def run_smoke(verbose: bool = False) -> None:
 
             expect_http_error(
                 base_url,
-                "/api/smoke-import/members",
+                "/api/tid-smoke-import/members",
                 "POST",
                 {"display_name": "Private Member", "contact_hint": "+41 44 000 00 00"},
                 400,
@@ -295,18 +295,18 @@ def run_smoke(verbose: bool = False) -> None:
 
             expect_raw_http_error(
                 base_url,
-                "/api/smoke-import/members",
+                "/api/tid-smoke-import/members",
                 "POST",
                 b'{"display_name":',
                 400,
                 "invalid JSON body",
             )
 
-            status, rentals = request_json(base_url, "/api/smoke-import/rentals")
+            status, rentals = request_json(base_url, "/api/tid-smoke-import/rentals")
             assert status == 200 and rentals["data"]
             rental_id = rentals["data"][0]["id"]
 
-            status, services = request_json(base_url, "/api/smoke-import/service_records")
+            status, services = request_json(base_url, "/api/tid-smoke-import/service_records")
             assert status == 200 and services["data"]
             assert services["data"][0]["instrument_name"]
             assert "instrument_serial" in services["data"][0]
@@ -315,7 +315,7 @@ def run_smoke(verbose: bool = False) -> None:
 
             status, service_update = request_json(
                 base_url,
-                f"/api/smoke-import/service_records/{service_id}",
+                f"/api/tid-smoke-import/service_records/{service_id}",
                 "PUT",
                 {"condition": "in_service", "note": "Smoke check service update"},
             )
@@ -324,34 +324,35 @@ def run_smoke(verbose: bool = False) -> None:
 
             status, _ = request_json(
                 base_url,
-                f"/api/smoke-import/rentals/{rental_id}/return",
+                f"/api/tid-smoke-import/rentals/{rental_id}/return",
                 "POST",
                 {"return_date": "2026-01-01"},
             )
             assert status == 200
 
-            status, _ = request_json(base_url, f"/api/smoke-import/rentals/{rental_id}", "DELETE", {})
+            status, _ = request_json(base_url, f"/api/tid-smoke-import/rentals/{rental_id}", "DELETE", {})
             assert status == 200
 
-            status, service_delete = request_json(base_url, f"/api/smoke-import/service_records/{service_id}", "DELETE", {})
+            status, service_delete = request_json(base_url, f"/api/tid-smoke-import/service_records/{service_id}", "DELETE", {})
             assert status == 200 and service_delete["deleted"] == service_id
             assert service_delete["data"]["id"] == service_id
             assert service_delete["data"]["condition"] == "in_service"
 
-            status, history = request_json(base_url, "/api/smoke-import/history")
+            status, history = request_json(base_url, "/api/tid-smoke-import/history")
             assert status == 200
             assert any(record.get("service_record_id") == service_id and record.get("action") == "deleted" for record in history["data"])
 
             expect_http_error(
                 base_url,
-                "/api/smoke-pii/import",
+                "/api/tid-smoke-pii/import",
                 "PUT",
                 {"records": {"members": [{"display_name": "Private Member", "email": "private@example.test"}]}},
                 400,
                 "blocked PII fields",
             )
 
-            expect_http_error(base_url, "/api/Bad%20Tenant/summary", "GET", {}, 403, "tenant id must use")
+            expect_http_error(base_url, "/api/tid-Bad%20Tenant/summary", "GET", {}, 404, "route not found")
+            expect_http_error(base_url, "/api/smoke-tenant/summary", "GET", {}, 404, "route not found")
 
             if verbose:
                 print("Local smoke passed")
@@ -404,16 +405,16 @@ def run_signed_smoke(verbose: bool = False) -> None:
             assert context["capabilities"]["admin"] is True
             assert context["capabilities"]["platform_admin"] is False
 
-            status, bootstrap = request_json(base_url, "/api/signed-tenant/bootstrap", "POST", {}, headers)
+            status, bootstrap = request_json(base_url, "/api/tid-signed-tenant/bootstrap", "POST", {}, headers)
             assert status == 201
             assert bootstrap["meta"]["revision"] == 1
 
-            status, summary = request_json(base_url, "/api/signed-tenant/summary", headers=headers)
+            status, summary = request_json(base_url, "/api/tid-signed-tenant/summary", headers=headers)
             assert status == 200
             assert summary["instruments"] == 2
             assert summary["meta"]["revision"] == 1
 
-            status, members = request_json(base_url, "/api/signed-tenant/members", headers=headers)
+            status, members = request_json(base_url, "/api/tid-signed-tenant/members", headers=headers)
             assert status == 200 and members["data"]
             member_id = members["data"][0]["id"]
 
@@ -432,17 +433,17 @@ def run_signed_smoke(verbose: bool = False) -> None:
             assert basic_context["capabilities"]["write"] is False
             assert basic_context["capabilities"]["access_profile"] == "basic"
 
-            status, basic_members = request_json(base_url, "/api/signed-tenant/members", headers=basic_headers)
+            status, basic_members = request_json(base_url, "/api/tid-signed-tenant/members", headers=basic_headers)
             assert status == 200
             assert [item["id"] for item in basic_members["data"]] == [member_id]
 
-            status, basic_rentals = request_json(base_url, "/api/signed-tenant/rentals", headers=basic_headers)
+            status, basic_rentals = request_json(base_url, "/api/tid-signed-tenant/rentals", headers=basic_headers)
             assert status == 200
             assert all(item["member_id"] == member_id for item in basic_rentals["data"])
 
             expect_http_error(
                 base_url,
-                "/api/signed-tenant/members",
+                "/api/tid-signed-tenant/members",
                 "POST",
                 {"display_name": "Blocked Basic User"},
                 403,
@@ -452,7 +453,7 @@ def run_signed_smoke(verbose: bool = False) -> None:
 
             expect_http_error(
                 base_url,
-                "/api/other-tenant/summary",
+                "/api/tid-other-tenant/summary",
                 "GET",
                 {},
                 403,

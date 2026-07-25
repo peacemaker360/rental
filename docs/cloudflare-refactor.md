@@ -67,11 +67,11 @@ response includes those removed service records under `cascaded.service_records`
 Admin users can export and import tenant data:
 
 ```text
-GET /api/{tenant}/export
-PUT /api/{tenant}/import
-GET /api/{tenant}/instruments/export
-PUT /api/{tenant}/instruments/import
-PUT /api/{tenant}/members/import/hitobito
+GET /api/tid-{tenant}/export
+PUT /api/tid-{tenant}/import
+GET /api/tid-{tenant}/instruments/export
+PUT /api/tid-{tenant}/instruments/import
+PUT /api/tid-{tenant}/members/import/hitobito
 ```
 
 The Worker and local JSON server keep `/api` and `/api/` inside the JSON API
@@ -127,7 +127,7 @@ members by `member_ref` while preserving the local member id.
 ## Legacy Migration
 
 Use `scripts/migrate_legacy.py` to convert old Flask data into the same package
-format accepted by `/api/{tenant}/import`:
+format accepted by `/api/tid-{tenant}/import`:
 
 ```bash
 python3 scripts/migrate_legacy.py \
@@ -188,10 +188,10 @@ python3 scripts/migrate_legacy.py \
 
 ## Special Workflows To Preserve
 
-- Instrument import/export through `/api/{tenant}/instruments/export` and
-  `/api/{tenant}/instruments/import` for inventory migration and association
+- Instrument import/export through `/api/tid-{tenant}/instruments/export` and
+  `/api/tid-{tenant}/instruments/import` for inventory migration and association
   handover.
-- Member import from Hitobito through `/api/{tenant}/members/import/hitobito`,
+- Member import from Hitobito through `/api/tid-{tenant}/members/import/hitobito`,
   mapped into low-PII members using `member_ref`, groups, and active state
   instead of copying email/phone/address/birthday data.
 - Tenant JSON export/import for backup, dry-run migration, and support.
@@ -236,7 +236,7 @@ same-origin, with the Cloudflare Access front door providing deployed auth.
 The tenant is currently selected in the UI and included in every API path:
 
 ```text
-/api/{tenant}/...
+/api/tid-{tenant}/...
 ```
 
 Before offering this to other associations, tenant identity should move from a
@@ -353,6 +353,9 @@ The Admin Center UI keeps association rows clickable like the rental CRUD lists.
 The drilldown shows a compact operational state journey and low-PII references.
 When tenant switching is unlocked in local/debug mode, the same view can open an
 association's tenant data directly.
+Tenant-scoped API calls use `/api/tid-<tenant>/...`; `tid-` is a route-only
+namespace and is not stored as part of the association id. Unprefixed tenant
+paths are rejected, and system route names cannot be created as associations.
 Tenant bootstrap, imports, and CRUD writes automatically create a default
 association registry entry when none exists. Once platform admins curate display
 names, status, or references, normal tenant record writes leave those registry
@@ -362,7 +365,7 @@ import file explicitly includes `display_name` or `association_name` metadata.
 The association registry is a platform operation. Local/open debug mode keeps it
 available to local admins for fast testing, but signed/header deployments require
 an `admin` role on the `platform-admin` tenant context. A tenant-level admin for
-`band-one`, for example, can manage `/api/band-one/...` records but receives
+`band-one`, for example, can manage `/api/tid-band-one/...` records but receives
 `403 platform admin required` for `/api/admin/associations`.
 
 User access records are stored outside tenant data under a hashed backend id

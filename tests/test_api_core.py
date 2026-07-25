@@ -1,7 +1,16 @@
 import time
 import unittest
 
-from worker.api_core import RequestContext, context_from_headers, context_payload, handle_api_request, is_api_request_path, parse_api_path, signed_context_headers
+from worker.api_core import (
+    RequestContext,
+    context_from_headers,
+    context_payload,
+    handle_api_request,
+    is_api_request_path,
+    parse_api_path,
+    signed_context_headers,
+    validate_association_tenant_id,
+)
 from worker.domain import empty_records
 
 
@@ -64,21 +73,32 @@ class FailingRepository(MemoryRepository):
 
 
 class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tenant_routes_require_explicit_namespace(self):
+        repo = FailingRepository()
+
+        status, body = await handle_api_request("GET", "/api/tenant-a/summary", "", {}, repo)
+        self.assertEqual(status, 404)
+        self.assertEqual(body["error"], "route not found")
+
+        status, body = await handle_api_request("GET", "/api/auth/login", "", {}, repo)
+        self.assertEqual(status, 404)
+        self.assertEqual(body["error"], "route not found")
+
     async def test_bootstrap_and_summary_are_tenant_scoped(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="band-one", actor_id="admin-user", role="admin")
 
-        status, body = await handle_api_request("POST", "/api/band-one/bootstrap", "", {}, repo, admin)
+        status, body = await handle_api_request("POST", "/api/tid-band-one/bootstrap", "", {}, repo, admin)
         self.assertEqual(status, 201)
         self.assertEqual(body["tenant_id"], "band-one")
         self.assertEqual(body["meta"]["revision"], 1)
 
-        status, body = await handle_api_request("GET", "/api/band-one/summary", "", {}, repo)
+        status, body = await handle_api_request("GET", "/api/tid-band-one/summary", "", {}, repo)
         self.assertEqual(status, 200)
         self.assertEqual(body["instruments"], 2)
         self.assertEqual(body["meta"]["revision"], 1)
 
-        status, body = await handle_api_request("GET", "/api/band-two/summary", "", {}, repo)
+        status, body = await handle_api_request("GET", "/api/tid-band-two/summary", "", {}, repo)
         self.assertEqual(status, 200)
         self.assertEqual(body["instruments"], 0)
         self.assertEqual(body["meta"]["revision"], 0)
@@ -87,7 +107,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
 
-        status, member = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, member = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Morgan Example",
             "member_ref": "M-42",
             "contact_hint": "stored in roster",
@@ -102,20 +122,20 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
 
-        await handle_api_request("POST", "/api/tenant-a/members", "", {
+        await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Active Member",
             "is_active": True,
         }, repo, operator)
-        await handle_api_request("POST", "/api/tenant-a/members", "", {
+        await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Inactive Member",
             "is_active": False,
         }, repo, operator)
 
-        status, active = await handle_api_request("GET", "/api/tenant-a/members", "status=active", {}, repo, operator)
+        status, active = await handle_api_request("GET", "/api/tid-tenant-a/members", "status=active", {}, repo, operator)
         self.assertEqual(status, 200)
         self.assertEqual([member["display_name"] for member in active["data"]], ["Active Member"])
 
-        status, inactive = await handle_api_request("GET", "/api/tenant-a/members", "status=inactive", {}, repo, operator)
+        status, inactive = await handle_api_request("GET", "/api/tid-tenant-a/members", "status=inactive", {}, repo, operator)
         self.assertEqual(status, 200)
         self.assertEqual([member["display_name"] for member in inactive["data"]], ["Inactive Member"])
 
@@ -128,33 +148,33 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
             "contact": "help@example.test",
         }
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-user", role="admin")
-        status, member_a = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, member_a = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Member A",
             "access_email": "member-a@example.test",
         }, repo, admin)
         self.assertEqual(status, 201)
         self.assertNotIn("access_email", member_a["data"])
         self.assertIn("access_email_hash", member_a["data"])
-        status, member_b = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, member_b = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Member B",
         }, repo, admin)
         self.assertEqual(status, 201)
-        status, inst_a = await handle_api_request("POST", "/api/tenant-a/instruments", "", {
+        status, inst_a = await handle_api_request("POST", "/api/tid-tenant-a/instruments", "", {
             "name": "Clarinet A",
             "serial": "A-1",
         }, repo, admin)
         self.assertEqual(status, 201)
-        status, inst_b = await handle_api_request("POST", "/api/tenant-a/instruments", "", {
+        status, inst_b = await handle_api_request("POST", "/api/tid-tenant-a/instruments", "", {
             "name": "Clarinet B",
             "serial": "B-1",
         }, repo, admin)
         self.assertEqual(status, 201)
-        await handle_api_request("POST", "/api/tenant-a/rentals", "", {
+        await handle_api_request("POST", "/api/tid-tenant-a/rentals", "", {
             "instrument_id": inst_a["data"]["id"],
             "member_id": member_a["data"]["id"],
             "start_date": "2026-01-01",
         }, repo, admin)
-        await handle_api_request("POST", "/api/tenant-a/rentals", "", {
+        await handle_api_request("POST", "/api/tid-tenant-a/rentals", "", {
             "instrument_id": inst_b["data"]["id"],
             "member_id": member_b["data"]["id"],
             "start_date": "2026-01-01",
@@ -169,15 +189,15 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
             user_email="member-a@example.test",
         )
 
-        status, members = await handle_api_request("GET", "/api/tenant-a/members", "", {}, repo, basic)
+        status, members = await handle_api_request("GET", "/api/tid-tenant-a/members", "", {}, repo, basic)
         self.assertEqual(status, 200)
         self.assertEqual([item["id"] for item in members["data"]], [member_a["data"]["id"]])
 
-        status, instruments = await handle_api_request("GET", "/api/tenant-a/instruments", "", {}, repo, basic)
+        status, instruments = await handle_api_request("GET", "/api/tid-tenant-a/instruments", "", {}, repo, basic)
         self.assertEqual(status, 200)
         self.assertEqual([item["id"] for item in instruments["data"]], [inst_a["data"]["id"]])
 
-        status, hidden = await handle_api_request("GET", f"/api/tenant-a/instruments/{inst_b['data']['id']}", "", {}, repo, basic)
+        status, hidden = await handle_api_request("GET", f"/api/tid-tenant-a/instruments/{inst_b['data']['id']}", "", {}, repo, basic)
         self.assertEqual(status, 404)
         self.assertEqual(hidden["error"], "record not found")
 
@@ -190,11 +210,11 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
             user_email="member-a@example.test",
         )
 
-        status, auto_rentals = await handle_api_request("GET", "/api/tenant-a/rentals", "", {}, repo, auto_basic)
+        status, auto_rentals = await handle_api_request("GET", "/api/tid-tenant-a/rentals", "", {}, repo, auto_basic)
         self.assertEqual(status, 200)
         self.assertEqual([item["member_id"] for item in auto_rentals["data"]], [member_a["data"]["id"]])
 
-        status, auto_summary = await handle_api_request("GET", "/api/tenant-a/summary", "", {}, repo, auto_basic)
+        status, auto_summary = await handle_api_request("GET", "/api/tid-tenant-a/summary", "", {}, repo, auto_basic)
         self.assertEqual(status, 200)
         self.assertEqual(auto_summary["members"], 1)
         self.assertEqual(auto_summary["instruments"], 1)
@@ -205,7 +225,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
             "contact": "help@example.test",
         })
 
-        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Should Not Write",
         }, repo, basic)
         self.assertEqual(status, 403)
@@ -216,7 +236,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         operator = RequestContext(tenant_id="new-band", actor_id="operator-user", role="operator")
         platform_admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
 
-        status, _ = await handle_api_request("POST", "/api/new-band/members", "", {
+        status, _ = await handle_api_request("POST", "/api/tid-new-band/members", "", {
             "display_name": "Morgan Example",
         }, repo, operator)
         status, body = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, platform_admin)
@@ -237,7 +257,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         }
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
 
-        status, _ = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, _ = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Morgan Example",
         }, repo, operator)
 
@@ -250,7 +270,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
 
-        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Private Member",
             "contact_hint": "Call +41 44 000 00 00",
         }, repo, operator)
@@ -262,7 +282,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
 
-        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", [{
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/members", "", [{
             "display_name": "List Payload",
         }], repo, operator)
 
@@ -273,7 +293,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = FailingRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
 
-        status, body = await handle_api_request("GET", "/api/tenant-a/members", "", {}, repo, operator)
+        status, body = await handle_api_request("GET", "/api/tid-tenant-a/members", "", {}, repo, operator)
 
         self.assertEqual(status, 500)
         self.assertEqual(body["error"], "unexpected error")
@@ -283,7 +303,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
 
-        status, member = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, member = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Morgan Example",
         }, repo, operator, {"x-rental-expected-revision": "0"})
 
@@ -293,11 +313,11 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_write_rejects_stale_expected_revision(self):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
-        await handle_api_request("POST", "/api/tenant-a/members", "", {
+        await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "First Member",
         }, repo, operator)
 
-        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Stale Member",
         }, repo, operator, {"x-rental-expected-revision": "0"})
 
@@ -311,7 +331,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")
 
-        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Invalid Revision",
         }, repo, operator, {"x-rental-expected-revision": "abc"})
 
@@ -322,7 +342,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         context = RequestContext(tenant_id="tenant-b", actor_id="operator-user", role="operator")
 
-        status, body = await handle_api_request("GET", "/api/tenant-a/summary", "", {}, repo, context)
+        status, body = await handle_api_request("GET", "/api/tid-tenant-a/summary", "", {}, repo, context)
 
         self.assertEqual(status, 403)
         self.assertEqual(body["error"], "tenant context does not match route")
@@ -331,7 +351,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         viewer = RequestContext(tenant_id="tenant-a", actor_id="viewer-user", role="viewer")
 
-        status, body = await handle_api_request("POST", "/api/tenant-a/members", "", {
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {
             "display_name": "Viewer Write",
         }, repo, viewer)
 
@@ -341,11 +361,11 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_rental_history_uses_context_actor(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="trusted-actor", role="admin")
-        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
+        await handle_api_request("POST", "/api/tid-tenant-a/bootstrap", "", {}, repo, admin)
 
         records = await repo.load_tenant("tenant-a")
         rental_id = records["rentals"][0]["id"]
-        status, _ = await handle_api_request("POST", f"/api/tenant-a/rentals/{rental_id}/return", "", {
+        status, _ = await handle_api_request("POST", f"/api/tid-tenant-a/rentals/{rental_id}/return", "", {
             "actor": "client-spoof",
             "return_date": "2026-01-01",
         }, repo, admin)
@@ -358,7 +378,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         viewer = RequestContext(tenant_id="tenant-a", actor_id="viewer-user", role="viewer")
 
-        status, body = await handle_api_request("GET", "/api/tenant-a/export", "", {}, repo, viewer)
+        status, body = await handle_api_request("GET", "/api/tid-tenant-a/export", "", {}, repo, viewer)
 
         self.assertEqual(status, 403)
         self.assertEqual(body["error"], "admin role required")
@@ -367,14 +387,14 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         source_admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
         target_admin = RequestContext(tenant_id="tenant-b", actor_id="admin-b", role="admin")
-        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, source_admin)
+        await handle_api_request("POST", "/api/tid-tenant-a/bootstrap", "", {}, repo, source_admin)
 
-        status, package = await handle_api_request("GET", "/api/tenant-a/export", "", {}, repo, source_admin)
+        status, package = await handle_api_request("GET", "/api/tid-tenant-a/export", "", {}, repo, source_admin)
         self.assertEqual(status, 200)
         self.assertEqual(package["schema"], "association-rental")
         self.assertEqual(package["meta"]["revision"], 1)
 
-        status, body = await handle_api_request("PUT", "/api/tenant-b/import", "", package, repo, target_admin)
+        status, body = await handle_api_request("PUT", "/api/tid-tenant-b/import", "", package, repo, target_admin)
         self.assertEqual(status, 200)
         self.assertEqual(body["summary"]["instruments"], 2)
         self.assertEqual(body["meta"]["revision"], 1)
@@ -396,10 +416,10 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         }
         source_admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
         target_admin = RequestContext(tenant_id="tenant-b", actor_id="admin-b", role="admin")
-        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, source_admin)
-        _, package = await handle_api_request("GET", "/api/tenant-a/export", "", {}, repo, source_admin)
+        await handle_api_request("POST", "/api/tid-tenant-a/bootstrap", "", {}, repo, source_admin)
+        _, package = await handle_api_request("GET", "/api/tid-tenant-a/export", "", {}, repo, source_admin)
 
-        status, _ = await handle_api_request("PUT", "/api/tenant-b/import", "", package, repo, target_admin)
+        status, _ = await handle_api_request("PUT", "/api/tid-tenant-b/import", "", package, repo, target_admin)
 
         self.assertEqual(status, 200)
         self.assertEqual(repo.associations["tenant-b"]["display_name"], "Curated Association")
@@ -415,7 +435,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         }
         admin = RequestContext(tenant_id="tenant-b", actor_id="admin-b", role="admin")
 
-        status, _ = await handle_api_request("PUT", "/api/tenant-b/import", "", {
+        status, _ = await handle_api_request("PUT", "/api/tid-tenant-b/import", "", {
             "association_name": "Imported Association Name",
             "records": {
                 "instruments": [],
@@ -433,11 +453,11 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_service_record_crud_is_tenant_scoped(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
-        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
+        await handle_api_request("POST", "/api/tid-tenant-a/bootstrap", "", {}, repo, admin)
         records = await repo.load_tenant("tenant-a")
         instrument_id = records["instruments"][0]["id"]
 
-        status, body = await handle_api_request("POST", "/api/tenant-a/service_records", "", {
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/service_records", "", {
             "instrument_id": instrument_id,
             "service_date": "2026-02-03",
             "condition": "watch",
@@ -456,7 +476,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(records["history"][-1]["service_record_id"], service_id)
         self.assertEqual(records["history"][-1]["service_condition"], "watch")
 
-        status, collection = await handle_api_request("GET", "/api/tenant-a/service_records", "", {}, repo, admin)
+        status, collection = await handle_api_request("GET", "/api/tid-tenant-a/service_records", "", {}, repo, admin)
         self.assertEqual(status, 200)
         self.assertGreaterEqual(len(collection["data"]), 1)
         hydrated_service = next(item for item in collection["data"] if item["id"] == service_id)
@@ -465,24 +485,24 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("instrument_serial", hydrated_service)
         self.assertEqual(hydrated_service["service_due_status"], "ok")
 
-        status, detail = await handle_api_request("GET", f"/api/tenant-a/service_records/{service_id}", "", {}, repo, admin)
+        status, detail = await handle_api_request("GET", f"/api/tid-tenant-a/service_records/{service_id}", "", {}, repo, admin)
         self.assertEqual(status, 200)
         self.assertEqual(detail["data"]["instrument_name"], hydrated_service["instrument_name"])
         self.assertEqual(detail["data"]["service_due_status"], "ok")
 
-        status, service_filter = await handle_api_request("GET", "/api/tenant-a/service_records", "status=watch", {}, repo, admin)
+        status, service_filter = await handle_api_request("GET", "/api/tid-tenant-a/service_records", "status=watch", {}, repo, admin)
         self.assertEqual(status, 200)
         self.assertEqual([item["id"] for item in service_filter["data"]], [service_id])
 
-        status, instrument_filter = await handle_api_request("GET", "/api/tenant-a/instruments", "status=watch", {}, repo, admin)
+        status, instrument_filter = await handle_api_request("GET", "/api/tid-tenant-a/instruments", "status=watch", {}, repo, admin)
         self.assertEqual(status, 200)
         self.assertEqual([item["id"] for item in instrument_filter["data"]], [instrument_id])
 
-        status, summary_body = await handle_api_request("GET", "/api/tenant-a/summary", "", {}, repo, admin)
+        status, summary_body = await handle_api_request("GET", "/api/tid-tenant-a/summary", "", {}, repo, admin)
         self.assertEqual(status, 200)
         self.assertGreaterEqual(summary_body["service_attention"], 1)
 
-        status, body = await handle_api_request("DELETE", f"/api/tenant-a/service_records/{service_id}", "", {}, repo, admin)
+        status, body = await handle_api_request("DELETE", f"/api/tid-tenant-a/service_records/{service_id}", "", {}, repo, admin)
         self.assertEqual(status, 200)
         self.assertEqual(body["deleted"], service_id)
         self.assertEqual(body["data"]["id"], service_id)
@@ -495,11 +515,11 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_service_record_api_rejects_contact_like_notes(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
-        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
+        await handle_api_request("POST", "/api/tid-tenant-a/bootstrap", "", {}, repo, admin)
         records = await repo.load_tenant("tenant-a")
         instrument_id = records["instruments"][0]["id"]
 
-        status, body = await handle_api_request("POST", "/api/tenant-a/service_records", "", {
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/service_records", "", {
             "instrument_id": instrument_id,
             "service_date": "2026-02-03",
             "condition": "good",
@@ -512,14 +532,14 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_deleting_instrument_records_cascaded_service_deletions_in_history(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
-        status, instrument = await handle_api_request("POST", "/api/tenant-a/instruments", "", {
+        status, instrument = await handle_api_request("POST", "/api/tid-tenant-a/instruments", "", {
             "name": "Service-only Clarinet",
             "serial": "CL-SVC-1",
             "type": "Clarinet",
         }, repo, admin)
         self.assertEqual(status, 201)
 
-        status, service = await handle_api_request("POST", "/api/tenant-a/service_records", "", {
+        status, service = await handle_api_request("POST", "/api/tid-tenant-a/service_records", "", {
             "instrument_id": instrument["data"]["id"],
             "service_date": "2026-02-03",
             "condition": "watch",
@@ -529,7 +549,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
 
         status, body = await handle_api_request(
             "DELETE",
-            f"/api/tenant-a/instruments/{instrument['data']['id']}",
+            f"/api/tid-tenant-a/instruments/{instrument['data']['id']}",
             "",
             {},
             repo,
@@ -553,7 +573,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
 
-        status, body = await handle_api_request("PUT", "/api/tenant-a/import", "", {
+        status, body = await handle_api_request("PUT", "/api/tid-tenant-a/import", "", {
             "records": {
                 "members": [{
                     "display_name": "Private Person",
@@ -568,12 +588,12 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_import_rejects_contact_like_history_actor(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
-        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
-        status, package = await handle_api_request("GET", "/api/tenant-a/export", "", {}, repo, admin)
+        await handle_api_request("POST", "/api/tid-tenant-a/bootstrap", "", {}, repo, admin)
+        status, package = await handle_api_request("GET", "/api/tid-tenant-a/export", "", {}, repo, admin)
         self.assertEqual(status, 200)
         package["records"]["history"][0]["actor"] = "person@example.test"
 
-        status, body = await handle_api_request("PUT", "/api/tenant-a/import", "", package, repo, admin)
+        status, body = await handle_api_request("PUT", "/api/tid-tenant-a/import", "", package, repo, admin)
 
         self.assertEqual(status, 400)
         self.assertEqual(body["error"], "actor must be opaque, not an email address")
@@ -582,7 +602,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
 
-        status, body = await handle_api_request("PUT", "/api/tenant-a/members/import/hitobito", "", {
+        status, body = await handle_api_request("PUT", "/api/tid-tenant-a/members/import/hitobito", "", {
             "data": [{
                 "id": "1001",
                 "attributes": {
@@ -607,7 +627,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(records["members"][0]["groups"], ["orchestra"])
         self.assertNotIn("email", records["members"][0])
 
-        status, body = await handle_api_request("PUT", "/api/tenant-a/members/import/hitobito", "", {
+        status, body = await handle_api_request("PUT", "/api/tid-tenant-a/members/import/hitobito", "", {
             "people": [{"id": "1001", "display_name": "Lea Updated", "groups": ["band"]}]
         }, repo, admin, {"x-rental-expected-revision": "1"})
 
@@ -623,7 +643,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-a", role="operator")
 
-        status, body = await handle_api_request("PUT", "/api/tenant-a/members/import/hitobito", "", {
+        status, body = await handle_api_request("PUT", "/api/tid-tenant-a/members/import/hitobito", "", {
             "people": [{"id": "1001", "display_name": "Operator Import"}]
         }, repo, operator)
 
@@ -634,7 +654,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
 
-        status, hitobito = await handle_api_request("PUT", "/api/tenant-a/members/import/hitobito", "", [{
+        status, hitobito = await handle_api_request("PUT", "/api/tid-tenant-a/members/import/hitobito", "", [{
             "id": "1001",
             "display_name": "Array Import Member",
         }], repo, admin)
@@ -642,7 +662,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 200)
         self.assertEqual(hitobito["report"]["created"], 1)
 
-        status, instruments = await handle_api_request("PUT", "/api/tenant-a/instruments/import", "", [{
+        status, instruments = await handle_api_request("PUT", "/api/tid-tenant-a/instruments/import", "", [{
             "name": "Array Import Clarinet",
             "brand": "Buffet",
             "type": "Clarinet",
@@ -655,9 +675,9 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_instrument_inventory_export_and_import_merge(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
-        await handle_api_request("POST", "/api/tenant-a/bootstrap", "", {}, repo, admin)
+        await handle_api_request("POST", "/api/tid-tenant-a/bootstrap", "", {}, repo, admin)
 
-        status, exported = await handle_api_request("GET", "/api/tenant-a/instruments/export", "", {}, repo, admin)
+        status, exported = await handle_api_request("GET", "/api/tid-tenant-a/instruments/export", "", {}, repo, admin)
 
         self.assertEqual(status, 200)
         self.assertEqual(exported["schema"], "association-rental-instruments")
@@ -665,7 +685,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("members", exported["records"])
         self.assertEqual(exported["meta"]["revision"], 1)
 
-        status, imported = await handle_api_request("PUT", "/api/tenant-a/instruments/import", "", {
+        status, imported = await handle_api_request("PUT", "/api/tid-tenant-a/instruments/import", "", {
             "instruments": [
                 {"name": "Updated Piano", "brand": "Yamaha", "type": "Keyboard", "serial": "CP73-001"},
                 {"name": "Marching Snare", "brand": "Pearl", "type": "Drum", "serial": "SN-1"},
@@ -686,7 +706,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-a", role="operator")
 
-        status, body = await handle_api_request("PUT", "/api/tenant-a/instruments/import", "", {
+        status, body = await handle_api_request("PUT", "/api/tid-tenant-a/instruments/import", "", {
             "instruments": [{"name": "Operator Trumpet", "serial": "TR-1"}]
         }, repo, operator)
 
@@ -697,7 +717,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="tenant-a", actor_id="admin-a", role="admin")
 
-        status, body = await handle_api_request("PUT", "/api/tenant-a/instruments/import", "", {
+        status, body = await handle_api_request("PUT", "/api/tid-tenant-a/instruments/import", "", {
             "instruments": [{
                 "name": "Private Donation Clarinet",
                 "serial": "CL-1",
@@ -743,16 +763,16 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_route_tenant_is_rejected(self):
         repo = MemoryRepository()
 
-        status, body = await handle_api_request("GET", "/api/Bad Tenant/summary", "", {}, repo)
+        status, body = await handle_api_request("GET", "/api/tid-Bad Tenant/summary", "", {}, repo)
 
         self.assertEqual(status, 404)
-        self.assertIn("tenant id must use", body["error"])
+        self.assertEqual(body["error"], "route not found")
 
     async def test_bootstrap_registers_association_for_admin_center(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="band-one", actor_id="admin-user", role="admin")
 
-        await handle_api_request("POST", "/api/band-one/bootstrap", "", {}, repo, admin)
+        await handle_api_request("POST", "/api/tid-band-one/bootstrap", "", {}, repo, admin)
         status, body = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, admin)
 
         self.assertEqual(status, 200)
@@ -1054,6 +1074,19 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 201)
         self.assertEqual(created["data"]["tenant_id"], "music-club")
 
+    async def test_reserved_system_route_cannot_be_created_as_association(self):
+        repo = MemoryRepository()
+        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="signed")
+
+        for tenant_id in ("access-requests", "admin", "auth", "context", "health", "platform-admin"):
+            status, body = await handle_api_request("POST", "/api/admin/associations", "", {
+                "tenant_id": tenant_id,
+                "display_name": "Reserved",
+            }, repo, platform_admin)
+
+            self.assertEqual(status, 400)
+            self.assertEqual(body["error"], "tenant id is reserved for a system route")
+
     async def test_global_platform_admin_can_manage_associations_from_tenant_context(self):
         repo = MemoryRepository()
         repo.associations["music-club"] = {
@@ -1163,11 +1196,16 @@ class ContextTests(unittest.TestCase):
     def test_api_request_path_distinguishes_static_and_api_boundaries(self):
         self.assertTrue(is_api_request_path("/api"))
         self.assertTrue(is_api_request_path("/api/"))
-        self.assertTrue(is_api_request_path("/api/tenant-a/summary"))
+        self.assertTrue(is_api_request_path("/api/tid-tenant-a/summary"))
         self.assertFalse(is_api_request_path("/app.js"))
         self.assertFalse(is_api_request_path("/apiary"))
         self.assertEqual(parse_api_path("/api"), [])
-        self.assertEqual(parse_api_path("/api/tenant-a/summary"), ["tenant-a", "summary"])
+        self.assertEqual(parse_api_path("/api/tid-tenant-a/summary"), ["tenant-a", "summary"])
+        self.assertEqual(parse_api_path("/api/tenant-a/summary"), [])
+        self.assertEqual(parse_api_path("/api/auth/login"), ["auth", "login"])
+        self.assertEqual(parse_api_path("/api/tid-auth/summary"), [])
+        self.assertEqual(validate_association_tenant_id("auth"), "tenant id is reserved for a system route")
+        self.assertIsNone(validate_association_tenant_id("music-club"))
 
     def test_header_mode_requires_tenant_header(self):
         context, error = context_from_headers("tenant-a", {}, "header")
