@@ -1044,6 +1044,26 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
             {"tenant_id": "tenant-b", "role": "reader"},
         ])
 
+    async def test_tenant_metadata_endpoint_returns_only_metadata(self):
+        repo = MemoryRepository()
+        repo.meta["tenant-a"] = {
+            "tenant_id": "tenant-a",
+            "revision": 7,
+            "updated_at": "2026-07-25T10:00:00Z",
+        }
+
+        status, body = await handle_api_request(
+            "GET",
+            "/api/tid-tenant-a/meta",
+            "",
+            {},
+            repo,
+            RequestContext(tenant_id="tenant-a", actor_id="reader", role="viewer"),
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {"meta": repo.meta["tenant-a"]})
+
     async def test_non_admin_cannot_use_association_admin_center(self):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="tenant-a", actor_id="operator-user", role="operator")

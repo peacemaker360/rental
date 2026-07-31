@@ -33,6 +33,7 @@ const view = document.querySelector("#view");
 const adminNavItem = document.querySelector('[data-view="admin"]');
 const message = document.querySelector("#message");
 const messageText = document.querySelector("#messageText");
+const messageAction = document.querySelector("#messageAction");
 const messageClose = document.querySelector("#messageClose");
 const primaryAction = document.querySelector("#primaryAction");
 const seedButton = document.querySelector("#seedButton");
@@ -82,6 +83,11 @@ const accessRequestStorageKey = "rentalAccessRequest";
 const logoutPendingStorageKey = "rentalLogoutPending";
 const logoutReturnParam = "auth";
 const logoutReturnValue = "logged-out";
+const metadataPollIntervalMs = 30000;
+const metadataPollLifetimeMs = 10 * 60 * 1000;
+let metadataPollTimer = null;
+let metadataPollStartedAt = 0;
+let metadataPollNotifiedRevision = 0;
 
 const translations = {
   en: {
@@ -114,6 +120,8 @@ const translations = {
     "actions.refresh": "Refresh",
     "actions.sign_in": "Sign in",
     "actions.retry_sign_in": "Retry sign-in",
+    "actions.retry_access": "Retry access",
+    "actions.request_access": "Request access",
     "actions.logout": "Log out",
     "actions.request_join": "Request to join",
     "actions.approve": "Approve",
@@ -287,6 +295,8 @@ const translations = {
     "messages.invalid_email": "Enter a valid email address",
     "messages.write_blocked_pii": "Remove contact details before saving ({fields})",
     "messages.revision_conflict": "This tenant changed in another session. The latest data is loaded; review and try again.",
+    "messages.newer_data_available": "Newer data is available.",
+    "messages.data_refreshed": "Data refreshed.",
     "auth.start_title": "Start with your association account",
     "auth.start_lead": "Rental Desk is available after your sign-in email and association permissions are confirmed.",
     "auth.sign_in": "Sign-in",
@@ -369,6 +379,8 @@ const translations = {
     "actions.refresh": "Aktualisieren",
     "actions.sign_in": "Anmelden",
     "actions.retry_sign_in": "Anmeldung erneut versuchen",
+    "actions.retry_access": "Zugriff erneut prüfen",
+    "actions.request_access": "Zugriff anfragen",
     "actions.logout": "Abmelden",
     "actions.request_join": "Beitritt anfragen",
     "actions.approve": "Freigeben",
@@ -542,6 +554,8 @@ const translations = {
     "messages.invalid_email": "Bitte eine gültige E-Mail-Adresse eingeben",
     "messages.write_blocked_pii": "Kontaktdaten vor dem Speichern entfernen ({fields})",
     "messages.revision_conflict": "Dieser Mandant wurde in einer anderen Sitzung geändert. Die aktuellen Daten sind geladen; bitte prüfen und erneut versuchen.",
+    "messages.newer_data_available": "Neuere Daten sind verfügbar.",
+    "messages.data_refreshed": "Daten aktualisiert.",
     "auth.start_title": "Mit dem Vereinszugang starten",
     "auth.start_lead": "Die Verleihverwaltung ist verfügbar, sobald deine Anmelde-E-Mail und Vereinsrechte bestätigt sind.",
     "auth.sign_in": "Anmeldung",
@@ -760,6 +774,7 @@ function saveStoredAccessRequest(request) {
 }
 
 function resetAuthenticatedState() {
+  stopMetadataPolling();
   state.context = null;
   state.authStatus = "signed_out";
   state.authReason = "missing_token";
@@ -821,6 +836,12 @@ function beginLogout() {
 }
 
 function authReasonFromError(error) {
+  const errorCode = String(error?.data?.errorCode || "").toUpperCase();
+  if (["ACCESS_TOKEN_MISSING", "CONTEXT_MISSING"].includes(errorCode)) return "missing_token";
+  if (errorCode === "ACCESS_REQUEST_PENDING") return "pending_request";
+  if (errorCode === "ACCESS_PROFILE_NOT_FOUND") return "no_profile";
+  if (["ACCESS_PROFILE_DISABLED", "ACCESS_PROFILE_NO_TENANT", "TENANT_ACCESS_DENIED"].includes(errorCode)) return "access_denied";
+  if (errorCode) return "auth_error";
   const message = String(error?.message || "").toLowerCase();
   if (error?.status === 401 || message.includes("missing signed tenant context") || (message.includes("missing") && message.includes("token"))) return "missing_token";
   if (message.includes("no user access profile")) return "no_profile";
@@ -834,10 +855,11 @@ function authEmailFromError(error) {
 }
 
 function hasLikelySignInToken() {
-  return state.authStatus === "signed_out" && ["no_profile", "access_denied"].includes(state.authReason);
+  return state.authStatus === "signed_out" && ["pending_request", "no_profile", "access_denied"].includes(state.authReason);
 }
 
 function currentAuthStartState() {
+  if (["pending_request", "no_profile", "access_denied"].includes(state.authReason)) return state.authReason;
   return state.accessRequestResult ? "pending_request" : state.authReason;
 }
 
@@ -850,12 +872,17 @@ function authStartSteps() {
       state: hasToken ? "done" : "current",
       title: t("auth.sign_in"),
       body: hasToken ? t("auth.signed_in") : t("auth.sign_in_needed"),
-      action: hasToken ? "" : "sign_in"
+      action: hasToken ? null : {type: "sign_in", label: t("actions.sign_in")}
     },
     {
       state: hasToken && (authState === "pending_request" || authState === "no_profile" || authState === "access_denied") ? "current" : "waiting",
       title: t("entities.user_access"),
-      body: !hasToken ? t("auth.access_check") : authState === "pending_request" ? t("auth.pending_hint") : authState === "access_denied" ? t("auth.access_denied") : t("auth.no_profile")
+      body: !hasToken ? t("auth.access_check") : authState === "pending_request" ? t("auth.pending_hint") : authState === "access_denied" ? t("auth.access_denied") : t("auth.no_profile"),
+      action: !hasToken
+        ? null
+        : authState === "pending_request"
+          ? {type: "retry_access", label: t("actions.retry_access")}
+          : {type: "request_access", label: t("actions.request_access")}
     },
     {
       state: hasToken && hasRequest ? "current" : "waiting",
@@ -1087,15 +1114,28 @@ function assertLowPiiWrite(payload, entity) {
   throw new Error(t("messages.write_blocked_pii", {fields: visible}));
 }
 
-function showMessage(text, isError = false) {
+function clearMessage() {
+  window.clearTimeout(showMessage.timer);
+  showMessage.action = null;
+  if (messageAction) {
+    messageAction.hidden = true;
+    messageAction.textContent = "";
+  }
+  message.hidden = true;
+}
+
+function showMessage(text, isError = false, action = null) {
   if (messageText) messageText.textContent = text;
   else message.textContent = text;
   message.classList.toggle("is-error", isError);
+  showMessage.action = typeof action?.onClick === "function" ? action.onClick : null;
+  if (messageAction) {
+    messageAction.hidden = !showMessage.action;
+    messageAction.textContent = showMessage.action ? action.label : "";
+  }
   message.hidden = false;
   window.clearTimeout(showMessage.timer);
-  showMessage.timer = window.setTimeout(() => {
-    message.hidden = true;
-  }, 60000);
+  showMessage.timer = window.setTimeout(clearMessage, 60000);
 }
 
 async function handleMutationError(error) {
@@ -1227,6 +1267,61 @@ async function loadData() {
   state.accessRequests = accessRequests.data || [];
   reconcileDetailSelection();
   render();
+  startMetadataPolling();
+}
+
+function stopMetadataPolling() {
+  window.clearTimeout(metadataPollTimer);
+  metadataPollTimer = null;
+  metadataPollStartedAt = 0;
+}
+
+function scheduleMetadataPoll() {
+  if (!metadataPollStartedAt || Date.now() - metadataPollStartedAt >= metadataPollLifetimeMs) {
+    stopMetadataPolling();
+    return;
+  }
+  metadataPollTimer = window.setTimeout(pollTenantMetadata, metadataPollIntervalMs);
+}
+
+async function refreshFromMetadataPrompt() {
+  clearMessage();
+  try {
+    await loadData();
+    metadataPollNotifiedRevision = Number(state.meta.revision || 0);
+    showMessage(t("messages.data_refreshed"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+async function pollTenantMetadata() {
+  metadataPollTimer = null;
+  if (!metadataPollStartedAt || state.authStatus !== "signed_in") return;
+  try {
+    if (!document.hidden && validAssociationTenantId(state.tenant)) {
+      const result = await api("/meta");
+      const remoteRevision = Number(result.meta?.revision || 0);
+      const loadedRevision = Number(state.meta.revision || 0);
+      if (remoteRevision > loadedRevision && remoteRevision !== metadataPollNotifiedRevision) {
+        metadataPollNotifiedRevision = remoteRevision;
+        showMessage(t("messages.newer_data_available"), false, {
+          label: t("actions.refresh"),
+          onClick: refreshFromMetadataPrompt
+        });
+      }
+    }
+  } catch {
+    // Metadata polling is advisory; normal requests surface actionable failures.
+  }
+  scheduleMetadataPoll();
+}
+
+function startMetadataPolling() {
+  if (metadataPollStartedAt || state.authStatus !== "signed_in" || !validAssociationTenantId(state.tenant)) return;
+  metadataPollStartedAt = Date.now();
+  metadataPollNotifiedRevision = Number(state.meta.revision || 0);
+  scheduleMetadataPoll();
 }
 
 function reconcileDetailSelection() {
@@ -1324,7 +1419,7 @@ function renderAuthStart() {
   const associationContact = request?.association?.contact;
   const emailValue = state.authEmail || request?.email || "";
   const steps = authStartSteps();
-  const showAccessRequestForm = hasLikelySignInToken();
+  const showAccessRequestForm = hasLikelySignInToken() || Boolean(request);
   view.innerHTML = `
     <section class="auth-start" aria-labelledby="authStartTitle">
       <div class="auth-start-mark">RD</div>
@@ -1339,11 +1434,11 @@ function renderAuthStart() {
             <span>${index + 1}</span>
             <strong>${escapeHtml(step.title)}</strong>
             <p>${escapeHtml(step.body)}</p>
-            ${step.action === "sign_in" ? `<button type="button" class="primary-button auth-step-action" data-auth-retry>${t("actions.sign_in")}</button>` : ""}
+            ${step.action ? `<button type="button" class="primary-button auth-step-action" ${step.action.type === "request_access" ? "data-auth-request-jump" : "data-auth-retry"}>${escapeHtml(step.action.label)}</button>` : ""}
           </div>
         `).join("")}
       </div>
-      ${showAccessRequestForm ? `<div class="auth-start-actions">
+      ${showAccessRequestForm ? `<div id="accessRequestSection" class="auth-start-actions">
         <form class="auth-request-form" data-join-request>
           <label for="joinEmail">${t("fields.email")}</label>
           <input id="joinEmail" name="email" type="email" autocomplete="email" required placeholder="name@example.org" value="${escapeHtml(emailValue)}" aria-describedby="joinEmailHelp">
@@ -2501,8 +2596,14 @@ languageButtons.forEach((button) => {
 });
 
 messageClose?.addEventListener("click", () => {
-  window.clearTimeout(showMessage.timer);
-  message.hidden = true;
+  clearMessage();
+});
+
+messageAction?.addEventListener("click", async () => {
+  const action = showMessage.action;
+  if (!action) return;
+  showMessage.action = null;
+  await action();
 });
 
 document.addEventListener("click", (event) => {
@@ -2602,6 +2703,12 @@ view.addEventListener("click", async (event) => {
     }
     if (target.dataset.authRetry !== undefined) {
       window.location.assign("/api/auth/login");
+      return;
+    }
+    if (target.dataset.authRequestJump !== undefined) {
+      const requestSection = view.querySelector("#accessRequestSection");
+      requestSection?.scrollIntoView({behavior: "smooth", block: "center"});
+      requestSection?.querySelector('[name="tenant_id"]')?.focus({preventScroll: true});
       return;
     }
     if (target.dataset.status) {
@@ -3030,6 +3137,13 @@ async function init() {
     state.authStatus = "signed_out";
     state.authReason = authReasonFromError(error);
     state.authEmail = authEmailFromError(error);
+    if (error?.data?.accessRequest) {
+      state.accessRequestResult = {
+        ...error.data.accessRequest,
+        ...(state.authEmail ? {email: state.authEmail} : {})
+      };
+      saveStoredAccessRequest(state.accessRequestResult);
+    }
     state.authError = error.message || "";
     state.context = null;
     state.isLoading = false;
@@ -3059,6 +3173,8 @@ function normalizeAuthPath() {
 window.addEventListener("pageshow", (event) => {
   if (event.persisted) window.location.reload();
 });
+
+window.addEventListener("pagehide", stopMetadataPolling);
 
 init().catch((error) => {
   state.isLoading = false;

@@ -30,6 +30,19 @@ AUTH_LOGOUT_PATH = "/auth/logout"
 ACCESS_TEAM_DOMAIN_PATTERN = re.compile(r"^[a-z0-9.-]+\.cloudflareaccess\.com$")
 
 
+def context_error_code(error: str) -> str:
+    message = error.lower()
+    if "missing signed tenant context secret" in message:
+        return "CONTEXT_CONFIGURATION_ERROR"
+    if "missing signed tenant context" in message:
+        return "CONTEXT_MISSING"
+    if "expired signed tenant context" in message:
+        return "CONTEXT_EXPIRED"
+    if "tenant context does not match route" in message:
+        return "TENANT_CONTEXT_MISMATCH"
+    return "CONTEXT_INVALID"
+
+
 def json_response(data, status=200):
     return Response(json.dumps(data, default=str), status=status, headers=JSON_HEADERS)
 
@@ -115,7 +128,7 @@ class Default(WorkerEntrypoint):
                 getattr(self.env, "RENTAL_CONTEXT_SECRET", None),
             )
             if error:
-                return json_response({"error": error}, 403)
+                return json_response({"error": error, "errorCode": context_error_code(error)}, 403)
 
         repo = KVRepository(self.env.RENTAL_KV, getattr(self.env, "TENANT_ACCESS_KV", None))
         try:

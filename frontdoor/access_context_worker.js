@@ -10,6 +10,20 @@ const ACCESS_PROFILES = new Set(["full", "basic"]);
 const LOGIN_PATH = "/api/auth/login";
 const TENANT_ROUTE_PREFIX = "tid-";
 const RESERVED_TENANT_IDS = new Set(["access-requests", "admin", "auth", "context", "health", "platform-admin"]);
+const ERROR_CODES = Object.freeze({
+  ACCESS_CONTEXT_ERROR: "ACCESS_CONTEXT_ERROR",
+  ACCESS_PROFILE_DISABLED: "ACCESS_PROFILE_DISABLED",
+  ACCESS_PROFILE_INVALID: "ACCESS_PROFILE_INVALID",
+  ACCESS_PROFILE_NOT_FOUND: "ACCESS_PROFILE_NOT_FOUND",
+  ACCESS_PROFILE_NO_TENANT: "ACCESS_PROFILE_NO_TENANT",
+  ACCESS_REQUEST_INVALID: "ACCESS_REQUEST_INVALID",
+  ACCESS_REQUEST_PENDING: "ACCESS_REQUEST_PENDING",
+  ACCESS_TOKEN_INVALID: "ACCESS_TOKEN_INVALID",
+  ACCESS_TOKEN_MISSING: "ACCESS_TOKEN_MISSING",
+  TENANT_ACCESS_DENIED: "TENANT_ACCESS_DENIED",
+  TENANT_ROUTE_INVALID: "TENANT_ROUTE_INVALID"
+});
+const PENDING_REQUEST_FALLBACK_LIMIT = 100;
 
 let cachedJwks = null;
 let cachedJwksUntil = 0;
@@ -33,7 +47,10 @@ export default {
 
       const accessJwt = accessJwtFromRequest(request);
       if (!accessJwt) {
-        return jsonResponse({error: "missing Cloudflare Access token"}, 401);
+        return jsonResponse({
+          error: "missing Cloudflare Access token",
+          errorCode: ERROR_CODES.ACCESS_TOKEN_MISSING
+        }, 401);
       }
 
       const claims = await verifyAccessJwt(accessJwt, env);
@@ -59,7 +76,7 @@ export default {
       const signedHeaders = await signedContextHeaders(context, env.RENTAL_CONTEXT_SECRET);
       return forwardToBackend(request, env, signedHeaders);
     } catch (error) {
-      return jsonResponse({error: error.message || "frontdoor request failed"}, error.status || 403);
+      return jsonResponse(errorBody(error), error.status || 403);
     }
   }
 };
@@ -70,7 +87,10 @@ async function completeAccessLogin(request, env) {
   }
   const accessJwt = accessJwtFromRequest(request);
   if (!accessJwt) {
-    return jsonResponse({error: "missing Cloudflare Access token"}, 401);
+    return jsonResponse({
+      error: "missing Cloudflare Access token",
+      errorCode: ERROR_CODES.ACCESS_TOKEN_MISSING
+    }, 401);
   }
   await verifyAccessJwt(accessJwt, env);
   return loginRedirectResponse(request);
@@ -93,10 +113,42 @@ function isLoginPath(pathname) {
 }
 
 function authenticatedErrorBody(error, claims) {
-  const body = {error: error.message || "frontdoor request failed"};
+  const body = errorBody(error);
   const email = cleanEmail(claims?.email);
   if (validEmail(email)) body.user_email = email;
   return body;
+}
+
+function errorBody(error) {
+  const body = {
+    error: error?.message || "frontdoor request failed",
+    errorCode: errorCodeFor(error)
+  };
+  if (error?.accessRequest) body.accessRequest = error.accessRequest;
+  return body;
+}
+
+function errorCodeFor(error) {
+  if (error?.errorCode) return error.errorCode;
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("missing cloudflare access token")) return ERROR_CODES.ACCESS_TOKEN_MISSING;
+  if (message.includes("access token")) return ERROR_CODES.ACCESS_TOKEN_INVALID;
+  if (message.includes("no user access profile")) return ERROR_CODES.ACCESS_PROFILE_NOT_FOUND;
+  if (message.includes("access profile is disabled")) return ERROR_CODES.ACCESS_PROFILE_DISABLED;
+  if (message.includes("has no tenant")) return ERROR_CODES.ACCESS_PROFILE_NO_TENANT;
+  if (message.includes("not allowed for this tenant")) return ERROR_CODES.TENANT_ACCESS_DENIED;
+  if (message.includes("tenant route")) return ERROR_CODES.TENANT_ROUTE_INVALID;
+  if (message.includes("access profile") || message.includes("tenant assignment")) return ERROR_CODES.ACCESS_PROFILE_INVALID;
+  if (message.includes("valid email") || message.includes("tenant id is invalid")) return ERROR_CODES.ACCESS_REQUEST_INVALID;
+  return ERROR_CODES.ACCESS_CONTEXT_ERROR;
+}
+
+function accessError(message, errorCode, status = 403, accessRequest = null) {
+  const error = new Error(message);
+  error.errorCode = errorCode;
+  error.status = status;
+  if (accessRequest) error.accessRequest = accessRequest;
+  return error;
 }
 
 async function createAccessRequest(request, env, claims) {
@@ -108,12 +160,13 @@ async function createAccessRequest(request, env, claims) {
   if (!validAssociationTenantId(tenantId)) throw new Error("tenant id is invalid or reserved");
   const now = new Date().toISOString();
   const id = `access_request:${await shortDigest(`${email}:${tenantId}`)}`;
+  const existing = await env.TENANT_ACCESS_KV.get(id, {type: "json"});
   const item = {
     id,
     email,
     status: "pending",
     tenant_id: tenantId,
-    requested_at: now,
+    requested_at: existing?.requested_at || now,
     updated_at: now
   };
   const associationContact = await env.TENANT_ACCESS_KV.get(`association_contact:${tenantId}`, {type: "json"});
@@ -132,13 +185,17 @@ async function createAccessRequest(request, env, claims) {
     await env.TENANT_ACCESS_KV.put(indexKey, JSON.stringify(ids));
   }
   await env.TENANT_ACCESS_KV.put(id, JSON.stringify(item));
+  await addEmailRequestIndex(email, id, env);
   return jsonResponse({data: item}, 201);
 }
 
 function jsonResponse(body, status) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {"content-type": "application/json; charset=utf-8"}
+    headers: {
+      "cache-control": "no-store",
+      "content-type": "application/json; charset=utf-8"
+    }
   });
 }
 
@@ -220,7 +277,57 @@ async function loadTenantAssignment(claims, env, url) {
     if (assignment) return resolveLegacyAssignment(assignment, email);
   }
 
-  throw new Error("no user access profile for authenticated email");
+  const pendingRequest = await pendingAccessRequestForEmail(email, env);
+  if (pendingRequest) {
+    throw accessError(
+      "access request is pending",
+      ERROR_CODES.ACCESS_REQUEST_PENDING,
+      403,
+      pendingRequest
+    );
+  }
+  throw accessError(
+    "no user access profile for authenticated email",
+    ERROR_CODES.ACCESS_PROFILE_NOT_FOUND
+  );
+}
+
+async function addEmailRequestIndex(email, requestId, env) {
+  const key = `access_requests:email:${await shortDigest(email)}`;
+  const ids = await env.TENANT_ACCESS_KV.get(key, {type: "json"}) || [];
+  if (!ids.includes(requestId)) {
+    ids.push(requestId);
+    await env.TENANT_ACCESS_KV.put(key, JSON.stringify(ids));
+  }
+}
+
+async function pendingAccessRequestForEmail(email, env) {
+  const emailIndexKey = `access_requests:email:${await shortDigest(email)}`;
+  let ids = await env.TENANT_ACCESS_KV.get(emailIndexKey, {type: "json"}) || [];
+  let usedFallback = false;
+  if (!Array.isArray(ids) || !ids.length) {
+    const allIds = await env.TENANT_ACCESS_KV.get("access_requests:index", {type: "json"}) || [];
+    ids = Array.isArray(allIds) ? allIds.slice(-PENDING_REQUEST_FALLBACK_LIMIT) : [];
+    usedFallback = true;
+  }
+  for (const requestId of [...ids].reverse()) {
+    const item = await env.TENANT_ACCESS_KV.get(requestId, {type: "json"});
+    if (cleanEmail(item?.email) !== email || item?.status !== "pending") continue;
+    if (usedFallback) await addEmailRequestIndex(email, requestId, env);
+    return publicAccessRequest(item);
+  }
+  return null;
+}
+
+function publicAccessRequest(item) {
+  return {
+    association: item.association,
+    id: item.id,
+    requested_at: item.requested_at,
+    status: item.status,
+    tenant_id: item.tenant_id,
+    updated_at: item.updated_at
+  };
 }
 
 function resolveLegacyAssignment(assignment, email) {
@@ -432,4 +539,13 @@ function base64UrlDecodeBytes(value) {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
-export {isLoginPath, loginRedirectResponse, routeTenant, validAssociationTenantId};
+export {
+  ERROR_CODES,
+  errorCodeFor,
+  isLoginPath,
+  loginRedirectResponse,
+  pendingAccessRequestForEmail,
+  publicAccessRequest,
+  routeTenant,
+  validAssociationTenantId
+};

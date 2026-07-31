@@ -162,6 +162,7 @@ The Worker exposes:
 - `GET /api/admin/users/export/tenant-access`
 - `GET|PUT|DELETE /api/admin/users/{user_id}`
 - `POST /api/tid-{tenant}/bootstrap`
+- `GET /api/tid-{tenant}/meta`
 - `GET /api/tid-{tenant}/summary`
 - `GET /api/tid-{tenant}/export`
 - `PUT /api/tid-{tenant}/import`
@@ -203,6 +204,8 @@ of every storage operation from the first refactor slice.
 - The frontend calls `GET /api/context` at startup. In deployed mode the tenant
   is locked to that signed context; in local mode the tenant switcher remains
   available.
+- Context failures return a readable `error` plus a stable `errorCode`. Clients
+  should branch on `errorCode`; the text remains intended for people and logs.
 
 Set the signing secret before deploying:
 

@@ -206,6 +206,14 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("x-rental-member-id", allowed)
         self.assertIn("x-rental-user-email", allowed)
 
+    def test_backend_worker_context_errors_have_stable_codes(self):
+        module = load_worker_module_for_test()
+
+        self.assertEqual(module.context_error_code("missing signed tenant context"), "CONTEXT_MISSING")
+        self.assertEqual(module.context_error_code("expired signed tenant context"), "CONTEXT_EXPIRED")
+        self.assertEqual(module.context_error_code("tenant context does not match route"), "TENANT_CONTEXT_MISMATCH")
+        self.assertEqual(module.context_error_code("invalid signed tenant context"), "CONTEXT_INVALID")
+
     def test_backend_worker_keeps_empty_api_path_in_json_api_boundary(self):
         source = (ROOT / "worker" / "worker.py").read_text(encoding="utf-8")
 

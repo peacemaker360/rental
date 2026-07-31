@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
@@ -44,6 +45,12 @@ def access_requests_index_key() -> str:
 
 def access_request_key(request_id: str) -> str:
     return f"access_request:{request_id}" if not request_id.startswith("access_request:") else request_id
+
+
+def access_requests_email_index_key(email: str) -> str:
+    normalized = email.strip().lower().encode("utf-8")
+    digest = hashlib.sha256(normalized).hexdigest()[:24]
+    return f"access_requests:email:{digest}"
 
 
 def association_contact_key(tenant_id: str) -> str:
@@ -228,6 +235,13 @@ class KVRepository:
             ids.sort()
             await self.tenant_access_kv.put(access_requests_index_key(), json.dumps(ids))
         await self.tenant_access_kv.put(key, json.dumps(item))
+        email = str(item.get("email") or "").strip().lower()
+        if email:
+            email_index_key = access_requests_email_index_key(email)
+            email_ids = await self.tenant_access_kv.get(email_index_key, type="json") or []
+            if key not in email_ids:
+                email_ids.append(key)
+                await self.tenant_access_kv.put(email_index_key, json.dumps(email_ids))
         return item
 
     async def delete_access_request(self, request_id: str) -> dict[str, Any] | None:
@@ -239,6 +253,20 @@ class KVRepository:
             return None
         ids = [item_id for item_id in await self.tenant_access_kv.get(access_requests_index_key(), type="json") or [] if item_id != key]
         await self.tenant_access_kv.put(access_requests_index_key(), json.dumps(ids))
+        email = str(item.get("email") or "").strip().lower()
+        if email:
+            email_index_key = access_requests_email_index_key(email)
+            email_ids = [
+                item_id
+                for item_id in await self.tenant_access_kv.get(email_index_key, type="json") or []
+                if item_id != key
+            ]
+            if email_ids:
+                await self.tenant_access_kv.put(email_index_key, json.dumps(email_ids))
+            else:
+                delete = getattr(self.tenant_access_kv, "delete", None)
+                if delete is not None:
+                    await delete(email_index_key)
         delete = getattr(self.tenant_access_kv, "delete", None)
         if delete is not None:
             await delete(key)

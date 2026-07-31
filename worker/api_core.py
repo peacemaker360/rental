@@ -1066,7 +1066,7 @@ async def handle_api_request(
         context = context or RequestContext(tenant_id="demo-association", role="admin", mode="local")
         error = validate_tenant_id(context.tenant_id)
         if error:
-            return 403, {"error": error}
+            return 403, {"error": error, "errorCode": "CONTEXT_INVALID"}
         return 200, {**context_payload(context), "meta": await tenant_metadata(repo, context.tenant_id)}
 
     if parts[0] == "admin":
@@ -1085,9 +1085,15 @@ async def handle_api_request(
         return 404, {"error": error}
     context = context or RequestContext(tenant_id=tenant_id)
     if context.tenant_id != tenant_id:
-        return 403, {"error": "tenant context does not match route"}
+        return 403, {
+            "error": "tenant context does not match route",
+            "errorCode": "TENANT_CONTEXT_MISMATCH",
+        }
 
     try:
+        if len(parts) == 2 and parts[1] == "meta" and method == "GET":
+            return 200, {"meta": await tenant_metadata(repo, tenant_id)}
+
         if len(parts) == 2 and parts[1] == "bootstrap" and method == "POST":
             if not can_admin(context):
                 return 403, {"error": "admin role required"}

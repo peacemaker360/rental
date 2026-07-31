@@ -1,7 +1,19 @@
 import json
 import unittest
 
-from worker.storage import KVRepository, association_contact_key, association_key, associations_index_key, entity_key, index_key, metadata_key, user_key, users_index_key
+from worker.storage import (
+    KVRepository,
+    access_requests_email_index_key,
+    access_requests_index_key,
+    association_contact_key,
+    association_key,
+    associations_index_key,
+    entity_key,
+    index_key,
+    metadata_key,
+    user_key,
+    users_index_key,
+)
 
 
 class FakeKV:
@@ -171,6 +183,29 @@ class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(user_key("user_abc123"), kv.values)
         self.assertEqual(json.loads(kv.values[users_index_key()]), [])
         self.assertIsNone(await repo.load_user("user_abc123"))
+
+    async def test_access_request_email_index_is_created_and_removed(self):
+        tenant_access_kv = FakeKV()
+        repo = KVRepository(FakeKV(), tenant_access_kv)
+        request_id = "access_request:1234567890abcdef12345678"
+        request = {
+            "id": request_id,
+            "email": "Member@Example.Test",
+            "tenant_id": "tenant-a",
+            "status": "pending",
+        }
+
+        await repo.save_access_request(request_id, request)
+
+        email_index = access_requests_email_index_key("member@example.test")
+        self.assertEqual(json.loads(tenant_access_kv.values[access_requests_index_key()]), [request_id])
+        self.assertEqual(json.loads(tenant_access_kv.values[email_index]), [request_id])
+
+        removed = await repo.delete_access_request(request_id)
+
+        self.assertEqual(removed["email"], "Member@Example.Test")
+        self.assertEqual(json.loads(tenant_access_kv.values[access_requests_index_key()]), [])
+        self.assertNotIn(email_index, tenant_access_kv.values)
 
 
 if __name__ == "__main__":

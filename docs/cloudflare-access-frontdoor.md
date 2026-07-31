@@ -255,6 +255,14 @@ request without creating access. If the association has a public contact set in
 the Admin Center, the pending response includes it so the user has a reference
 for follow-up.
 
+When an authenticated email has a pending request but no user profile,
+`GET /api/context` returns `403` with `errorCode:
+ACCESS_REQUEST_PENDING`, the readable `error`, the verified `user_email`, and a
+sanitized `accessRequest` object. Other auth boundary failures use stable codes
+such as `ACCESS_TOKEN_MISSING`, `ACCESS_PROFILE_NOT_FOUND`, and
+`TENANT_ACCESS_DENIED`. Frontends should branch on the code and retain the text
+for diagnostics.
+
 Or render explicit Wrangler commands:
 
 ```bash
