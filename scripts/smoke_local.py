@@ -228,7 +228,7 @@ def run_smoke(verbose: bool = False) -> None:
             status, imported = request_json(base_url, "/api/tid-smoke-import/import", "PUT", exported)
             assert status == 200 and imported["summary"]["members"] == 2
             assert imported["meta"]["revision"] == 1
-            assert imported["summary"]["service_attention"] == 1
+            assert imported["summary"]["service_attention"] == exported["summary"]["service_attention"]
 
             status, hitobito = request_json(
                 base_url,

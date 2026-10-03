@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest.mock import AsyncMock
 
 from worker.storage import (
     KVRepository,
@@ -38,6 +39,19 @@ class FakeKV:
 
 
 class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_user_reads_use_directory_without_overwriting_kv_snapshot(self):
+        kv = FakeKV()
+        snapshot = {"id": "user_a", "email": "member@example.test", "global_role": "admin"}
+        await kv.put(user_key("user_a"), json.dumps(snapshot))
+        await kv.put(users_index_key(), json.dumps(["user_a"]))
+        directory = type("Directory", (), {})()
+        directory.read_access = AsyncMock(return_value={**snapshot, "global_role": "none"})
+        repo = KVRepository(kv, directory=directory)
+        self.assertEqual((await repo.load_user("user_a"))["global_role"], "none")
+        self.assertEqual((await repo.list_users())[0]["global_role"], "none")
+        self.assertEqual(json.loads(kv.values[user_key("user_a")]), snapshot)
+        self.assertEqual(directory.read_access.await_count, 2)
+
     async def test_save_tenant_deletes_stale_record_keys(self):
         kv = FakeKV()
         repo = KVRepository(kv)
@@ -174,8 +188,7 @@ class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(saved["email"], "reader@example.test")
         self.assertIn(users_index_key(), kv.values)
         self.assertIn(user_key("user_abc123"), kv.values)
-        self.assertIn("user:reader@example.test", tenant_access_kv.values)
-        self.assertEqual(json.loads(tenant_access_kv.values["user:reader@example.test"])["default_tenant"], "tenant-a")
+        self.assertNotIn("user:reader@example.test", tenant_access_kv.values)
         self.assertEqual((await repo.load_user("user_abc123"))["global_role"], "reader")
         self.assertEqual([item["id"] for item in await repo.list_users()], ["user_abc123"])
         self.assertEqual((await repo.delete_user("user_abc123"))["email"], "reader@example.test")

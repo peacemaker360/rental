@@ -288,6 +288,15 @@ def normalize_user_access(
     status = clean_text(payload.get("status", current.get("status", "active")), "active").lower()
     if status not in USER_STATUSES:
         raise DomainError("status must be active or disabled")
+    tenant_roles = normalize_tenant_role_items(payload.get("tenant_roles", current.get("tenant_roles", [])))
+    tenant_profiles = payload.get("tenant_profiles", {} if "access_profile" in payload else current.get("tenant_profiles", {}))
+    if not isinstance(tenant_profiles, dict):
+        raise DomainError("tenant_profiles must be an object")
+    tenants = {item["tenant_id"] for item in tenant_roles}
+    if "tenant_profiles" not in payload:
+        tenant_profiles = {tenant: profile for tenant, profile in tenant_profiles.items() if tenant in tenants}
+    if any(tenant not in tenants or not isinstance(profile, str) or profile not in USER_ACCESS_PROFILES for tenant, profile in tenant_profiles.items()):
+        raise DomainError("tenant_profiles must match assigned tenants and use full or basic")
     now = utc_now()
     return {
         "id": current.get("id") or user_id_for_email(email),
@@ -296,7 +305,10 @@ def normalize_user_access(
         "status": status,
         "global_role": global_role,
         "access_profile": access_profile,
-        "tenant_roles": normalize_tenant_role_items(payload.get("tenant_roles", current.get("tenant_roles", []))),
+        "tenant_profiles": dict(tenant_profiles),
+        "tenant_statuses": {} if "status" in payload else dict(current.get("tenant_statuses", {})),
+        "clerk_user_id": current.get("clerk_user_id"),
+        "tenant_roles": tenant_roles,
         "member_links": normalize_member_link_items(payload.get("member_links", current.get("member_links", []))),
         "created_at": current.get("created_at") or now,
         "updated_at": now,
@@ -306,6 +318,9 @@ def normalize_user_access(
 def frontdoor_user_assignment(user: dict[str, Any]) -> dict[str, str]:
     value = {
         "access_profile": user.get("access_profile", "full"),
+        "tenant_profiles": user.get("tenant_profiles", {}),
+        "tenant_statuses": user.get("tenant_statuses", {}),
+        "clerk_user_id": user.get("clerk_user_id"),
         "email": user["email"],
         "global_role": user.get("global_role", "none"),
         "member_links": user.get("member_links", []),
@@ -344,10 +359,15 @@ def normalize_association(
     if not display_name:
         display_name = tenant_id.replace("-", " ").replace("_", " ").title()
 
+    organization_id = optional_text(payload.get("clerk_organization_id", current.get("clerk_organization_id")))
+    if organization_id and not re.fullmatch(r"org_[A-Za-z0-9]+", organization_id):
+        raise DomainError("Clerk organization ID must start with org_ and contain only letters and digits")
+
     now = utc_now()
     return {
         "tenant_id": tenant_id,
         "display_name": display_name,
+        "clerk_organization_id": organization_id,
         "short_name": optional_text(payload.get("short_name", current.get("short_name"))),
         "status": status,
         "region": optional_text(payload.get("region", current.get("region"))),
@@ -444,8 +464,8 @@ def context_from_signed_headers(
     if email_error:
         return None, email_error
     global_role = str(payload.get("global_role") or "none")
-    if global_role not in USER_GLOBAL_ROLES:
-        return None, "invalid global role in signed tenant context"
+    if global_role != "none":
+        return None, "global roles are not supported in signed tenant context"
     try:
         tenant_count = max(0, int(payload.get("tenant_count") or 0))
     except (TypeError, ValueError):
@@ -552,11 +572,7 @@ def can_admin(context: RequestContext) -> bool:
 
 
 def can_manage_associations(context: RequestContext) -> bool:
-    return can_admin(context) and (
-        context.mode in ("local", "open")
-        or context.tenant_id == PLATFORM_TENANT_ID
-        or context.global_role == "platform_admin"
-    )
+    return can_admin(context) and context.mode in ("local", "open")
 
 
 def can_manage_users(context: RequestContext) -> bool:
@@ -577,6 +593,10 @@ def tenant_scoped_user(user: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     return {
         **user,
         "global_role": "none",
+        "access_profile": user.get("tenant_profiles", {}).get(tenant_id, user.get("access_profile", "full")),
+        "status": user.get("tenant_statuses", {}).get(tenant_id, user.get("status", "active")),
+        "tenant_profiles": {tenant_id: user["tenant_profiles"][tenant_id]} if tenant_id in user.get("tenant_profiles", {}) else {},
+        "tenant_statuses": {tenant_id: user["tenant_statuses"][tenant_id]} if tenant_id in user.get("tenant_statuses", {}) else {},
         "tenant_roles": [item for item in user.get("tenant_roles", []) if item.get("tenant_id") == tenant_id],
         "member_links": [item for item in user.get("member_links", []) if item.get("tenant_id") == tenant_id],
     }
@@ -606,6 +626,11 @@ def normalize_tenant_admin_user_access(payload: dict[str, Any], context: Request
         "tenant_roles": [{"tenant_id": context.tenant_id, "role": tenant_role}],
         "member_links": member_links,
     }, scoped_existing)
+    tenant_profile = user["tenant_profiles"].get(context.tenant_id, user["access_profile"])
+    user["tenant_profiles"] = {**(existing or {}).get("tenant_profiles", {}), context.tenant_id: tenant_profile}
+    user["tenant_statuses"] = {**(existing or {}).get("tenant_statuses", {}), context.tenant_id: user["status"]}
+    user["access_profile"] = (existing or {}).get("access_profile", "full")
+    user["status"] = (existing or {}).get("status", "active")
     if existing:
         other_roles = [item for item in existing.get("tenant_roles", []) if item.get("tenant_id") != context.tenant_id]
         other_links = [item for item in existing.get("member_links", []) if item.get("tenant_id") != context.tenant_id]
@@ -631,10 +656,10 @@ def context_payload(context: RequestContext) -> dict[str, Any]:
             "platform_admin": can_manage_associations(context),
             "access_profile": context.access_profile,
         },
-        "global_role": context.global_role,
-        "has_global_role": context.global_role != "none",
+        "global_role": "none",
+        "has_global_role": False,
         "tenant_count": context.tenant_count,
-        "tenant_switchable": context.tenant_switchable or context.global_role != "none" or context.tenant_count > 1,
+        "tenant_switchable": context.tenant_switchable or context.tenant_count > 1,
     }
 
 
@@ -723,14 +748,30 @@ async def handle_admin_request(
 ) -> tuple[int, Any]:
     if not can_admin(context):
         return 403, {"error": "admin role required"}
-    if len(parts) < 2 or parts[1] not in ("associations", "users", "access-requests"):
+    if len(parts) < 2 or parts[1] not in ("associations", "users", "access-requests", "invitations", "admissions"):
         return 404, {"error": "route not found"}
 
+    if parts[1] == "admissions":
+        if len(parts) != 2 or method != "GET":
+            return 405, {"error": "admissions are read-only; manage memberships in Clerk"}
+        reader = getattr(repo, "list_admissions", None)
+        if reader is None:
+            return 503, {"error": "Clerk admissions are unavailable in local mode"}
+        data = await reader(None if can_manage_all_users(context) else context.tenant_id)
+        return 200, {"data": data}
+
     if parts[1] == "users":
+        if context.mode == "signed":
+            return 410, {"error": "Use Clerk admissions; app permission profiles are retired"}
         return await handle_admin_users_request(method, parts, payload, repo, context)
 
     if parts[1] == "access-requests":
         return await handle_admin_access_requests(method, parts, payload, repo, context)
+
+    if parts[1] == "invitations":
+        if context.mode == "signed" and method != "GET":
+            return 405, {"error": "Manage invitations in Clerk"}
+        return await handle_admin_invitations(method, parts, payload, repo, context)
 
     if not can_manage_associations(context):
         return 403, {"error": "platform admin required"}
@@ -742,6 +783,7 @@ async def handle_admin_request(
             return 200, {"data": data}
         if method == "POST":
             association = normalize_association(object_payload(payload))
+            await validate_clerk_association_mapping(repo, association)
             saved = await repo.save_association(association["tenant_id"], association)
             return 201, {"data": await association_with_meta(repo, saved)}
         return 405, {"error": "method not allowed"}
@@ -759,9 +801,63 @@ async def handle_admin_request(
         return 200, {"data": await association_with_meta(repo, existing)}
     if method == "PUT":
         association = normalize_association({**object_payload(payload), "tenant_id": tenant_id}, existing)
+        await validate_clerk_association_mapping(repo, association)
         saved = await repo.save_association(tenant_id, association)
         return 200, {"data": await association_with_meta(repo, saved)}
     return 405, {"error": "method not allowed"}
+
+
+async def validate_clerk_association_mapping(repo: TenantRepository, association: dict[str, Any]) -> None:
+    organization_id = association.get("clerk_organization_id")
+    if not organization_id:
+        return
+    for other in await repo.list_associations():
+        if other["tenant_id"] != association["tenant_id"] and other.get("clerk_organization_id") == organization_id:
+            raise DomainError("Clerk organization is already linked to another association", 409)
+
+
+async def handle_admin_invitations(method, parts, payload, repo, context):
+    if len(parts) not in (3, 4):
+        return 404, {"error": "route not found"}
+    tenant_id = parts[2]
+    if validate_association_tenant_id(tenant_id):
+        return 404, {"error": "association not found"}
+    if not can_manage_all_users(context) and tenant_id != context.tenant_id:
+        return 403, {"error": "tenant admin can only manage invitations for their tenant"}
+    if await repo.load_association(tenant_id) is None:
+        return 404, {"error": "association not found"}
+    if len(parts) == 3 and method == "GET":
+        items = await repo.list_invitations(tenant_id)
+        return 200, {"data": [public_invitation(item, tenant_id) for item in items]}
+    if len(parts) == 3 and method == "POST":
+        body = object_payload(payload)
+        email = normalize_email(body.get("email"))
+        role = clean_text(body.get("tenant_role", "reader"))
+        profile = clean_text(body.get("access_profile", "basic"))
+        if role not in USER_TENANT_ROLES or profile not in USER_ACCESS_PROFILES:
+            raise DomainError("invalid invitation role or access profile")
+        if body.get("global_role", "none") != "none":
+            raise DomainError("Invitations cannot grant global roles")
+        existing = await repo.load_user(user_id_for_email(email))
+        item = await repo.create_invitation(tenant_id, email, "org:member" if profile == "basic" else f"org:{role}")
+        if existing is None:
+            # Register only the identity, not a grant. Clerk creates membership
+            # after the recipient accepts the invitation.
+            user = normalize_user_access({"email": email, "access_profile": "basic"})
+            await repo.save_user(user["id"], user)
+        return 201, {"data": public_invitation(item, tenant_id)}
+    if len(parts) == 4 and method == "DELETE":
+        invitation_id = parts[3]
+        if not re.fullmatch(r"orginv_[A-Za-z0-9]+", invitation_id):
+            raise DomainError("invalid invitation ID")
+        item = await repo.revoke_invitation(tenant_id, invitation_id)
+        return 200, {"data": public_invitation(item, tenant_id)}
+    return 405, {"error": "method not allowed"}
+
+
+def public_invitation(item, tenant_id):
+    return {"id": item["id"], "tenant_id": tenant_id, "email": item.get("email_address"),
+            "role": item.get("role"), "status": item.get("status"), "created_at": item.get("created_at")}
 
 
 async def handle_admin_access_requests(
@@ -779,8 +875,8 @@ async def handle_admin_access_requests(
         requests = await repo.list_access_requests()
         if not can_manage_all_users(context):
             requests = [item for item in requests if item.get("tenant_id") == context.tenant_id]
-        return 200, {"data": requests}
-    if len(parts) != 4 or parts[3] not in ("approve", "deny"):
+        return 200, {"data": [{**{key: value for key, value in item.items() if key != "notification"}, "notification_status": item.get("notification", {}).get("status", "not_configured")} for item in requests]}
+    if len(parts) != 4 or parts[3] not in ("approve", "deny", "resolve"):
         return 404, {"error": "route not found"}
     request_id = normalize_access_request_id(parts[2])
     request = await repo.load_access_request(request_id)
@@ -794,11 +890,31 @@ async def handle_admin_access_requests(
         deleted = await repo.delete_access_request(request_id)
         return 200, {"denied": request_id, "data": deleted}
 
+    if parts[3] == "approve" and context.mode == "signed":
+        return 405, {"error": "Manage memberships in Clerk, then resolve the request"}
+
+    if parts[3] == "resolve":
+        reader = getattr(repo, "list_admissions", None)
+        if reader is None:
+            return 503, {"error": "Clerk admissions are unavailable"}
+        admissions = await reader(request["tenant_id"])
+        if not any(item.get("identifier", "").lower() == request["email"].lower() and item.get("access_profile") != "none" for item in admissions["memberships"]):
+            return 409, {"error": "The user has not accepted a Clerk membership for this association yet"}
+        await repo.delete_access_request(request_id)
+        return 200, {"resolved": request_id}
+    if getattr(repo, "directory", None) is not None:
+        return 405, {"error": "Manage memberships in Clerk, then resolve the request"}
+
     body = object_payload(payload)
     tenant_role = clean_text(body.get("tenant_role", "reader")).lower()
-    member_links = body.get("member_links", [])
     existing = await repo.load_user(user_id_for_email(request["email"]))
-    default_access_profile = existing.get("access_profile", "basic") if existing else "basic"
+    previous = existing or {}
+    previous_links = previous.get("member_links", [])
+    if not can_manage_all_users(context):
+        previous_links = [item for item in previous_links if item["tenant_id"] == context.tenant_id]
+    member_links = body.get("member_links", previous_links)
+    existing_tenant = any(item["tenant_id"] == request["tenant_id"] for item in previous.get("tenant_roles", []))
+    default_access_profile = previous.get("tenant_profiles", {}).get(request["tenant_id"], previous.get("access_profile", "basic")) if existing_tenant else "basic"
     access_profile = clean_text(body.get("access_profile", default_access_profile), default_access_profile).lower()
     if can_manage_all_users(context):
         tenant_roles = body.get("tenant_roles")
@@ -807,12 +923,14 @@ async def handle_admin_access_requests(
             tenant_roles.append({"tenant_id": request["tenant_id"], "role": tenant_role})
         user = normalize_user_access({
             "email": request["email"],
-            "status": "active",
-            "global_role": clean_text(body.get("global_role", "none"), "none").lower(),
-            "access_profile": access_profile,
+            "status": previous.get("status", "active"),
+            "global_role": clean_text(body.get("global_role", previous.get("global_role", "none")), "none").lower(),
+            "access_profile": previous.get("access_profile", access_profile),
+            "tenant_profiles": {item["tenant_id"]: access_profile if item["tenant_id"] == request["tenant_id"] else previous.get("tenant_profiles", {}).get(item["tenant_id"], previous.get("access_profile", "basic")) for item in normalize_tenant_role_items(tenant_roles)},
             "tenant_roles": tenant_roles,
             "member_links": member_links,
         }, existing)
+        user["tenant_statuses"] = {**previous.get("tenant_statuses", {}), request["tenant_id"]: "active"}
     else:
         user = normalize_tenant_admin_user_access({
             "email": request["email"],
@@ -821,7 +939,7 @@ async def handle_admin_access_requests(
             "tenant_role": tenant_role,
             "member_links": member_links,
         }, context, existing)
-    saved = await repo.save_user(user["id"], user)
+    saved = await save_managed_user(repo, user, context)
     await repo.delete_access_request(request_id)
     return 200, {"approved": request_id, "data": saved if can_manage_all_users(context) else tenant_scoped_user(saved, context.tenant_id)}
 
@@ -854,9 +972,11 @@ async def handle_admin_users_request(
                 users = [tenant_scoped_user(user, context.tenant_id) for user in users if user_has_tenant(user, context.tenant_id)]
             return 200, {"data": users}
         if method == "POST":
-            user = normalize_user_access(object_payload(payload)) if can_manage_all_users(context) else normalize_tenant_admin_user_access(object_payload(payload), context)
-            saved = await repo.save_user(user["id"], user)
-            return 201, {"data": saved}
+            body = object_payload(payload)
+            existing = await repo.load_user(user_id_for_email(normalize_email(body.get("email"))))
+            user = normalize_user_access(body, existing) if can_manage_all_users(context) else normalize_tenant_admin_user_access(body, context, existing)
+            saved = await save_managed_user(repo, user, context)
+            return 201, {"data": saved if can_manage_all_users(context) else tenant_scoped_user(saved, context.tenant_id)}
         return 405, {"error": "method not allowed"}
 
     if len(parts) != 3:
@@ -879,7 +999,7 @@ async def handle_admin_users_request(
         user = normalize_user_access({**object_payload(payload), "id": user_id}, existing) if can_manage_all_users(context) else normalize_tenant_admin_user_access({**object_payload(payload), "id": user_id}, context, existing)
         if user["id"] != user_id:
             raise DomainError("email cannot be changed for an existing user")
-        saved = await repo.save_user(user_id, user)
+        saved = await save_managed_user(repo, user, context)
         return 200, {"data": saved if can_manage_all_users(context) else tenant_scoped_user(saved, context.tenant_id)}
     if method == "DELETE":
         if not can_manage_all_users(context):
@@ -892,13 +1012,29 @@ async def handle_admin_users_request(
                 "updated_at": utc_now(),
             }
             if updated.get("tenant_roles") or updated.get("member_links") or updated.get("global_role", "none") != "none":
-                saved = await repo.save_user(user_id, updated)
+                saved = await save_managed_user(repo, updated, context)
                 return 200, {"deleted": user_id, "data": tenant_scoped_user(saved, context.tenant_id)}
+        if existing:
+            await sync_managed_user(repo, existing, context, remove=True)
         deleted = await repo.delete_user(user_id)
         if not deleted:
             return 404, {"error": "user not found"}
         return 200, {"deleted": user_id, "data": deleted}
     return 405, {"error": "method not allowed"}
+
+
+async def sync_managed_user(repo, user, context, remove=False):
+    sync = getattr(repo, "sync_user_access", None)
+    if sync is None:
+        return None
+    return await sync(user, tenant_id=None if can_manage_all_users(context) else context.tenant_id, remove=remove)
+
+
+async def save_managed_user(repo, user, context):
+    clerk_user_id = await sync_managed_user(repo, user, context)
+    if clerk_user_id:
+        user = {**user, "clerk_user_id": clerk_user_id}
+    return await repo.save_user(user["id"], user)
 
 
 async def revision_conflict_response(

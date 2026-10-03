@@ -8,6 +8,7 @@ routes = [
 ]
 
 kv_namespaces = [
+  { binding = "RENTAL_KV", id = "e6b20c66b9144d03ad713fdb3a00cfd9", preview_id = "5c483cc38f7b49e1b5d9baaf98b52680" },
   { binding = "TENANT_ACCESS_KV", id = "3e699bb348d544aa8fbd56d69990ec97", preview_id = "64c4c75c68df47858d12892e2fba1e14" }
 ]
 
@@ -15,6 +16,12 @@ services = [
   { binding = "RENTAL_BACKEND", service = "association-rental" }
 ]
 
+[[send_email]]
+name = "ACCESS_REQUEST_EMAIL"
+
 [vars]
-CF_ACCESS_TEAM_DOMAIN = "kittythecat.cloudflareaccess.com"
-CF_ACCESS_AUD = "7d2fbcbdd4f9ebd30fcb51cafd5e0ee158eb8aa423b9454492f2896d21b10b7c"
+# Set your Clerk publishable key here; store CLERK_SECRET_KEY as a Worker secret.
+CLERK_PUBLISHABLE_KEY = ""
+
+# Set to an address on a domain onboarded to Cloudflare Email Sending.
+ACCESS_REQUEST_FROM = ""

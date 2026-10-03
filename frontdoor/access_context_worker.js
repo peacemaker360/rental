@@ -1,13 +1,11 @@
-const ACCESS_JWT_HEADER = "cf-access-jwt-assertion";
-const ACCESS_COOKIE_NAME = "CF_Authorization";
+import {notifyOrganizationAdmins, notificationSummary} from "./access_notifications.js";
+import {authenticateClerk, clerkConfiguration} from "./clerk_auth.js";
+import {listUserMemberships, membershipAccessProfile} from "./clerk_roles.js";
 const CONTEXT_HEADER = "x-rental-context";
 const CONTEXT_SIGNATURE_HEADER = "x-rental-context-signature";
 const RENTAL_HEADER_PREFIX = "x-rental-";
-const ALLOWED_ROLES = new Set(["viewer", "operator", "admin"]);
-const GLOBAL_ROLES = new Set(["none", "reader", "operator", "admin", "platform_admin"]);
 const TENANT_ROLES = new Set(["reader", "operator", "admin"]);
 const ACCESS_PROFILES = new Set(["full", "basic"]);
-const LOGIN_PATH = "/api/auth/login";
 const TENANT_ROUTE_PREFIX = "tid-";
 const RESERVED_TENANT_IDS = new Set(["access-requests", "admin", "auth", "context", "health", "platform-admin"]);
 const ERROR_CODES = Object.freeze({
@@ -25,46 +23,45 @@ const ERROR_CODES = Object.freeze({
 });
 const PENDING_REQUEST_FALLBACK_LIMIT = 100;
 
-let cachedJwks = null;
-let cachedJwksUntil = 0;
-
 export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
-      if (isLoginPath(url.pathname)) {
-        return completeAccessLogin(request, env);
+      if (url.pathname === "/api/auth/config" && request.method === "GET") {
+        return jsonResponse(clerkConfiguration(env), 200);
       }
       if (url.pathname === "/api/health") {
         return forwardToBackend(request, env, null);
-      }
-      if (url.pathname === "/api/access-requests" && request.method === "POST") {
-        return createAccessRequest(request, env, null);
       }
       if (!url.pathname.startsWith("/api/")) {
         return forwardToBackend(request, env, null);
       }
 
-      const accessJwt = accessJwtFromRequest(request);
-      if (!accessJwt) {
-        return jsonResponse({
-          error: "missing Cloudflare Access token",
-          errorCode: ERROR_CODES.ACCESS_TOKEN_MISSING
-        }, 401);
+      const claims = await authenticateClerk(request, env);
+      if (url.pathname === "/api/access-requests" && request.method === "POST") {
+        return await createAccessRequest(request, env, claims);
       }
-
-      const claims = await verifyAccessJwt(accessJwt, env);
       let assignment;
       try {
         assignment = await loadTenantAssignment(claims, env, url);
       } catch (error) {
         return jsonResponse(authenticatedErrorBody(error, claims), error.status || 403);
       }
+      const notificationRoute = url.pathname.match(/^\/api\/admin\/access-requests\/(access_request:[a-f0-9]{24})\/notify$/);
+      if (notificationRoute && request.method === "POST") {
+        const item = await env.TENANT_ACCESS_KV.get(notificationRoute[1], {type: "json"});
+        if (!item || item.status !== "pending" || assignment.role !== "admin" || item.tenant_id !== assignment.tenant_id) {
+          return jsonResponse({error: "Access request not found"}, 404);
+        }
+        const association = await env.RENTAL_KV.get(`associations:${item.tenant_id}`, {type: "json"});
+        if (!association?.clerk_organization_id) return jsonResponse({error: "Association is not mapped to Clerk"}, 409);
+        item.notification = await notifyOrganizationAdmins(item, association, env, claims.clerkClient, url.origin);
+        await env.TENANT_ACCESS_KV.put(item.id, JSON.stringify(item));
+        return jsonResponse({notification_status: notificationSummary(item)}, 200);
+      }
       const context = {
         access_profile: assignment.access_profile || "full",
-        actor_id: assignment.actor_id || `access:${await shortDigest(assignment.email || claims.sub || "unknown")}`,
-        global_role: assignment.global_role || "none",
-        has_global_role: Boolean(assignment.has_global_role),
+        actor_id: assignment.actor_id || `clerk:${await shortDigest(claims.sub)}`,
         issued_at: Date.now() / 1000,
         member_id: assignment.member_id,
         role: assignment.role,
@@ -81,36 +78,6 @@ export default {
   }
 };
 
-async function completeAccessLogin(request, env) {
-  if (!["GET", "HEAD"].includes(request.method)) {
-    return jsonResponse({error: "method not allowed"}, 405);
-  }
-  const accessJwt = accessJwtFromRequest(request);
-  if (!accessJwt) {
-    return jsonResponse({
-      error: "missing Cloudflare Access token",
-      errorCode: ERROR_CODES.ACCESS_TOKEN_MISSING
-    }, 401);
-  }
-  await verifyAccessJwt(accessJwt, env);
-  return loginRedirectResponse(request);
-}
-
-function loginRedirectResponse(request) {
-  return new Response(null, {
-    status: 303,
-    headers: {
-      "cache-control": "no-store",
-      location: new URL("/", request.url).toString(),
-      pragma: "no-cache",
-      "x-rental-auth-handler": "login-redirect"
-    }
-  });
-}
-
-function isLoginPath(pathname) {
-  return pathname.replace(/\/+$/, "") === LOGIN_PATH;
-}
 
 function authenticatedErrorBody(error, claims) {
   const body = errorBody(error);
@@ -125,13 +92,14 @@ function errorBody(error) {
     errorCode: errorCodeFor(error)
   };
   if (error?.accessRequest) body.accessRequest = error.accessRequest;
+  if (error?.authReason) body.authReason = error.authReason;
   return body;
 }
 
 function errorCodeFor(error) {
   if (error?.errorCode) return error.errorCode;
   const message = String(error?.message || "").toLowerCase();
-  if (message.includes("missing cloudflare access token")) return ERROR_CODES.ACCESS_TOKEN_MISSING;
+  if (message.includes("missing sign-in token")) return ERROR_CODES.ACCESS_TOKEN_MISSING;
   if (message.includes("access token")) return ERROR_CODES.ACCESS_TOKEN_INVALID;
   if (message.includes("no user access profile")) return ERROR_CODES.ACCESS_PROFILE_NOT_FOUND;
   if (message.includes("access profile is disabled")) return ERROR_CODES.ACCESS_PROFILE_DISABLED;
@@ -151,16 +119,21 @@ function accessError(message, errorCode, status = 403, accessRequest = null) {
   return error;
 }
 
-async function createAccessRequest(request, env, claims) {
+export async function createAccessRequest(request, env, claims) {
   if (!env.TENANT_ACCESS_KV) throw new Error("TENANT_ACCESS_KV binding is required");
   const payload = await request.json().catch(() => ({}));
   const email = cleanEmail(claims?.email || payload.email);
   if (!validEmail(email)) throw new Error("valid email is required");
   const tenantId = String(payload.tenant_id || "").trim().toLowerCase();
   if (!validAssociationTenantId(tenantId)) throw new Error("tenant id is invalid or reserved");
+  const association = await env.RENTAL_KV?.get(`associations:${tenantId}`, {type: "json"});
+  if (!association?.clerk_organization_id || (association.status && association.status !== "active")) {
+    throw accessError("Association is unavailable or has not been connected to Clerk", "ACCESS_REQUEST_INVALID", 404);
+  }
   const now = new Date().toISOString();
   const id = `access_request:${await shortDigest(`${email}:${tenantId}`)}`;
   const existing = await env.TENANT_ACCESS_KV.get(id, {type: "json"});
+  if (existing?.status === "pending") return jsonResponse({data: {...publicAccessRequest(existing), email}}, 200);
   const item = {
     id,
     email,
@@ -186,7 +159,9 @@ async function createAccessRequest(request, env, claims) {
   }
   await env.TENANT_ACCESS_KV.put(id, JSON.stringify(item));
   await addEmailRequestIndex(email, id, env);
-  return jsonResponse({data: item}, 201);
+  item.notification = await notifyOrganizationAdmins(item, association, env, claims.clerkClient, new URL(request.url).origin);
+  await env.TENANT_ACCESS_KV.put(id, JSON.stringify(item));
+  return jsonResponse({data: {...publicAccessRequest(item), email}}, 201);
 }
 
 function jsonResponse(body, status) {
@@ -199,83 +174,44 @@ function jsonResponse(body, status) {
   });
 }
 
-function accessJwtFromRequest(request) {
-  const header = request.headers.get(ACCESS_JWT_HEADER);
-  if (header) return header;
-  const cookie = request.headers.get("cookie") || "";
-  return cookie
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ACCESS_COOKIE_NAME}=`))
-    ?.slice(ACCESS_COOKIE_NAME.length + 1);
-}
-
-async function verifyAccessJwt(jwt, env) {
-  const parts = jwt.split(".");
-  if (parts.length !== 3) throw new Error("invalid Cloudflare Access token");
-
-  const [encodedHeader, encodedPayload, encodedSignature] = parts;
-  const header = JSON.parse(base64UrlDecodeText(encodedHeader));
-  const claims = JSON.parse(base64UrlDecodeText(encodedPayload));
-  if (header.alg !== "RS256") throw new Error("unsupported Cloudflare Access token algorithm");
-
-  const jwks = await accessJwks(env);
-  const jwk = jwks.keys.find((key) => key.kid === header.kid);
-  if (!jwk) throw new Error("Cloudflare Access signing key not found");
-
-  const key = await crypto.subtle.importKey(
-    "jwk",
-    jwk,
-    {name: "RSASSA-PKCS1-v1_5", hash: "SHA-256"},
-    false,
-    ["verify"]
-  );
-  const valid = await crypto.subtle.verify(
-    {name: "RSASSA-PKCS1-v1_5"},
-    key,
-    base64UrlDecodeBytes(encodedSignature),
-    new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`)
-  );
-  if (!valid) throw new Error("invalid Cloudflare Access token signature");
-
-  const now = Math.floor(Date.now() / 1000);
-  const issuer = `https://${env.CF_ACCESS_TEAM_DOMAIN}`;
-  if (claims.iss !== issuer) throw new Error("invalid Cloudflare Access issuer");
-  if (claims.exp && now >= claims.exp) throw new Error("expired Cloudflare Access token");
-  if (claims.nbf && now < claims.nbf) throw new Error("Cloudflare Access token is not active");
-  if (!audienceMatches(claims.aud, env.CF_ACCESS_AUD)) throw new Error("invalid Cloudflare Access audience");
-  return claims;
-}
-
-async function accessJwks(env) {
-  const now = Date.now();
-  if (cachedJwks && now < cachedJwksUntil) return cachedJwks;
-
-  const response = await fetch(`https://${env.CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`);
-  if (!response.ok) throw new Error("could not load Cloudflare Access certificates");
-  cachedJwks = await response.json();
-  cachedJwksUntil = now + 10 * 60 * 1000;
-  return cachedJwks;
-}
-
-function audienceMatches(actual, expected) {
-  return Array.isArray(actual) ? actual.includes(expected) : actual === expected;
-}
 
 async function loadTenantAssignment(claims, env, url) {
   if (!env.TENANT_ACCESS_KV) throw new Error("TENANT_ACCESS_KV binding is required");
   const email = String(claims.email || "").trim().toLowerCase();
-  if (!email) throw new Error("Cloudflare Access token is missing email");
-  if (!validEmail(email)) throw new Error("Cloudflare Access token email is invalid");
-
-  const user = await env.TENANT_ACCESS_KV.get(`user:${email}`, {type: "json"});
-  if (user) return resolveUserAssignment(user, email, url);
-
-  const principal = claims.sub || "";
-  if (principal) {
-    const assignment = await env.TENANT_ACCESS_KV.get(`principal:${principal}`, {type: "json"});
-    if (assignment) return resolveLegacyAssignment(assignment, email);
+  if (!validEmail(email)) throw new Error("Sign-in email is invalid");
+  if (!env.RENTAL_KV) throw accessError("Association registry is unavailable", "AUTH_CONFIGURATION_ERROR", 503);
+  const tenantIds = await env.RENTAL_KV.get("associations:index", {type: "json"}) || [];
+  const associations = [];
+  for (const tenantId of tenantIds) {
+    const association = await env.RENTAL_KV.get(`associations:${tenantId}`, {type: "json"});
+    if (association) associations.push(association);
   }
+  let memberships;
+  try {
+    memberships = await listUserMemberships(claims.clerkClient, claims.sub);
+  } catch {
+    throw accessError("Unable to check association access right now", "AUTH_PROVIDER_UNAVAILABLE", 503);
+  }
+  const profile = membershipAccessProfile(claims.clerkUser, memberships, associations);
+  const activeAssociation = associations.find(item => item.clerk_organization_id === claims.activeOrganizationId);
+  if (activeAssociation && profile.tenant_roles.some(item => item.tenant_id === activeAssociation.tenant_id)) {
+    profile.default_tenant = activeAssociation.tenant_id;
+  }
+  if (!routeTenant(url)) {
+    if (claims.activeOrganizationId && !activeAssociation) {
+      throw accessError("The selected Clerk organization has no association mapping in Rental Desk. Ask the app operator to connect its organization ID to the existing association.", "ACCESS_ORGANIZATION_UNMAPPED");
+    }
+    if (claims.activeOrganizationId && !profile.tenant_roles.some(item => item.tenant_id === activeAssociation?.tenant_id)) {
+      const membership = memberships.find(item => item.organization.id === claims.activeOrganizationId);
+      throw membership
+        ? accessError("Your Clerk organization role is not supported by Rental Desk. Ask an organization admin to assign a rental role in Clerk.", "ACCESS_ORGANIZATION_ROLE_UNSUPPORTED")
+        : accessError("You no longer have membership in the selected Clerk organization. Switch organizations or ask its admin for an invitation.", "ACCESS_ORGANIZATION_ACCESS_DENIED");
+    }
+    if (!claims.activeOrganizationId && profile.tenant_roles.length) {
+      throw accessError("Select your organization in Clerk to continue", "ACCESS_ORGANIZATION_REQUIRED");
+    }
+  }
+  if (profile.tenant_roles.length) return resolveUserAssignment(profile, email, url);
 
   const pendingRequest = await pendingAccessRequestForEmail(email, env);
   if (pendingRequest) {
@@ -321,6 +257,7 @@ async function pendingAccessRequestForEmail(email, env) {
 
 function publicAccessRequest(item) {
   return {
+    notification_status: notificationSummary(item),
     association: item.association,
     id: item.id,
     requested_at: item.requested_at,
@@ -330,40 +267,25 @@ function publicAccessRequest(item) {
   };
 }
 
-function resolveLegacyAssignment(assignment, email) {
-  if (!validAssociationTenantId(assignment.tenant_id || "")) throw new Error("tenant assignment has invalid tenant id");
-  if (!ALLOWED_ROLES.has(assignment.role)) {
-    throw new Error("tenant assignment has invalid role");
-  }
-  return {...assignment, email};
-}
-
 function resolveUserAssignment(user, email, url) {
   validateUserProfile(user);
   if (user.status && user.status !== "active") throw new Error("user access profile is disabled");
   const requestedTenant = routeTenant(url);
-  const defaultTenant = user.default_tenant || firstTenantRole(user)?.tenant_id || firstMemberLink(user)?.tenant_id;
-  const adminRoute = url.pathname.startsWith("/api/admin");
-  const platformAdminRoute = adminRoute && user.global_role === "platform_admin";
-  const tenantId = platformAdminRoute
-    ? "platform-admin"
-    : requestedTenant || defaultTenant || (user.global_role === "platform_admin" ? "platform-admin" : "");
+  const defaultTenant = user.default_tenant || firstTenantRole(user)?.tenant_id;
+  const tenantId = requestedTenant || defaultTenant;
   if (!validTenantId(tenantId)) throw new Error("user access profile has no tenant for this route");
 
-  const role = roleForTenant(user, tenantId, adminRoute);
+  const role = roleForTenant(user, tenantId);
   const memberLink = (user.member_links || []).find((item) => item.tenant_id === tenantId);
-  const globalRole = user.global_role || "none";
   const tenantCount = tenantAccessCount(user);
   return {
-    access_profile: user.access_profile || "full",
+    access_profile: user.tenant_profiles?.[tenantId] || user.access_profile || "full",
     email,
-    global_role: globalRole,
-    has_global_role: globalRole !== "none",
     member_id: memberLink?.member_id,
     role,
     tenant_count: tenantCount,
     tenant_id: tenantId,
-    tenant_switchable: globalRole !== "none" || tenantCount > 1
+    tenant_switchable: tenantCount > 1
   };
 }
 
@@ -371,8 +293,6 @@ function validateUserProfile(user) {
   if (user.status && !["active", "disabled"].includes(user.status)) {
     throw new Error("user access profile has invalid status");
   }
-  const globalRole = user.global_role || "none";
-  if (!GLOBAL_ROLES.has(globalRole)) throw new Error("user access profile has invalid global role");
   const accessProfile = user.access_profile || "full";
   if (!ACCESS_PROFILES.has(accessProfile)) throw new Error("user access profile has invalid access profile");
   if (user.default_tenant && !validAssociationTenantId(user.default_tenant)) {
@@ -394,16 +314,8 @@ function validateUserProfile(user) {
   }
 }
 
-function roleForTenant(user, tenantId, adminRoute) {
-  const globalRole = user.global_role || "none";
-  if (globalRole === "platform_admin" && adminRoute) return "admin";
-  if (globalRole === "platform_admin" && tenantId === "platform-admin") return "admin";
-  if (globalRole === "admin") return "admin";
-  if (globalRole === "operator") return "operator";
-  if (globalRole === "reader") return "viewer";
-
+function roleForTenant(user, tenantId) {
   const tenantRole = (user.tenant_roles || []).find((item) => item.tenant_id === tenantId)?.role;
-  if (!tenantRole && user.access_profile === "basic" && (user.member_links || []).some((item) => item.tenant_id === tenantId)) return "viewer";
   if (!tenantRole) throw new Error("user is not allowed for this tenant");
   if (!TENANT_ROLES.has(tenantRole)) throw new Error("user access profile has invalid tenant role");
   return tenantRole === "reader" ? "viewer" : tenantRole;
@@ -411,10 +323,6 @@ function roleForTenant(user, tenantId, adminRoute) {
 
 function firstTenantRole(user) {
   return (user.tenant_roles || []).find((item) => validAssociationTenantId(item.tenant_id));
-}
-
-function firstMemberLink(user) {
-  return (user.member_links || []).find((item) => validAssociationTenantId(item.tenant_id));
 }
 
 function tenantAccessCount(user) {
@@ -511,7 +419,7 @@ function forwardToBackend(request, env, signedHeaders) {
 }
 
 function stripUntrustedIdentityHeaders(headers) {
-  headers.delete(ACCESS_JWT_HEADER);
+  headers.delete("cf-access-jwt-assertion");
   headers.delete("cf-access-authenticated-user-email");
   headers.delete("cookie");
   headers.delete("authorization");
@@ -529,21 +437,12 @@ function base64UrlEncodeText(value) {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
-function base64UrlDecodeText(value) {
-  return new TextDecoder().decode(base64UrlDecodeBytes(value));
-}
-
-function base64UrlDecodeBytes(value) {
-  const padded = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-}
 
 export {
+  loadTenantAssignment,
+  resolveUserAssignment,
   ERROR_CODES,
   errorCodeFor,
-  isLoginPath,
-  loginRedirectResponse,
   pendingAccessRequestForEmail,
   publicAccessRequest,
   routeTenant,

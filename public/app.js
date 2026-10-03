@@ -1,7 +1,9 @@
+import {initializeAuth, authFetch, signIn, signOut, openAccount, getAuthState, mountAuthFlow, unmountAuthFlow, getActiveOrganization, mountOrganizationSwitcher, openOrganization} from "./auth.js";
+
 const state = {
   tenant: localStorage.getItem("rentalTenant") || "demo-association",
   lang: localStorage.getItem("rentalLang") || (navigator.language?.toLowerCase().startsWith("de") ? "de" : "en"),
-  view: "dashboard",
+  view: new URLSearchParams(window.location.search).get("view") === "admin" ? "admin" : "dashboard",
   search: "",
   status: "all",
   sort: "name",
@@ -16,7 +18,12 @@ const state = {
   },
   associations: [],
   users: [],
+  admissions: null,
+  adminErrors: [],
   accessRequests: [],
+  invitationTenant: "",
+  invitations: [],
+  invitationError: "",
   accessRequestResult: null,
   summary: {},
   meta: {revision: 0, updated_at: null},
@@ -25,7 +32,8 @@ const state = {
   authReason: "checking",
   authEmail: "",
   isLoading: true,
-  authError: ""
+  authError: "",
+  authBusy: false
 };
 
 const viewTitle = document.querySelector("#viewTitle");
@@ -80,17 +88,61 @@ const importEmailPattern = /[^@\s]+@[^@\s]+\.[^@\s]+/;
 const importPhonePattern = /(?=(?:\D*\d){7,})\+?[\d][\d\s()./-]{6,}\d/;
 const languageButtons = document.querySelectorAll("[data-lang]");
 const accessRequestStorageKey = "rentalAccessRequest";
-const logoutPendingStorageKey = "rentalLogoutPending";
-const logoutReturnParam = "auth";
-const logoutReturnValue = "logged-out";
 const metadataPollIntervalMs = 30000;
 const metadataPollLifetimeMs = 10 * 60 * 1000;
+let authGeneration = 0;
 let metadataPollTimer = null;
 let metadataPollStartedAt = 0;
 let metadataPollNotifiedRevision = 0;
 
 const translations = {
   en: {
+    "admin.admissions": "Organization admissions",
+    "admin.clerk_managed": "Memberships, roles, and invitations are managed in Clerk. This view shows the current Clerk records.",
+    "admin.manage_clerk": "Manage in Clerk",
+    "admin.dashboard_clerk": "Clerk Dashboard",
+    "admin.no_admissions": "No organization memberships yet.",
+    "admin.permissions": "Clerk permissions",
+    "admin.no_app_access": "No rental access",
+    "admin.pending_notice": "{count} access requests need review",
+    "admin.review_requests": "Review access requests",
+    "admin.invite_help": "Invite or change this user’s role in Clerk. Once they accept, mark this request as resolved.",
+    "admin.resolve": "Mark resolved",
+    "admin.retry_email": "Retry email notification",
+    "admin.email_sent": "Admin email sent",
+    "admin.email_failed": "Admin email not delivered; request is saved",
+    "admin.email_config": "Admin email needs configuration; request is saved",
+    "admin.refresh_hint": "After making changes in Clerk, refresh this view.",
+    "auth.select_clerk": "Select an organization in Clerk",
+    "auth.select_clerk_body": "Use the organization switcher below. Your membership determines which association you can access.",
+    "auth.unmapped_org": "This organization is not connected to Rental Desk",
+    "auth.unmapped_body": "Your sign-in is valid. Switch organizations, or ask the app operator to connect this Clerk organization ID to your association. Requesting access will not repair a missing connection.",
+    "auth.request_email_warning": "Your request is saved, but the admin email could not be sent. The request is visible in the admin dashboard.",
+    "auth.welcome": "Welcome to Rental Desk",
+    "auth.welcome_body": "Sign in or create an account. Your association access comes from your organization membership.",
+    "auth.checking": "Checking your access…",
+    "auth.checking_body": "Please wait while we connect to your account.",
+    "auth.session_pending": "Finish setting up your account",
+    "auth.choose_organization": "Choose your association below. If you were invited, accept the invitation using the same email address. Creating an unrelated organization will not grant access to an association.",
+    "auth.finish_setup": "Complete the account step below to continue. You do not need to start sign-in again.",
+    "auth.no_access_title": "Signed in. Association access needed.",
+    "auth.no_access_body": "Open your association invitation email and accept it with this account, then check access again. If you have no invitation, ask your association administrator to add you.",
+    "auth.pending_title": "Your access request is pending",
+    "auth.pending_body": "Your association administrator needs to approve your request. You can check again without signing in again.",
+    "auth.error_title": "We could not complete sign-in",
+    "auth.unavailable": "The sign-in service could not be reached. Check your connection and try again. If this continues, contact your association administrator.",
+    "auth.configuration": "Sign-in is not configured correctly. Please contact your association administrator.",
+    "auth.expired": "Your session could not be verified. Try again to refresh it, or sign out and sign in again.",
+    "auth.unsupported": "This account step could not be opened. Sign out and try again. If it still fails, contact your association administrator.",
+    "auth.account_disabled": "This account is disabled. Contact your association administrator, or sign out to use another account.",
+    "auth.verify_email": "Verify your email address in your account settings, then check access again.",
+    "auth.retry": "Try again",
+    "auth.check_access": "Check association access",
+    "auth.other_account": "Sign out / use another account",
+    "auth.error_details": "Error details",
+    "auth.request_alternative": "No invitation? Request access",
+    "auth.identity": "Signed in as {email}",
+    "actions.skip_content": "Skip to content",
     "app.title": "Rental Desk",
     "app.eyebrow": "Instrument rental",
     "views.dashboard": "Dashboard",
@@ -123,12 +175,14 @@ const translations = {
     "actions.retry_access": "Retry access",
     "actions.request_access": "Request access",
     "actions.logout": "Log out",
+    "actions.account": "Account settings",
     "actions.request_join": "Request to join",
     "actions.approve": "Approve",
     "actions.deny": "Deny",
     "actions.cancel": "Cancel",
     "actions.close": "Close",
     "actions.save": "Save",
+    "actions.saving": "Saving…",
     "actions.edit": "Edit",
     "actions.open": "Open",
     "actions.delete": "Delete",
@@ -139,6 +193,11 @@ const translations = {
     "actions.add_tenant_role": "Add tenant role",
     "actions.new_association": "New Association",
     "actions.new_user": "New User",
+    "actions.invite": "Send invitation",
+    "actions.revoke_invitation": "Revoke invitation",
+    "sections.invitations": "Invitations",
+    "empty.no_invitations": "No pending invitations",
+    "messages.invited": "Invitation submitted",
     "actions.new_instruments": "New Instrument",
     "actions.new_members": "New Member",
     "actions.new_rentals": "New Rental",
@@ -199,6 +258,7 @@ const translations = {
     "fields.region": "Region",
     "fields.locale": "Locale",
     "fields.contact_ref": "Contact ref",
+    "fields.clerk_organization_id": "Clerk organization ID",
     "fields.contact": "Contact",
     "fields.hitobito_group_ref": "Hitobito group ref",
     "fields.inventory_ref": "Inventory ref",
@@ -350,6 +410,52 @@ const translations = {
     "access_profile.basic": "basic"
   },
   de: {
+    "admin.admissions": "Organisationszugänge",
+    "admin.clerk_managed": "Mitgliedschaften, Rollen und Einladungen werden in Clerk verwaltet. Diese Ansicht zeigt die aktuellen Clerk-Daten.",
+    "admin.manage_clerk": "In Clerk verwalten",
+    "admin.dashboard_clerk": "Clerk-Dashboard",
+    "admin.no_admissions": "Noch keine Organisationsmitgliedschaften.",
+    "admin.permissions": "Clerk-Berechtigungen",
+    "admin.no_app_access": "Kein Verleihzugriff",
+    "admin.pending_notice": "{count} Zugangsanfragen warten auf Prüfung",
+    "admin.review_requests": "Zugangsanfragen prüfen",
+    "admin.invite_help": "Lade die Person in Clerk ein oder ändere ihre Rolle. Nach Annahme kannst du diese Anfrage abschliessen.",
+    "admin.resolve": "Als erledigt markieren",
+    "admin.retry_email": "E-Mail erneut senden",
+    "admin.email_sent": "Admin-E-Mail gesendet",
+    "admin.email_failed": "Admin-E-Mail nicht zugestellt; Anfrage gespeichert",
+    "admin.email_config": "Admin-E-Mail muss eingerichtet werden; Anfrage gespeichert",
+    "admin.refresh_hint": "Nach Änderungen in Clerk diese Ansicht aktualisieren.",
+    "auth.select_clerk": "Organisation in Clerk auswählen",
+    "auth.select_clerk_body": "Nutze die Organisationsauswahl unten. Deine Mitgliedschaft bestimmt deinen Vereinszugriff.",
+    "auth.unmapped_org": "Diese Organisation ist nicht mit Rental Desk verbunden",
+    "auth.unmapped_body": "Deine Anmeldung ist gültig. Wechsle die Organisation oder bitte den App-Betreiber, diese Clerk-Organisations-ID mit deinem Verein zu verbinden. Eine Zugangsanfrage behebt die fehlende Verbindung nicht.",
+    "auth.request_email_warning": "Deine Anfrage ist gespeichert, aber die Admin-E-Mail konnte nicht gesendet werden. Sie ist in der Verwaltung sichtbar.",
+    "auth.welcome": "Willkommen bei Rental Desk",
+    "auth.welcome_body": "Melde dich an oder erstelle ein Konto. Deine Organisationsmitgliedschaft bestimmt deinen Vereinszugriff.",
+    "auth.checking": "Dein Zugriff wird geprüft…",
+    "auth.checking_body": "Bitte warte, während wir dein Konto verbinden.",
+    "auth.session_pending": "Kontoeinrichtung abschliessen",
+    "auth.choose_organization": "Wähle unten deinen Verein. Falls du eingeladen wurdest, nimm die Einladung mit derselben E-Mail-Adresse an. Eine neue, unabhängige Organisation gibt dir keinen Vereinszugriff.",
+    "auth.finish_setup": "Schliesse den folgenden Schritt ab. Du musst die Anmeldung nicht neu starten.",
+    "auth.no_access_title": "Angemeldet. Vereinszugriff fehlt noch.",
+    "auth.no_access_body": "Öffne die Vereinseinladung in deinem E-Mail-Postfach und nimm sie mit diesem Konto an. Prüfe danach den Zugriff erneut. Ohne Einladung wende dich an deine Vereinsadministration.",
+    "auth.pending_title": "Deine Zugangsanfrage ist offen",
+    "auth.pending_body": "Deine Vereinsadministration muss die Anfrage freigeben. Du kannst erneut prüfen, ohne dich neu anzumelden.",
+    "auth.error_title": "Die Anmeldung konnte nicht abgeschlossen werden",
+    "auth.unavailable": "Der Anmeldedienst ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut. Falls das Problem bleibt, wende dich an deine Vereinsadministration.",
+    "auth.configuration": "Die Anmeldung ist nicht korrekt eingerichtet. Bitte wende dich an deine Vereinsadministration.",
+    "auth.expired": "Deine Sitzung konnte nicht bestätigt werden. Versuche es erneut oder melde dich ab und wieder an.",
+    "auth.unsupported": "Dieser Kontoschritt konnte nicht geöffnet werden. Melde dich ab und versuche es erneut. Falls es weiterhin nicht klappt, wende dich an deine Vereinsadministration.",
+    "auth.account_disabled": "Dieses Konto ist deaktiviert. Wende dich an deine Vereinsadministration oder melde dich ab, um ein anderes Konto zu verwenden.",
+    "auth.verify_email": "Bestätige deine E-Mail-Adresse in den Kontoeinstellungen und prüfe danach den Zugriff erneut.",
+    "auth.retry": "Erneut versuchen",
+    "auth.check_access": "Vereinszugriff prüfen",
+    "auth.other_account": "Abmelden / anderes Konto verwenden",
+    "auth.error_details": "Fehlerdetails",
+    "auth.request_alternative": "Keine Einladung? Zugriff anfragen",
+    "auth.identity": "Angemeldet als {email}",
+    "actions.skip_content": "Zum Inhalt springen",
     "app.title": "Verleihverwaltung",
     "app.eyebrow": "Instrumentenverleih",
     "views.dashboard": "Übersicht",
@@ -382,12 +488,14 @@ const translations = {
     "actions.retry_access": "Zugriff erneut prüfen",
     "actions.request_access": "Zugriff anfragen",
     "actions.logout": "Abmelden",
+    "actions.account": "Kontoeinstellungen",
     "actions.request_join": "Beitritt anfragen",
     "actions.approve": "Freigeben",
     "actions.deny": "Ablehnen",
     "actions.cancel": "Abbrechen",
     "actions.close": "Schliessen",
     "actions.save": "Speichern",
+    "actions.saving": "Wird gespeichert…",
     "actions.edit": "Bearbeiten",
     "actions.open": "Öffnen",
     "actions.delete": "Löschen",
@@ -398,6 +506,11 @@ const translations = {
     "actions.add_tenant_role": "Mandantenrolle hinzufügen",
     "actions.new_association": "Neue Organisation",
     "actions.new_user": "Neuer Benutzer",
+    "actions.invite": "Einladung senden",
+    "actions.revoke_invitation": "Einladung widerrufen",
+    "sections.invitations": "Einladungen",
+    "empty.no_invitations": "Keine offenen Einladungen",
+    "messages.invited": "Einladung uebermittelt",
     "actions.new_instruments": "Neues Instrument",
     "actions.new_members": "Neues Mitglied",
     "actions.new_rentals": "Neue Ausleihe",
@@ -458,6 +571,7 @@ const translations = {
     "fields.region": "Region",
     "fields.locale": "Sprache/Region",
     "fields.contact_ref": "Kontaktreferenz",
+    "fields.clerk_organization_id": "Clerk-Organisations-ID",
     "fields.contact": "Kontakt",
     "fields.hitobito_group_ref": "Hitobito-Gruppenreferenz",
     "fields.inventory_ref": "Inventarreferenz",
@@ -665,6 +779,7 @@ const schemas = {
   ],
   associations: [
     ["tenant_id", "labels.tenant", "text", true],
+    ["clerk_organization_id", "fields.clerk_organization_id", "text", false],
     ["display_name", "fields.display_name_association", "text", true],
     ["short_name", "fields.short_name", "text", false],
     ["status", "fields.status", "association_status", true],
@@ -680,7 +795,6 @@ const schemas = {
     ["email", "fields.email", "email", true],
     ["display_name", "fields.display_name", "text", false],
     ["status", "fields.status", "user_status", true],
-    ["global_role", "fields.global_role", "global_role", true],
     ["access_profile", "fields.access_profile", "access_profile", true],
     ["tenant_roles", "fields.tenant_roles", "tenant_roles", false, "full"],
     ["member_links", "fields.member_links", "member_links", false, "full"]
@@ -696,7 +810,7 @@ function api(path, options = {}) {
   if (["POST", "PUT", "DELETE"].includes(method) && options.expectRevision !== false) {
     headers["x-rental-expected-revision"] = String(Number(state.meta.revision || 0));
   }
-  return fetch(`/api/${tenantRoutePrefix}${state.tenant}${path}`, {...options, method, headers, credentials: "same-origin"}).then(async (response) => {
+  return authFetch(`/api/${tenantRoutePrefix}${state.tenant}${path}`, {...options, method, headers}).then(async (response) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (data.meta) applyMeta(data.meta);
@@ -710,7 +824,7 @@ function api(path, options = {}) {
 }
 
 async function apiContext() {
-  const response = await fetch("/api/context", {
+  const response = await authFetch("/api/context", {
     credentials: "same-origin",
     headers: {"content-type": "application/json"}
   });
@@ -727,7 +841,7 @@ async function apiContext() {
 function adminApi(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const headers = {"content-type": "application/json", ...(options.headers || {})};
-  return fetch(`/api/admin${path}`, {...options, method, headers, credentials: "same-origin"}).then(async (response) => {
+  return authFetch(`/api/admin${path}`, {...options, method, headers}).then(async (response) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(data.error || `Request failed (${response.status})`);
@@ -740,7 +854,7 @@ function adminApi(path, options = {}) {
 }
 
 function accessRequestApi(payload) {
-  return fetch("/api/access-requests", {
+  return authFetch("/api/access-requests", {
     credentials: "same-origin",
     method: "POST",
     headers: {"content-type": "application/json"},
@@ -774,6 +888,7 @@ function saveStoredAccessRequest(request) {
 }
 
 function resetAuthenticatedState() {
+  authGeneration++;
   stopMetadataPolling();
   state.context = null;
   state.authStatus = "signed_out";
@@ -793,6 +908,11 @@ function resetAuthenticatedState() {
   };
   state.associations = [];
   state.users = [];
+  state.admissions = null;
+  state.adminErrors = [];
+  state.invitations = [];
+  state.invitationTenant = "";
+  state.invitationError = "";
   state.accessRequests = [];
   window.clearTimeout(showMessage.timer);
   message.hidden = true;
@@ -800,47 +920,32 @@ function resetAuthenticatedState() {
   applyAccessChrome();
 }
 
-function logoutReturnPending() {
-  const url = new URL(window.location.href);
-  if (url.searchParams.get(logoutReturnParam) === logoutReturnValue) return true;
-  try {
-    return sessionStorage.getItem(logoutPendingStorageKey) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function consumeLogoutReturn() {
-  if (!logoutReturnPending()) return false;
-  try {
-    sessionStorage.removeItem(logoutPendingStorageKey);
-  } catch {
-    // The URL marker still makes the logout return safe without session storage.
-  }
-  const url = new URL(window.location.href);
-  url.searchParams.delete(logoutReturnParam);
-  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}` || "/");
-  resetAuthenticatedState();
-  return true;
-}
-
-function beginLogout() {
-  try {
-    sessionStorage.setItem(logoutPendingStorageKey, "1");
-  } catch {
-    // The backend return marker is the fallback for restricted storage modes.
-  }
+async function beginLogout() {
   resetAuthenticatedState();
   render();
-  window.location.replace("/auth/logout");
+  try {
+    await signOut();
+  } catch (error) {
+    showMessage(error.message, true);
+  }
 }
 
 function authReasonFromError(error) {
   const errorCode = String(error?.data?.errorCode || "").toUpperCase();
+  if (errorCode === "ACCESS_SESSION_PENDING" || error?.data?.authReason === "session-pending") return "session_pending";
+  if (errorCode === "AUTH_TASK_UNSUPPORTED") return "unsupported_task";
+  if (errorCode === "AUTH_CONFIGURATION_ERROR") return "configuration_error";
+  if (errorCode === "AUTH_PROVIDER_UNAVAILABLE" || ["TimeoutError", "AbortError", "TypeError"].includes(error?.name)) return "provider_unavailable";
+  if (errorCode === "ACCESS_EMAIL_UNVERIFIED") return "email_unverified";
+  if (errorCode === "ACCESS_TOKEN_INVALID") return "invalid_token";
   if (["ACCESS_TOKEN_MISSING", "CONTEXT_MISSING"].includes(errorCode)) return "missing_token";
   if (errorCode === "ACCESS_REQUEST_PENDING") return "pending_request";
   if (errorCode === "ACCESS_PROFILE_NOT_FOUND") return "no_profile";
-  if (["ACCESS_PROFILE_DISABLED", "ACCESS_PROFILE_NO_TENANT", "TENANT_ACCESS_DENIED"].includes(errorCode)) return "access_denied";
+  if (errorCode === "ACCESS_ORGANIZATION_REQUIRED") return "organization_required";
+  if (errorCode === "ACCESS_ORGANIZATION_UNMAPPED") return "organization_unmapped";
+  if (["ACCESS_ORGANIZATION_ACCESS_DENIED", "ACCESS_ORGANIZATION_ROLE_UNSUPPORTED"].includes(errorCode)) return "access_denied";
+  if (errorCode === "ACCESS_PROFILE_DISABLED") return "account_disabled";
+  if (["ACCESS_PROFILE_NO_TENANT", "TENANT_ACCESS_DENIED"].includes(errorCode)) return "access_denied";
   if (errorCode) return "auth_error";
   const message = String(error?.message || "").toLowerCase();
   if (error?.status === 401 || message.includes("missing signed tenant context") || (message.includes("missing") && message.includes("token"))) return "missing_token";
@@ -855,41 +960,23 @@ function authEmailFromError(error) {
 }
 
 function hasLikelySignInToken() {
-  return state.authStatus === "signed_out" && ["pending_request", "no_profile", "access_denied"].includes(state.authReason);
+  return getAuthState().status === "active" || ["pending_request", "no_profile", "access_denied", "email_unverified"].includes(state.authReason);
 }
 
-function currentAuthStartState() {
-  if (["pending_request", "no_profile", "access_denied"].includes(state.authReason)) return state.authReason;
-  return state.accessRequestResult ? "pending_request" : state.authReason;
-}
-
-function authStartSteps() {
-  const hasRequest = Boolean(state.accessRequestResult);
-  const authState = currentAuthStartState();
-  const hasToken = hasLikelySignInToken();
-  return [
-    {
-      state: hasToken ? "done" : "current",
-      title: t("auth.sign_in"),
-      body: hasToken ? t("auth.signed_in") : t("auth.sign_in_needed"),
-      action: hasToken ? null : {type: "sign_in", label: t("actions.sign_in")}
-    },
-    {
-      state: hasToken && (authState === "pending_request" || authState === "no_profile" || authState === "access_denied") ? "current" : "waiting",
-      title: t("entities.user_access"),
-      body: !hasToken ? t("auth.access_check") : authState === "pending_request" ? t("auth.pending_hint") : authState === "access_denied" ? t("auth.access_denied") : t("auth.no_profile"),
-      action: !hasToken
-        ? null
-        : authState === "pending_request"
-          ? {type: "retry_access", label: t("actions.retry_access")}
-          : {type: "request_access", label: t("actions.request_access")}
-    },
-    {
-      state: hasToken && hasRequest ? "current" : "waiting",
-      title: t("entities.association"),
-      body: t("auth.registration_hint")
-    }
-  ];
+function authStartPresentation() {
+  const reason = state.authReason;
+  if (state.authStatus === "checking") return ["auth.checking", "auth.checking_body"];
+  if (reason === "session_pending") return ["auth.session_pending", getAuthState().task === "choose-organization" ? "auth.choose_organization" : "auth.finish_setup"];
+  if (reason === "organization_required") return ["auth.select_clerk", "auth.select_clerk_body"];
+  if (reason === "organization_unmapped") return ["auth.unmapped_org", "auth.unmapped_body"];
+  if (reason === "pending_request") return ["auth.pending_title", "auth.pending_body"];
+  if (["no_profile", "access_denied"].includes(reason)) return ["auth.no_access_title", "auth.no_access_body"];
+  if (reason === "missing_token") return ["auth.welcome", "auth.welcome_body"];
+  const descriptions = {
+    invalid_token: "auth.expired", configuration_error: "auth.configuration",
+    unsupported_task: "auth.unsupported", email_unverified: "auth.verify_email", account_disabled: "auth.account_disabled"
+  };
+  return ["auth.error_title", descriptions[reason] || "auth.unavailable"];
 }
 
 function updateJoinRequestSubmit(form) {
@@ -930,10 +1017,8 @@ function applyContext(context) {
 function renderUserMenu() {
   const context = state.context;
   const caps = capabilities();
-  const role = context?.global_role && context.global_role !== "none" ? context.global_role : context?.role || "viewer";
-  const roleLabel = context?.global_role && context.global_role !== "none"
-    ? t(`global_role.${role}`)
-    : role === "admin" ? t("tenant_role.admin") : role === "operator" ? t("tenant_role.operator") : t("tenant_role.reader");
+  const role = context?.role || "viewer";
+  const roleLabel = role === "admin" ? t("tenant_role.admin") : role === "operator" ? t("tenant_role.operator") : t("tenant_role.reader");
   const accessLabel = caps.admin ? t("tenant_role.admin") : caps.write ? t("tenant_role.operator") : t("tenant_role.reader");
   [
     [userMenu, userMenuEmail, userMenuTenant, userMenuRole, userMenuAccess],
@@ -951,7 +1036,7 @@ function renderUserMenu() {
 
 function renderSessionButtons() {
   const checking = state.authStatus === "checking";
-  const signedIn = state.authStatus === "signed_in";
+  const signedIn = state.authStatus === "signed_in" || getAuthState().status !== "signed_out";
   const label = t(signedIn ? "actions.logout" : "actions.sign_in");
   [sessionButton, mobileSessionButton].forEach((button) => {
     if (!button) return;
@@ -963,7 +1048,23 @@ function renderSessionButtons() {
 }
 
 function closeUserMenus(except = null) {
-  userMenus.forEach((menu) => {
+  document.addEventListener("click", async event => {
+  const button = event.target.closest("[data-manage-org], [data-refresh-admissions], [data-resolve-request], [data-notify-request], [data-new-association]");
+  if (!button) return;
+  button.disabled = true;
+  try {
+    if (button.dataset.manageOrg) await openOrganization(button.dataset.manageOrg);
+    else if (button.dataset.newAssociation !== undefined) openDialog("associations", {status: "active", locale: "de-CH"});
+    else {
+      if (button.dataset.resolveRequest) await adminApi(`/access-requests/${button.dataset.resolveRequest}/resolve`, {method: "POST"});
+      if (button.dataset.notifyRequest) await adminApi(`/access-requests/${button.dataset.notifyRequest}/notify`, {method: "POST"});
+      await loadData();
+    }
+  } catch (error) { showMessage(error.message, true); }
+  finally { button.disabled = false; }
+});
+
+userMenus.forEach((menu) => {
     if (menu !== except) menu.open = false;
   });
 }
@@ -1008,16 +1109,12 @@ function applyLanguage() {
   applyMeta();
 }
 
-function hasGlobalRole() {
-  const globalRole = state.context?.global_role || "none";
-  return globalRole !== "none" || Boolean(state.context?.has_global_role);
-}
-
 function shouldShowTenantSwitcher() {
+  if (getAuthState().provider === "clerk") return false;
   const context = state.context;
   if (!context) return true;
   if (context.mode === "local" || context.mode === "open") return true;
-  return Boolean(context.tenant_switchable || hasGlobalRole() || Number(context.tenant_count || 0) > 1);
+  return Boolean(context.tenant_switchable || Number(context.tenant_count || 0) > 1);
 }
 
 function shouldShowOperationalMeta() {
@@ -1135,7 +1232,7 @@ function showMessage(text, isError = false, action = null) {
   }
   message.hidden = false;
   window.clearTimeout(showMessage.timer);
-  showMessage.timer = window.setTimeout(clearMessage, 60000);
+  if (!isError) showMessage.timer = window.setTimeout(clearMessage, 60000);
 }
 
 async function handleMutationError(error) {
@@ -1191,9 +1288,7 @@ function serviceDuePill(status) {
   return `<span class="pill service-${escapeHtml(status)}">${escapeHtml(t(`service_due.${status || "ok"}`))}</span>`;
 }
 
-function globalRolePill(role) {
-  return `<span class="pill role-${escapeHtml(role)}">${escapeHtml(t(`global_role.${role}`))}</span>`;
-}
+
 
 function tenantRolePill(role) {
   return `<span class="pill role-${escapeHtml(role)}">${escapeHtml(t(`tenant_role.${role}`))}</span>`;
@@ -1237,12 +1332,18 @@ function switchView(viewName) {
 }
 
 async function loadData() {
-  const associationsPromise = capabilities().platform_admin ? adminApi("/associations").catch(() => ({data: []})) : Promise.resolve({data: []});
-  const usersPromise = capabilities().admin ? adminApi("/users").catch(() => ({data: []})) : Promise.resolve({data: []});
-  const requestsPromise = capabilities().admin ? adminApi("/access-requests").catch(() => ({data: []})) : Promise.resolve({data: []});
+  const generation = authGeneration;
+  const requestedTenant = state.tenant;
+  const adminErrors = [];
+  const captureAdminError = error => { adminErrors.push(error.message); return {data: []}; };
+  const clerkManaged = getAuthState().provider === "clerk";
+  const associationsPromise = capabilities().platform_admin ? adminApi("/associations").catch(captureAdminError) : Promise.resolve({data: []});
+  const usersPromise = capabilities().admin && !clerkManaged ? adminApi("/users").catch(captureAdminError) : Promise.resolve({data: []});
+  const requestsPromise = capabilities().admin ? adminApi("/access-requests").catch(captureAdminError) : Promise.resolve({data: []});
+  const admissionsPromise = capabilities().admin && clerkManaged ? adminApi("/admissions").catch(error => { adminErrors.push(error.message); return {data: null}; }) : Promise.resolve({data: null});
   const tenantAvailable = validAssociationTenantId(state.tenant);
   const emptyCollection = Promise.resolve({data: []});
-  const [summary, instruments, members, rentals, serviceRecords, history, associations, users, accessRequests] = await Promise.all([
+  const [summary, instruments, members, rentals, serviceRecords, history, associations, users, accessRequests, admissions] = await Promise.all([
     tenantAvailable ? api("/summary") : Promise.resolve({meta: {revision: 0, updated_at: null}}),
     tenantAvailable ? api("/instruments") : emptyCollection,
     tenantAvailable ? api("/members") : emptyCollection,
@@ -1251,8 +1352,10 @@ async function loadData() {
     tenantAvailable ? api("/history") : emptyCollection,
     associationsPromise,
     usersPromise,
-    requestsPromise
+    requestsPromise,
+    admissionsPromise
   ]);
+  if (generation !== authGeneration || requestedTenant !== state.tenant) return;
   state.summary = summary;
   applyMeta(summary.meta);
   state.records = {
@@ -1265,6 +1368,8 @@ async function loadData() {
   state.associations = associations.data || [];
   state.users = users.data || [];
   state.accessRequests = accessRequests.data || [];
+  state.admissions = admissions.data;
+  state.adminErrors = adminErrors;
   reconcileDetailSelection();
   render();
   startMetadataPolling();
@@ -1300,6 +1405,12 @@ async function pollTenantMetadata() {
   if (!metadataPollStartedAt || state.authStatus !== "signed_in") return;
   try {
     if (!document.hidden && validAssociationTenantId(state.tenant)) {
+      if (capabilities().admin) {
+        const requests = await adminApi("/access-requests");
+        state.accessRequests = requests.data || [];
+        renderOrganizationChrome();
+        if (state.view === "admin" && !dialog.open && !view.contains(document.activeElement)) renderAdmin();
+      }
       const result = await api("/meta");
       const remoteRevision = Number(result.meta?.revision || 0);
       const loadedRevision = Number(state.meta.revision || 0);
@@ -1339,12 +1450,14 @@ function reconcileDetailSelection() {
 }
 
 function render() {
+  unmountAuthFlow();
   applyLanguage();
   renderSessionButtons();
-  document.body.classList.toggle("is-loading", Boolean(state.isLoading));
+  document.body.classList.toggle("is-loading", Boolean(state.isLoading) && state.authStatus === "signed_in");
   document.body.classList.toggle("is-auth-start", state.authStatus !== "signed_in");
   if (state.authStatus !== "signed_in") {
     renderAuthStart();
+    renderOrganizationChrome();
     return;
   }
   const caps = capabilities();
@@ -1359,7 +1472,7 @@ function render() {
   viewTitle.textContent = t(`views.${state.view}`);
   tenantLabel.textContent = state.tenant;
   if (mobileTenantLabel) mobileTenantLabel.textContent = state.tenant;
-  primaryAction.hidden = basic || state.view === "history" || (state.view === "admin" && !caps.admin);
+  primaryAction.hidden = (getAuthState().provider === "clerk" && state.view === "admin") || basic || state.view === "history" || (state.view === "admin" && !caps.admin);
   primaryAction.textContent = state.view === "admin" ? t("actions.new_association") : state.view === "instruments" ? t("actions.new_instruments") : state.view === "members" ? t("actions.new_members") : state.view === "service_records" ? t("actions.new_service_records") : t("actions.new_rentals");
   primaryAction.disabled = state.view === "admin" ? !caps.platform_admin : !caps.write;
   seedButton.hidden = basic || hasExistingTenantData();
@@ -1383,6 +1496,8 @@ function render() {
       button.hidden = false;
     }
     button.classList.toggle("is-active", button.dataset.view === state.view);
+    if (button.dataset.view === state.view) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
   });
 
   if (state.view === "dashboard") renderDashboard();
@@ -1390,6 +1505,7 @@ function render() {
   if (state.view === "members") renderCollection("members");
   if (state.view === "rentals") renderCollection("rentals");
   if (state.view === "service_records") renderCollection("service_records");
+  renderOrganizationChrome();
   if (state.view === "history") renderHistory();
   if (state.view === "admin") renderAdmin();
 }
@@ -1415,33 +1531,38 @@ function renderAuthStart() {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.remove("is-active");
   });
-  const request = state.accessRequestResult;
+  const checking = state.authStatus === "checking";
+  const auth = getAuthState();
+  const request = hasLikelySignInToken() ? state.accessRequestResult : null;
   const associationContact = request?.association?.contact;
   const emailValue = state.authEmail || request?.email || "";
-  const steps = authStartSteps();
-  const showAccessRequestForm = hasLikelySignInToken() || Boolean(request);
+  const [title, description] = authStartPresentation();
+  const showAccessRequestForm = hasLikelySignInToken() && ["no_profile", "access_denied"].includes(state.authReason);
+  const showClerkFlow = auth.provider === "clerk" && ["missing_token", "session_pending"].includes(state.authReason) && !checking;
+  const isError = !["checking", "missing_token", "session_pending", "no_profile", "access_denied", "pending_request"].includes(state.authReason);
   view.innerHTML = `
-    <section class="auth-start" aria-labelledby="authStartTitle">
-      <div class="auth-start-mark">RD</div>
-      <div>
-        <p class="eyebrow">${t("app.eyebrow")}</p>
-        <h2 id="authStartTitle">${t("auth.start_title")}</h2>
-        <p>${t("auth.start_lead")}</p>
+    <section class="auth-start" aria-labelledby="authStartTitle" aria-busy="${checking || state.authBusy}">
+      <div class="auth-start-mark" aria-hidden="true">RD</div>
+      <div class="auth-introduction" role="${isError ? "alert" : "status"}">
+        <h2 id="authStartTitle">${t(title)}</h2>
+        <p>${t(description)}</p>
+        ${state.authReason === "organization_unmapped" && getActiveOrganization() ? `<p class="auth-identity">${escapeHtml(getActiveOrganization().name)} · <code>${escapeHtml(getActiveOrganization().id)}</code></p>` : ""}
+        ${state.authEmail ? `<p class="auth-identity">${escapeHtml(t("auth.identity", {email: state.authEmail}))}</p>` : ""}
       </div>
-      <div class="auth-start-steps" aria-label="${escapeHtml(t("auth.start_title"))}">
-        ${steps.map((step, index) => `
-          <div class="auth-step auth-step-${step.state}">
-            <span>${index + 1}</span>
-            <strong>${escapeHtml(step.title)}</strong>
-            <p>${escapeHtml(step.body)}</p>
-            ${step.action ? `<button type="button" class="primary-button auth-step-action" ${step.action.type === "request_access" ? "data-auth-request-jump" : "data-auth-retry"}>${escapeHtml(step.action.label)}</button>` : ""}
-          </div>
-        `).join("")}
-      </div>
-      ${showAccessRequestForm ? `<div id="accessRequestSection" class="auth-start-actions">
+      ${state.authError && isError ? `<details class="auth-error-details"><summary>${t("auth.error_details")}</summary><p>${escapeHtml(state.authError)}</p></details>` : ""}
+      ${showClerkFlow ? '<div id="clerkAuthFlow" class="clerk-auth-flow"></div>' : ""}
+      ${!checking && auth.status === "active" ? '<div id="authOrganizationSwitcher" class="organization-switcher"></div>' : ""}
+      <div id="authFlowError" class="dialog-error" role="alert" hidden></div>
+      ${!checking ? `<div class="auth-session-actions">
+        <button type="button" class="${showClerkFlow ? "ghost-button" : "primary-button"}" data-auth-retry ${state.authBusy ? "disabled" : ""}>${t(state.authBusy ? "auth.checking" : hasLikelySignInToken() ? "auth.check_access" : auth.provider === "mock" && state.authReason === "missing_token" ? "actions.sign_in" : "auth.retry")}</button>
+        ${auth.status !== "signed_out" || hasLikelySignInToken() ? `<button type="button" class="ghost-button" data-logout>${t("auth.other_account")}</button>` : ""}
+        ${state.authReason === "email_unverified" ? `<button type="button" class="ghost-button" data-account>${t("actions.account")}</button>` : ""}
+      </div>` : ""}
+      ${showAccessRequestForm ? `<details id="accessRequestSection" class="auth-request-alternative">
+        <summary>${t("auth.request_alternative")}</summary>
         <form class="auth-request-form" data-join-request>
           <label for="joinEmail">${t("fields.email")}</label>
-          <input id="joinEmail" name="email" type="email" autocomplete="email" required placeholder="name@example.org" value="${escapeHtml(emailValue)}" aria-describedby="joinEmailHelp">
+          <input id="joinEmail" name="email" type="email" autocomplete="email" required readonly value="${escapeHtml(emailValue)}" aria-describedby="joinEmailHelp">
           <p id="joinEmailHelp" class="muted">${t("auth.email_help")}</p>
           <label for="joinTenant">${t("auth.association_code")}</label>
           <div class="auth-request-row">
@@ -1449,28 +1570,29 @@ function renderAuthStart() {
             <button class="primary-button" data-join-submit disabled>${t("actions.request_join")}</button>
           </div>
         </form>
-        <div class="auth-session-actions">
-          <button type="button" class="primary-button" data-auth-retry>${t("actions.retry_sign_in")}</button>
-          ${hasLikelySignInToken() ? `<button type="button" class="ghost-button" data-logout>${t("actions.logout")}</button>` : ""}
-        </div>
-      </div>` : ""}
-      ${request ? `
-        <aside class="auth-request-result">
-          <div class="journey-head">
-            <strong>${t("auth.request_submitted")}</strong>
-            ${statusPill(request.status || "pending")}
-          </div>
-          <dl>
-            <div><dt>${t("auth.request_reference")}</dt><dd>${escapeHtml(request.id || "")}</dd></div>
-            <div><dt>${t("labels.tenant")}</dt><dd>${escapeHtml(request.tenant_id || "")}</dd></div>
-            <div><dt>${t("fields.email")}</dt><dd>${escapeHtml(request.email || "")}</dd></div>
-            <div><dt>${t("auth.request_status")}</dt><dd>${escapeHtml(t(`status.${request.status || "pending"}`))}</dd></div>
-            ${associationContact ? `<div><dt>${t("auth.request_contact")}</dt><dd>${escapeHtml(associationContact)}</dd></div>` : ""}
-          </dl>
-        </aside>
-      ` : ""}
+      </details>` : ""}
+      ${request ? `<aside class="auth-request-result">
+        <strong>${t("auth.request_submitted")}</strong>
+        ${request.notification_status && request.notification_status !== "sent" ? `<p role="status">${t("auth.request_email_warning")}</p>` : ""}
+        <dl>
+          <div><dt>${t("auth.request_reference")}</dt><dd>${escapeHtml(request.id || "")}</dd></div>
+          <div><dt>${t("auth.association_code")}</dt><dd>${escapeHtml(request.tenant_id || "")}</dd></div>
+          <div><dt>${t("auth.request_status")}</dt><dd>${escapeHtml(t(`status.${request.status || "pending"}`))}</dd></div>
+          ${associationContact ? `<div><dt>${t("auth.request_contact")}</dt><dd>${escapeHtml(associationContact)}</dd></div>` : ""}
+        </dl>
+      </aside>` : ""}
     </section>
   `;
+  mountOrganizationSwitcher(document.querySelector("#authOrganizationSwitcher"));
+  if (showClerkFlow) {
+    try {
+      mountAuthFlow(document.querySelector("#clerkAuthFlow"));
+    } catch (error) {
+      const alert = document.querySelector("#authFlowError");
+      alert.textContent = t("auth.unsupported");
+      alert.hidden = false;
+    }
+  }
 }
 
 function renderDashboard() {
@@ -1485,6 +1607,7 @@ function renderDashboard() {
     .sort((a, b) => String(a.next_service_date || "").localeCompare(String(b.next_service_date || ""), locale(), {numeric: true, sensitivity: "base"}))
     .slice(0, 6);
   view.innerHTML = `
+    ${capabilities().admin && state.accessRequests.some(item => item.status === "pending") ? `<section class="request-notice"><strong>${t("admin.pending_notice", {count: state.accessRequests.filter(item => item.status === "pending").length})}</strong><button class="ghost-button" data-jump="admin">${t("admin.review_requests")}</button></section>` : ""}
     ${renderStats()}
     <div class="content-grid">
       <section class="panel">
@@ -1588,12 +1711,106 @@ function renderStats() {
     [t("stats.overdue"), state.summary.overdue_rentals || 0],
     [t("stats.service_attention"), state.summary.service_attention || 0]
   ];
-  return `<section class="stats-grid">${stats.map(([label, value]) => `
-    <div class="stat"><span>${label}</span><strong>${value}</strong></div>
+  return `<section class="stats-grid">${stats.map(([label, value], index) => `
+    <div class="stat${index >= 4 && value > 0 ? " stat-attention" : ""}"><span>${label}</span><strong>${value}</strong></div>
   `).join("")}</section>`;
 }
 
+function clerkImageUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "img.clerk.com" ? url.href : "";
+  } catch { return ""; }
+}
+
+function renderOrganizationChrome() {
+  const organization = getActiveOrganization();
+  const name = organization?.name || (state.authStatus === "signed_in" ? state.summary?.association?.display_name || state.tenant : t("app.eyebrow"));
+  tenantLabel.textContent = name;
+  if (mobileTenantLabel) mobileTenantLabel.textContent = name;
+  const imageUrl = clerkImageUrl(organization?.imageUrl);
+  document.querySelectorAll("[data-organization-mark]").forEach(mark => {
+    if (mark.dataset.imageUrl === imageUrl) return;
+    mark.dataset.imageUrl = imageUrl;
+    mark.textContent = "RD";
+    if (imageUrl) {
+      const image = document.createElement("img");
+      image.src = imageUrl;
+      image.alt = "";
+      image.width = 44;
+      image.height = 44;
+      image.addEventListener("error", () => { mark.textContent = "RD"; }, {once: true});
+      mark.replaceChildren(image);
+    }
+  });
+  const switcher = document.querySelector("#clerkOrganizationSwitcher");
+  if (switcher) {
+    switcher.hidden = getAuthState().provider !== "clerk" || state.authStatus !== "signed_in";
+    mountOrganizationSwitcher(switcher.hidden ? null : switcher);
+  }
+  if (adminNavItem && capabilities().admin) {
+    const count = state.accessRequests.filter(item => item.status === "pending").length;
+    adminNavItem.textContent = `${t("views.admin")}${count ? ` (${count})` : ""}`;
+    adminNavItem.setAttribute("aria-label", count ? `${t("views.admin")}: ${t("admin.pending_notice", {count})}` : t("views.admin"));
+  }
+}
+
+function organizationHeading(organization) {
+  const imageUrl = clerkImageUrl(organization.image_url);
+  return `<div class="organization-heading">${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="" width="40" height="40" loading="lazy">` : ""}<div><h3>${escapeHtml(organization.name)}</h3><span class="muted">${escapeHtml(organization.tenant_id)}</span></div></div>`;
+}
+
+function renderClerkAdmin() {
+  if (!capabilities().admin) { view.innerHTML = `<div class="empty">${t("tenant.locked")}</div>`; return; }
+  const admissions = state.admissions;
+  const pending = state.accessRequests.filter(item => item.status === "pending");
+  view.innerHTML = `<div class="admin-stack">
+    <section class="panel">
+      <div class="panel-head"><h2>${t("admin.admissions")}</h2><div class="panel-actions">
+        <button class="ghost-button" data-refresh-admissions>${t("actions.refresh")}</button>
+      </div></div>
+      <p class="muted">${t("admin.clerk_managed")}</p>
+      <p class="muted">${t("admin.refresh_hint")}</p>
+      ${state.adminErrors.map(error => `<p class="dialog-error" role="alert">${escapeHtml(error)}</p>`).join("")}
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>${t("sections.access_requests")} (${pending.length})</h2></div>
+      ${!pending.length ? `<p class="muted">${t("empty.no_access_requests")}</p>` : `<p>${t("admin.invite_help")}</p><div class="attention-list">${pending.map(item => {
+        const organization = admissions?.organizations.find(org => org.tenant_id === item.tenant_id);
+        const delivery = item.notification_status;
+        return `<article class="request-item">
+          <div><strong>${escapeHtml(item.email)}</strong><p class="muted">${escapeHtml(organization?.name || item.tenant_id)}</p>
+          <p class="muted">${t(delivery === "sent" ? "admin.email_sent" : delivery === "not_configured" || !delivery ? "admin.email_config" : "admin.email_failed")}</p></div>
+          <div class="row-actions">
+            ${organization ? `<button class="primary-button" data-manage-org="${escapeHtml(organization.id)}">${t("admin.manage_clerk")}</button>` : ""}
+            <button class="ghost-button" data-resolve-request="${escapeHtml(item.id)}">${t("admin.resolve")}</button>
+            ${delivery !== "sent" ? `<button class="ghost-button" data-notify-request="${escapeHtml(item.id)}">${t("admin.retry_email")}</button>` : ""}
+            <button class="ghost-button" data-deny-request="${escapeHtml(item.id)}">${t("actions.deny")}</button>
+          </div>
+        </article>`;
+      }).join("")}</div>`}
+    </section>
+    ${(admissions?.organizations || []).map(organization => {
+      const memberships = admissions.memberships.filter(item => item.organization_id === organization.id);
+      const invitations = admissions.invitations.filter(item => item.organization_id === organization.id);
+      return `<section class="panel">
+        <div class="panel-head">${organizationHeading(organization)}<button class="ghost-button" data-manage-org="${escapeHtml(organization.id)}">${t("admin.manage_clerk")}</button></div>
+        ${!memberships.length ? `<p class="muted">${t("admin.no_admissions")}</p>` : `<div class="table-wrap"><table><thead><tr><th>${t("sections.users")}</th><th>${t("fields.tenant_roles")}</th><th>${t("fields.access_profile")}</th><th>${t("admin.permissions")}</th></tr></thead><tbody>${memberships.map(item => `<tr>
+          <td data-label="${t("sections.users")}"><strong>${escapeHtml(item.display_name || item.identifier)}</strong><div class="muted">${escapeHtml(item.identifier)}</div></td>
+          <td data-label="${t("fields.tenant_roles")}">${escapeHtml(item.clerk_role)}</td>
+          <td data-label="${t("fields.access_profile")}">${item.access_profile === "none" ? t("admin.no_app_access") : accessProfilePill(item.access_profile)}</td>
+          <td data-label="${t("admin.permissions")}">${escapeHtml((item.permissions || []).join(", ")) || "—"}</td>
+        </tr>`).join("")}</tbody></table></div>`}
+        <h3 class="admission-subheading">${t("sections.invitations")} (${invitations.length})</h3>
+        ${!invitations.length ? `<p class="muted">${t("empty.no_invitations")}</p>` : `<ul class="invitation-summary">${invitations.map(item => `<li><span>${escapeHtml(item.email)}</span><span>${escapeHtml(item.clerk_role)}</span>${statusPill(item.status)}</li>`).join("")}</ul>`}
+      </section>`;
+    }).join("")}
+    ${state.detail?.entity === "associations" ? renderAssociationDetail(state.detail.id) : ""}
+  </div>`;
+}
+
 function renderAdmin() {
+  if (getAuthState().provider === "clerk") { renderClerkAdmin(); return; }
   const caps = capabilities();
   if (!caps.admin) {
     view.innerHTML = `<div class="empty">${t("tenant.locked")}</div>`;
@@ -1633,9 +1850,59 @@ function renderAdmin() {
         </div>
         ${renderUserTable(userItems)}
       </section>
+      ${renderInvitations()}
     </div>
     ${detail}
   </div>`;
+}
+
+function renderInvitations() {
+  const tenants = capabilities().platform_admin ? state.associations.map(item => item.tenant_id) : [state.tenant];
+  const options = tenants.filter(validAssociationTenantId);
+  return `<section class="panel">
+    <div class="panel-head"><h2>${t("sections.invitations")}</h2></div>
+    <form data-invite-form class="form-grid">
+      <div class="field"><label for="inviteTenant">${t("labels.tenant")}</label><select id="inviteTenant" name="tenant_id" required>
+        <option value="">${t("select.placeholder")}</option>
+        ${options.map(tenant => `<option value="${escapeHtml(tenant)}" ${tenant === state.invitationTenant ? "selected" : ""}>${escapeHtml(tenant)}</option>`).join("")}
+      </select></div>
+      <div class="field"><label for="inviteEmail">${t("fields.email")}</label><input id="inviteEmail" name="email" type="email" required autocomplete="off"></div>
+      <div class="field"><label for="inviteRole">${t("fields.tenant_roles")}</label><select id="inviteRole" name="tenant_role">
+        ${["reader", "operator", "admin"].map(role => `<option value="${role}">${t(`tenant_role.${role}`)}</option>`).join("")}
+      </select></div>
+      <div class="field"><label for="inviteProfile">${t("fields.access_profile")}</label><select id="inviteProfile" name="access_profile">
+        <option value="basic">${t("access_profile.basic")}</option><option value="full">${t("access_profile.full")}</option>
+      </select></div>
+      <button class="primary-button" type="submit" ${!state.invitationTenant ? "disabled" : ""}>${t("actions.invite")}</button>
+    </form>
+    <div data-invitation-list>${renderInvitationList()}</div>
+  </section>`;
+}
+
+function renderInvitationList() {
+  if (state.invitationError) return `<p role="alert">${escapeHtml(state.invitationError)}</p>`;
+  if (!state.invitations.length) return `<p class="muted">${t("empty.no_invitations")}</p>`;
+  return `<div class="table-wrap"><table><thead><tr><th>${t("fields.email")}</th><th>${t("fields.tenant_roles")}</th><th>${t("table.status")}</th><th></th></tr></thead>
+    <tbody>${state.invitations.map(item => `<tr><td data-label="${t("fields.email")}">${escapeHtml(item.email)}</td><td data-label="${t("fields.tenant_roles")}">${escapeHtml(item.role)}</td><td data-label="${t("table.status")}">${escapeHtml(item.status)}</td>
+      <td data-label="${t("table.action")}"><button type="button" class="ghost-button" data-revoke-invitation="${escapeHtml(item.id)}">${t("actions.revoke_invitation")}</button></td></tr>`).join("")}</tbody></table></div>`;
+}
+
+async function loadInvitations() {
+  const tenant = state.invitationTenant;
+  state.invitations = [];
+  state.invitationError = "";
+  if (validAssociationTenantId(tenant)) {
+    try {
+      const result = await adminApi(`/invitations/${encodeURIComponent(tenant)}`);
+      if (state.invitationTenant !== tenant) return;
+      state.invitations = result.data || [];
+    } catch (error) {
+      if (state.invitationTenant !== tenant) return;
+      state.invitationError = error.message;
+    }
+  }
+  const list = view.querySelector("[data-invitation-list]");
+  if (list) list.innerHTML = renderInvitationList();
 }
 
 function renderAccessRequestTable(items) {
@@ -1710,11 +1977,10 @@ function renderUserTable(items) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>${t("fields.email")}</th><th>${t("fields.global_role")}</th><th>${t("fields.access_profile")}</th><th>${t("fields.tenant_roles")}</th><th>${t("table.status")}</th><th></th></tr></thead>
+        <thead><tr><th>${t("fields.email")}</th><th>${t("fields.access_profile")}</th><th>${t("fields.tenant_roles")}</th><th>${t("table.status")}</th><th></th></tr></thead>
         <tbody>${items.map((item) => `
           <tr class="clickable-row ${state.detail?.entity === "user_access" && state.detail?.id === item.id ? "is-selected" : ""}" data-open="user_access" data-id="${item.id}" tabindex="0">
             <td data-label="${t("fields.email")}"><strong>${escapeHtml(item.email)}</strong><div class="muted">${escapeHtml(item.display_name || item.id)}</div></td>
-            <td data-label="${t("fields.global_role")}">${globalRolePill(item.global_role || "none")}</td>
             <td data-label="${t("fields.access_profile")}">${accessProfilePill(item.access_profile || "full")}</td>
             <td data-label="${t("fields.tenant_roles")}">${escapeHtml((item.tenant_roles || []).map((role) => `${role.tenant_id}:${role.role}`).join(", "))}</td>
             <td data-label="${t("table.status")}">${statusPill(item.status || "active")}</td>
@@ -1802,7 +2068,6 @@ function renderUserDetail(userId) {
       </div>
       <div class="detail-facts">
         ${statusPill(item.status || "active")}
-        ${globalRolePill(item.global_role || "none")}
         ${accessProfilePill(item.access_profile || "full")}
       </div>
       <div class="journey">
@@ -1823,6 +2088,7 @@ function renderUserDetail(userId) {
               <div class="journey-head">
                 <strong>${escapeHtml(role.tenant_id)}</strong>
                 ${tenantRolePill(role.role)}
+                ${accessProfilePill(item.tenant_profiles?.[role.tenant_id] || item.access_profile || "full")}
               </div>
               <div>${memberLinks.filter((link) => link.tenant_id === role.tenant_id).map((link) => escapeHtml(link.member_id)).join(", ") || t("access_profile.full")}</div>
             </div>
@@ -1839,7 +2105,6 @@ function renderUserDetail(userId) {
       </div>
       <dl class="detail-list">
         <div><dt>${t("fields.email")}</dt><dd>${escapeHtml(item.email)}</dd></div>
-        <div><dt>${t("fields.global_role")}</dt><dd>${escapeHtml(t(`global_role.${item.global_role || "none"}`))}</dd></div>
         <div><dt>${t("fields.access_profile")}</dt><dd>${escapeHtml(t(`access_profile.${item.access_profile || "full"}`))}</dd></div>
         <div><dt>${t("fields.member_links")}</dt><dd>${escapeHtml(memberLinks.map((link) => `${link.tenant_id}:${link.member_id}`).join(", "))}</dd></div>
       </dl>
@@ -1875,10 +2140,10 @@ function renderToolbar(entity) {
           : ["name"];
   return `
     <div class="toolbar">
-      <input data-search placeholder="${escapeHtml(t("search.placeholder", {entity: t(`entities.${entity}`)}))}" value="${escapeHtml(state.search)}">
+      <input data-search type="search" aria-label="${escapeHtml(t("search.placeholder", {entity: t(`entities.${entity}`)}))}" placeholder="${escapeHtml(t("search.placeholder", {entity: t(`entities.${entity}`)}))}" value="${escapeHtml(state.search)}">
       ${statusOptions.length ? `<div class="segmented">
         ${statusOptions.map((status) => `
-          <button data-status="${status}" class="${state.status === status ? "is-active" : ""}">${filterLabel(status)}</button>
+          <button data-status="${status}" aria-pressed="${state.status === status}" class="${state.status === status ? "is-active" : ""}">${filterLabel(status)}</button>
         `).join("")}
       </div>` : ""}
       <label class="sort-control">
@@ -2394,6 +2659,7 @@ function openDialog(entity, record = {}) {
   recordForm.dataset.entity = entity;
   recordForm.dataset.id = record.id || (entity === "associations" ? record.tenant_id : "") || "";
   formFields.innerHTML = schemas[entity].map(([name, label, type, required, span]) => renderField(name, label, type, required, span, record[name], record)).join("");
+  document.querySelector("#dialogError").hidden = true;
   dialog.showModal();
 }
 
@@ -2415,7 +2681,7 @@ function renderField(name, label, type, required, span, value, record = {}) {
     return `<div class="field${full} tenant-role-field" data-tenant-roles-field>
       <label>${t(label)}</label>
       <div class="tenant-role-list">
-        ${roles.map((role) => renderTenantRoleRow(role)).join("")}
+        ${roles.map((role) => renderTenantRoleRow({...role, access_profile: record.tenant_profiles?.[role.tenant_id] || record.access_profile || "basic"})).join("")}
       </div>
       <button type="button" class="ghost-button" data-add-tenant-role>${t("actions.add_tenant_role")}</button>
     </div>`;
@@ -2445,11 +2711,7 @@ function renderField(name, label, type, required, span, value, record = {}) {
       ${["active", "disabled"].map((status) => `<option value="${status}" ${status === (value || "active") ? "selected" : ""}>${t(`status.${status}`)}</option>`).join("")}
     </select></div>`;
   }
-  if (type === "global_role") {
-    return `<div class="field${full}"><label for="${name}">${t(label)}</label><select id="${name}" name="${name}" ${requiredAttr}>
-      ${["none", "reader", "operator", "admin", "platform_admin"].map((role) => `<option value="${role}" ${role === (value || "none") ? "selected" : ""}>${t(`global_role.${role}`)}</option>`).join("")}
-    </select></div>`;
-  }
+
   if (type === "access_profile") {
     return `<div class="field${full}"><label for="${name}">${t(label)}</label><select id="${name}" name="${name}" ${requiredAttr}>
       ${["full", "basic"].map((profile) => `<option value="${profile}" ${profile === (value || "full") ? "selected" : ""}>${t(`access_profile.${profile}`)}</option>`).join("")}
@@ -2497,10 +2759,13 @@ function renderInstrumentSelect(name, label, requiredAttr, full, value, options)
 function renderTenantRoleRow(role = {}) {
   const tenantId = role.tenant_id || "";
   const selectedRole = role.role || "reader";
-  return `<div class="tenant-role-row">
+  return `<div class="tenant-role-row tenant-access-row">
     ${renderTenantSelect("tenant_roles_tenant_id", tenantId)}
     <select name="tenant_roles_role">
       ${["reader", "operator", "admin"].map((item) => `<option value="${item}" ${item === selectedRole ? "selected" : ""}>${t(`tenant_role.${item}`)}</option>`).join("")}
+    </select>
+    <select name="tenant_roles_profile" aria-label="${t("fields.access_profile")}">
+      ${["basic", "full"].map((profile) => `<option value="${profile}" ${profile === (role.access_profile || "basic") ? "selected" : ""}>${t(`access_profile.${profile}`)}</option>`).join("")}
     </select>
     <button type="button" class="icon-button" data-remove-tenant-role title="${t("actions.delete")}" aria-label="${t("actions.delete")}">×</button>
   </div>`;
@@ -2551,11 +2816,14 @@ function formPayload(form) {
   if (form.querySelector("[data-tenant-roles-field]")) {
     const tenantIds = [...form.querySelectorAll('[name="tenant_roles_tenant_id"]')].map((input) => input.value.trim().toLowerCase());
     const roles = [...form.querySelectorAll('[name="tenant_roles_role"]')].map((select) => select.value);
+    const profiles = [...form.querySelectorAll('[name="tenant_roles_profile"]')].map((select) => select.value);
     payload.tenant_roles = tenantIds
       .map((tenantId, index) => tenantId ? {tenant_id: tenantId, role: roles[index] || "reader"} : null)
       .filter(Boolean);
+    payload.tenant_profiles = Object.fromEntries(tenantIds.map((tenantId, index) => [tenantId, profiles[index] || "basic"]).filter(([tenantId]) => tenantId));
     delete payload.tenant_roles_tenant_id;
     delete payload.tenant_roles_role;
+    delete payload.tenant_roles_profile;
   }
   if (form.querySelector("[data-member-links-field]")) {
     const tenantIds = [...form.querySelectorAll('[name="member_links_tenant_id"]')].map((input) => input.value.trim().toLowerCase());
@@ -2607,15 +2875,20 @@ messageAction?.addEventListener("click", async () => {
 });
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-account]")) {
+    closeUserMenus();
+    openAccount();
+    return;
+  }
   const logout = event.target.closest("[data-logout]");
   const sessionAction = event.target.closest("[data-session-action]");
   if (!logout && !sessionAction) return;
-  const loggingOut = Boolean(logout) || state.authStatus === "signed_in";
+  const loggingOut = Boolean(logout) || state.authStatus === "signed_in" || getAuthState().status !== "signed_out";
   if (loggingOut) {
     beginLogout();
     return;
   }
-  window.location.assign("/api/auth/login");
+  beginSignIn();
 });
 
 userMenus.forEach((menu) => {
@@ -2642,6 +2915,12 @@ document.addEventListener("keydown", (event) => {
 });
 
 view.addEventListener("input", (event) => {
+  if (event.target.matches("#inviteTenant")) {
+    state.invitationTenant = event.target.value;
+    event.target.form.querySelector('[type="submit"]').disabled = !validAssociationTenantId(state.invitationTenant);
+    loadInvitations();
+    return;
+  }
   if (event.target.matches('[data-join-request] [name="tenant_id"]')) {
     updateJoinRequestSubmit(event.target.closest("[data-join-request]"));
     return;
@@ -2665,6 +2944,17 @@ view.addEventListener("input", (event) => {
 view.addEventListener("click", async (event) => {
   const target = event.target.closest("button");
   if (target) {
+    if (target.dataset.revokeInvitation) {
+      target.disabled = true;
+      try {
+        await adminApi(`/invitations/${encodeURIComponent(state.invitationTenant)}/${encodeURIComponent(target.dataset.revokeInvitation)}`, {method: "DELETE"});
+        await loadInvitations();
+      } catch (error) {
+        showMessage(error.message, true);
+        target.disabled = false;
+      }
+      return;
+    }
     event.stopPropagation();
     if (target.dataset.addTenantRole !== undefined) {
       const list = target.closest("[data-tenant-roles-field]")?.querySelector(".tenant-role-list");
@@ -2702,7 +2992,7 @@ view.addEventListener("click", async (event) => {
       return;
     }
     if (target.dataset.authRetry !== undefined) {
-      window.location.assign("/api/auth/login");
+      beginSignIn();
       return;
     }
     if (target.dataset.authRequestJump !== undefined) {
@@ -2761,7 +3051,7 @@ view.addEventListener("click", async (event) => {
       return;
     }
     if (target.dataset.newUser !== undefined) {
-      openDialog("user_access", {status: "active", global_role: "none", access_profile: "full", tenant_roles: [], member_links: []});
+      openDialog("user_access", {status: "active", access_profile: "basic", tenant_roles: [], member_links: []});
       return;
     }
     if (target.dataset.editUser) {
@@ -2827,6 +3117,24 @@ view.addEventListener("keydown", (event) => {
 });
 
 view.addEventListener("submit", async (event) => {
+  if (event.target.matches("[data-invite-form]")) {
+    event.preventDefault();
+    const form = event.target;
+    const payload = Object.fromEntries(new FormData(form));
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    try {
+      await adminApi(`/invitations/${encodeURIComponent(payload.tenant_id)}`, {method: "POST", body: JSON.stringify(payload)});
+      form.querySelector('[name="email"]').value = "";
+      await loadInvitations();
+      showMessage(t("messages.invited"));
+    } catch (error) {
+      showMessage(error.message, true);
+    } finally {
+      button.disabled = !validAssociationTenantId(state.invitationTenant);
+    }
+    return;
+  }
   if (!event.target.matches("[data-join-request]")) return;
   event.preventDefault();
   const formData = new FormData(event.target);
@@ -2843,6 +3151,7 @@ view.addEventListener("submit", async (event) => {
   try {
     const result = await accessRequestApi({email, tenant_id: tenant});
     state.accessRequestResult = result.data;
+    state.authReason = "pending_request";
     saveStoredAccessRequest(result.data);
     render();
     showMessage(t("messages.join_request_pending"));
@@ -2864,16 +3173,27 @@ primaryAction.addEventListener("click", () => {
   openDialog(entity, defaults);
 });
 
+dialog.addEventListener("cancel", (event) => {
+  if (recordForm.getAttribute("aria-busy") === "true") event.preventDefault();
+});
+
 recordForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (recordForm.getAttribute("aria-busy") === "true") return;
   if (event.submitter?.value === "cancel") {
     dialog.close();
     return;
   }
   const entity = recordForm.dataset.entity;
   const id = recordForm.dataset.id;
-  const payload = formPayload(recordForm);
+  const saveButton = document.querySelector("#saveRecord");
+  const errorSummary = document.querySelector("#dialogError");
+  errorSummary.hidden = true;
+  recordForm.setAttribute("aria-busy", "true");
+  saveButton.disabled = true;
+  saveButton.textContent = t("actions.saving");
   try {
+    const payload = formPayload(recordForm);
     assertLowPiiWrite(payload, entity);
     if (entity === "associations") {
       if (!validAssociationTenantId(String(payload.tenant_id || ""))) {
@@ -2900,6 +3220,15 @@ recordForm.addEventListener("submit", async (event) => {
     showMessage(t("messages.saved", {entity: singular(entity)}));
   } catch (error) {
     await handleMutationError(error);
+    if (dialog.open) {
+      errorSummary.textContent = error.status === 409 ? t("messages.revision_conflict") : error.message;
+      errorSummary.hidden = false;
+      errorSummary.focus();
+    }
+  } finally {
+    recordForm.removeAttribute("aria-busy");
+    saveButton.disabled = false;
+    saveButton.textContent = t("actions.save");
   }
 });
 
@@ -3090,7 +3419,7 @@ instrumentFile.addEventListener("change", async () => {
 
 refreshButton.addEventListener("click", () => {
   if (state.authStatus !== "signed_in") {
-    window.location.assign("/api/auth/login");
+    beginSignIn();
     return;
   }
   loadData().catch((error) => showMessage(error.message, true));
@@ -3122,21 +3451,26 @@ function openAssociation(tenant) {
 }
 
 async function init() {
-  state.accessRequestResult = loadStoredAccessRequest();
-  if (consumeLogoutReturn()) {
-    applyLanguage();
-    render();
-    return;
-  }
+  const generation = authGeneration;
+  state.authStatus = "checking";
+  state.authError = "";
   applyLanguage();
   render();
   let context;
   try {
+    await initializeAuth();
+    if (getAuthState().status === "pending") {
+      throw Object.assign(new Error("Complete your account setup to continue"), {data: {errorCode: "ACCESS_SESSION_PENDING"}});
+    }
     context = await apiContext();
+    if (generation !== authGeneration) return;
   } catch (error) {
+    if (generation !== authGeneration) return;
     state.authStatus = "signed_out";
     state.authReason = authReasonFromError(error);
-    state.authEmail = authEmailFromError(error);
+    state.authEmail = authEmailFromError(error) || getAuthState().email;
+    const storedRequest = loadStoredAccessRequest();
+    state.accessRequestResult = storedRequest?.email === state.authEmail && state.authReason === "pending_request" ? storedRequest : null;
     if (error?.data?.accessRequest) {
       state.accessRequestResult = {
         ...error.data.accessRequest,
@@ -3147,26 +3481,22 @@ async function init() {
     state.authError = error.message || "";
     state.context = null;
     state.isLoading = false;
-    if (hasLikelySignInToken()) normalizeAuthPath();
     render();
     return;
   }
+  state.accessRequestResult = null;
+  localStorage.removeItem(accessRequestStorageKey);
   applyContext(context);
-  normalizeAuthPath();
   try {
     await loadData();
+    if (generation !== authGeneration) return;
     state.isLoading = false;
     render();
   } catch (error) {
+    if (generation !== authGeneration) return;
     state.isLoading = false;
     render();
     showMessage(error.message, true);
-  }
-}
-
-function normalizeAuthPath() {
-  if (window.location.pathname.replace(/\/+$/, "") === "/api/auth/login") {
-    window.history.replaceState(null, "", "/");
   }
 }
 
@@ -3176,8 +3506,53 @@ window.addEventListener("pageshow", (event) => {
 
 window.addEventListener("pagehide", stopMetadataPolling);
 
-init().catch((error) => {
-  state.isLoading = false;
-  render();
-  showMessage(error.message, true);
+let authRefreshPromise = null;
+let authRefreshQueued = false;
+function refreshAuthentication() {
+  if (authRefreshPromise) {
+    authRefreshQueued = true;
+    return authRefreshPromise;
+  }
+  authRefreshPromise = (async () => {
+    do {
+      authRefreshQueued = false;
+      await init();
+    } while (authRefreshQueued);
+  })().catch(error => {
+    state.authStatus = "signed_out";
+    state.authReason = authReasonFromError(error);
+    state.authError = error.message || "";
+    state.isLoading = false;
+    render();
+  }).finally(() => { authRefreshPromise = null; });
+  return authRefreshPromise;
+}
+
+async function beginSignIn() {
+  if (state.authBusy) return;
+  state.authBusy = true;
+  view.querySelectorAll("[data-auth-retry]").forEach(button => {
+    button.disabled = true;
+    button.textContent = t("auth.checking");
+  });
+  try {
+    await initializeAuth();
+    await signIn();
+    await refreshAuthentication();
+  } catch (error) {
+    state.authStatus = "signed_out";
+    state.authReason = authReasonFromError(error);
+    state.authError = error.message || "";
+    state.isLoading = false;
+  } finally {
+    state.authBusy = false;
+    render();
+  }
+}
+
+window.addEventListener("rental-auth-change", () => {
+  resetAuthenticatedState();
+  refreshAuthentication();
 });
+
+refreshAuthentication();

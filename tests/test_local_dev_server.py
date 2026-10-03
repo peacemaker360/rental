@@ -2,12 +2,60 @@ import tempfile
 import unittest
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
 from scripts.local_dev_server import JSON_HEADERS, InvalidJsonBody, JsonFileRepository, configured_handler, parse_json_body, static_path_for
 from worker.api_core import context_from_headers, signed_context_headers
 
 
 class LocalDevServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_mock_invitations_are_persistent_and_tenant_scoped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = JsonFileRepository(Path(tmp))
+            invitation = await repo.create_invitation("band-a", "member@example.test", "org:member")
+            reloaded = JsonFileRepository(Path(tmp))
+            self.assertEqual((await reloaded.list_invitations("band-a"))[0]["id"], invitation["id"])
+            self.assertEqual(await reloaded.list_invitations("band-b"), [])
+            await reloaded.revoke_invitation("band-a", invitation["id"])
+            self.assertEqual(await repo.list_invitations("band-a"), [])
+
+    def test_mock_authentication_lifecycle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            handler_type = configured_handler(JsonFileRepository(Path(tmp)), auth_mode="mock")
+            handler = object.__new__(handler_type)
+            handler.command = "GET"
+            handler.headers = {}
+            handler.send_json = Mock()
+
+            handler.path = "/api/auth/config"
+            handler.dispatch()
+            self.assertEqual(handler.send_json.call_args.args, ({"provider": "mock"}, 200))
+
+            handler.path = "/api/context"
+            for authorization in (None, "Bearer invalid"):
+                handler.headers = {"Authorization": authorization} if authorization else {}
+                handler.dispatch()
+                body, status = handler.send_json.call_args.args
+                self.assertEqual(status, 401)
+                self.assertEqual(body["errorCode"], "ACCESS_TOKEN_MISSING")
+
+            handler.headers = {"Authorization": "Bearer rental-local-mock"}
+            handler.dispatch()
+            body, status = handler.send_json.call_args.args
+            self.assertEqual(status, 200)
+            self.assertEqual(body["actor_id"], "local-admin")
+
+            handler.headers = {}
+            handler.dispatch()
+            self.assertEqual(handler.send_json.call_args.args[1], 401)
+
+    def test_mock_token_does_not_replace_signed_context(self):
+        context, error = context_from_headers(
+            "tenant-one", {"authorization": "Bearer rental-local-mock"}, "signed", "secret"
+        )
+        self.assertIsNone(context)
+        self.assertEqual(error, "missing signed tenant context")
+
     def test_parse_json_body_accepts_empty_object_and_list_payloads(self):
         self.assertEqual(parse_json_body(b""), {})
         self.assertEqual(parse_json_body(b'{"name": "Piano"}'), {"name": "Piano"})

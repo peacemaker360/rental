@@ -158,14 +158,12 @@ class DeployPreflightTests(unittest.TestCase):
             }],
             "services": [{"binding": "RENTAL_BACKEND", "service": "association-rental"}],
             "vars": {
-                "CF_ACCESS_TEAM_DOMAIN": "replace-with-team-domain",
-                "CF_ACCESS_AUD": "replace-with-aud",
+                "CLERK_PUBLISHABLE_KEY": "replace-with-clerk-key",
             },
         }, False, errors)
 
         self.assertTrue(any("TENANT_ACCESS_KV id still uses a placeholder" in error for error in errors))
-        self.assertTrue(any("vars.CF_ACCESS_TEAM_DOMAIN still uses a placeholder" in error for error in errors))
-        self.assertTrue(any("vars.CF_ACCESS_AUD still uses a placeholder" in error for error in errors))
+        self.assertTrue(any("vars.CLERK_PUBLISHABLE_KEY still uses a placeholder" in error for error in errors))
 
     def test_frontdoor_preflight_passes_when_placeholders_are_allowed(self):
         errors, warnings = validate_project(ROOT, allow_placeholders=True, include_frontdoor=True)

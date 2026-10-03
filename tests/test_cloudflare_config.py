@@ -1,6 +1,7 @@
 import asyncio
 import importlib.util
 import json
+import shlex
 import sys
 import tomllib
 import types
@@ -46,21 +47,20 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertEqual(config["main"], "worker/worker.py")
         self.assertEqual(config["compatibility_flags"], ["python_workers"])
         self.assertEqual(config["vars"]["RENTAL_AUTH_MODE"], "auto")
-        self.assertEqual(config["vars"]["CF_ACCESS_TEAM_DOMAIN"], "kittythecat.cloudflareaccess.com")
+        self.assertNotIn("CF_ACCESS_TEAM_DOMAIN", config["vars"])
         self.assertNotIn("kv_namespaces", config["vars"])
         self.assertEqual(config["kv_namespaces"][0]["binding"], "RENTAL_KV")
         self.assertTrue(any(item["binding"] == "TENANT_ACCESS_KV" for item in config["kv_namespaces"]))
         self.assertEqual(config["assets"]["binding"], "ASSETS")
-        self.assertEqual(config["assets"]["run_worker_first"], ["/api/*", "/auth/logout"])
+        self.assertEqual(config["assets"]["run_worker_first"], ["/api/*"])
 
     def test_frontdoor_wrangler_binds_backend_and_assignment_kv(self):
         config = tomllib.loads((ROOT / "wrangler.frontdoor.toml").read_text(encoding="utf-8"))
 
         self.assertEqual(config["main"], "frontdoor/access_context_worker.js")
-        self.assertEqual(config["kv_namespaces"][0]["binding"], "TENANT_ACCESS_KV")
+        self.assertEqual({item["binding"] for item in config["kv_namespaces"]}, {"TENANT_ACCESS_KV", "RENTAL_KV"})
         self.assertEqual(config["services"][0]["binding"], "RENTAL_BACKEND")
-        self.assertIn("CF_ACCESS_TEAM_DOMAIN", config["vars"])
-        self.assertIn("CF_ACCESS_AUD", config["vars"])
+        self.assertIn("CLERK_PUBLISHABLE_KEY", config["vars"])
         self.assertFalse(config["workers_dev"])
         route_patterns = {item["pattern"] for item in config["routes"]}
         self.assertEqual(route_patterns, {"rental.kittythecat.ch/api/*"})
@@ -76,8 +76,9 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertEqual(scripts["preflight:deploy"], "python3 scripts/deploy_preflight.py")
         self.assertEqual(scripts["preflight:frontdoor"], "python3 scripts/deploy_preflight.py --include-frontdoor")
         self.assertEqual(scripts["smoke:signed"], "PYTHONPATH=.:worker python3 scripts/smoke_local.py --signed")
-        self.assertEqual(scripts["check:js"], "node --check public/app.js && node --check frontdoor/access_context_worker.js")
-        self.assertIn("wrangler dev --config wrangler.frontdoor.toml", scripts["dev:frontdoor"])
+        for module in ("public/app.js", "public/auth.js", "frontdoor/access_context_worker.js", "frontdoor/clerk_auth.js", "frontdoor/clerk_roles.js"):
+            self.assertIn(f"node --check {module}", scripts["check:js"])
+        self.assertEqual(scripts["dev:frontdoor"], "npm run dev:clerk:frontdoor --")
         self.assertIn("wrangler deploy --config wrangler.frontdoor.toml", scripts["deploy:frontdoor"])
         self.assertIn("TENANT_ACCESS_KV", scripts["kv:create-tenant-access"])
 
@@ -87,6 +88,12 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertEqual(pyproject["project"]["requires-python"], ">=3.12")
         self.assertIn("workers-py>=1.14.0", pyproject["dependency-groups"]["dev"])
         self.assertIn("workers-runtime-sdk", pyproject["dependency-groups"]["dev"])
+
+    def test_live_clerk_dev_preserves_browser_origin(self):
+        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        args = shlex.split(package["scripts"]["dev:clerk:frontdoor"])
+        port = args[args.index("--port") + 1]
+        self.assertEqual(args[args.index("--local-upstream") + 1], f"localhost:{port}")
 
     def test_cloudflare_refactor_ci_uses_local_validation_not_azure_deploy(self):
         source = (ROOT / ".github" / "workflows" / "cloudflare_refactor_ci.yml").read_text(encoding="utf-8")
@@ -103,28 +110,13 @@ class CloudflareConfigTests(unittest.TestCase):
         source = (ROOT / "frontdoor" / "access_context_worker.js").read_text(encoding="utf-8")
 
         self.assertIn("cf-access-jwt-assertion", source)
-        self.assertIn("/cdn-cgi/access/certs", source)
-        self.assertIn("RSASSA-PKCS1-v1_5", source)
         self.assertIn("claims.email", source)
         self.assertIn("validEmail(email)", source)
         self.assertIn("valid email is required", source)
-        self.assertIn("user:${email}", source)
+        self.assertNotIn("user:${email}", source)
         self.assertIn("resolveUserAssignment", source)
-        self.assertIn('const LOGIN_PATH = "/api/auth/login"', source)
-        self.assertLess(source.index("isLoginPath(url.pathname)"), source.index('url.pathname === "/api/health"'))
         self.assertIn('url.pathname === "/api/access-requests" && request.method === "POST"', source)
-        self.assertIn("return createAccessRequest(request, env, null)", source)
         self.assertIn('!url.pathname.startsWith("/api/")', source)
-        self.assertIn("function isLoginPath(pathname)", source)
-        self.assertIn('pathname.replace(/\\/+$/, "") === LOGIN_PATH', source)
-        self.assertIn("return completeAccessLogin(request, env)", source)
-        self.assertIn("async function completeAccessLogin(request, env)", source)
-        self.assertIn("await verifyAccessJwt(accessJwt, env)", source)
-        self.assertIn("return loginRedirectResponse(request)", source)
-        self.assertIn("function loginRedirectResponse(request)", source)
-        self.assertIn("status: 303", source)
-        self.assertIn('location: new URL("/", request.url).toString()', source)
-        self.assertIn('"x-rental-auth-handler": "login-redirect"', source)
         self.assertNotIn("function rewriteRequestPath", source)
         self.assertIn('const TENANT_ROUTE_PREFIX = "tid-"', source)
         self.assertIn("const RESERVED_TENANT_IDS = new Set", source)
@@ -148,13 +140,14 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("tenant_roles", source)
         self.assertIn("access_profile", source)
         self.assertIn("member_id", source)
-        self.assertIn("firstMemberLink(user)?.tenant_id", source)
-        self.assertIn('user.access_profile === "basic" && (user.member_links || []).some', source)
-        self.assertIn('const adminRoute = url.pathname.startsWith("/api/admin")', source)
-        self.assertIn('const platformAdminRoute = adminRoute && user.global_role === "platform_admin"', source)
-        self.assertIn('platformAdminRoute\n    ? "platform-admin"', source)
-        self.assertIn('globalRole === "platform_admin" && tenantId === "platform-admin"', source)
-        self.assertIn("principal:${principal}", source)
+        self.assertNotIn("firstMemberLink(user)?.tenant_id", source)
+        self.assertNotIn('user.access_profile === "basic" && (user.member_links || []).some', source)
+        self.assertNotIn('const adminRoute = url.pathname.startsWith("/api/admin")', source)
+        self.assertNotIn('const platformAdminRoute = adminRoute && user.global_role === "platform_admin"', source)
+        self.assertNotIn('platformAdminRoute\n    ? "platform-admin"', source)
+        self.assertNotIn('if (globalRole === "platform_admin") return "admin"', source)
+        self.assertNotIn("principal:${principal}", source)
+        self.assertIn("membershipAccessProfile(claims.clerkUser", source)
         self.assertIn('headers.delete("cf-access-authenticated-user-email")', source)
         self.assertIn('headers.delete("cookie")', source)
         self.assertIn('headers.delete("authorization")', source)
@@ -171,32 +164,7 @@ class CloudflareConfigTests(unittest.TestCase):
         self.assertIn("json.loads(raw)", source)
         self.assertIn('return json_response({"error": str(exc)}, 400)', source)
 
-    def test_backend_worker_redirects_logout_to_access_team_domain(self):
-        module = load_worker_module_for_test()
-        response = module.access_logout_response(
-            types.SimpleNamespace(CF_ACCESS_TEAM_DOMAIN="kittythecat.cloudflareaccess.com"),
-            "GET",
-            "https://rental.kittythecat.ch/auth/logout",
-        )
 
-        self.assertEqual(response.kwargs["status"], 302)
-        self.assertEqual(
-            response.kwargs["headers"]["location"],
-            "https://kittythecat.cloudflareaccess.com/cdn-cgi/access/logout?returnTo=https%3A%2F%2Frental.kittythecat.ch%2F%3Fauth%3Dlogged-out",
-        )
-        self.assertEqual(response.kwargs["headers"]["cache-control"], "no-store")
-        self.assertIn("CF_Authorization=; Max-Age=0", response.kwargs["headers"]["set-cookie"])
-        self.assertEqual(response.kwargs["headers"]["x-rental-auth-handler"], "backend")
-
-    def test_backend_worker_rejects_unconfigured_logout(self):
-        module = load_worker_module_for_test()
-        response = module.access_logout_response(
-            types.SimpleNamespace(),
-            "GET",
-            "https://rental.kittythecat.ch/auth/logout",
-        )
-
-        self.assertEqual(response.kwargs["status"], 503)
 
     def test_backend_worker_cors_allows_trusted_access_profile_headers(self):
         module = load_worker_module_for_test()

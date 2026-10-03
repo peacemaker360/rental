@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import uuid
 import mimetypes
 import os
 import sys
@@ -73,6 +74,35 @@ class JsonFileRepository:
 
     def access_requests_file(self) -> Path:
         return self.data_dir / "_access_requests.json"
+
+    def read_invitations(self):
+        path = self.data_dir / "_invitations.json"
+        return json.loads(path.read_text()) if path.exists() else []
+
+    def write_invitations(self, items):
+        path = self.data_dir / "_invitations.json"
+        temporary = path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(items, indent=2))
+        temporary.replace(path)
+
+    async def list_invitations(self, tenant_id):
+        return [item for item in self.read_invitations() if item["tenant_id"] == tenant_id and item["status"] == "pending"]
+
+    async def create_invitation(self, tenant_id, email, role):
+        item = {"id": f"orginv_{uuid.uuid4().hex}", "tenant_id": tenant_id, "email_address": email,
+                "role": role, "status": "pending", "created_at": utc_now()}
+        self.write_invitations([*self.read_invitations(), item])
+        return item
+
+    async def revoke_invitation(self, tenant_id, invitation_id):
+        from domain import DomainError
+        items = self.read_invitations()
+        item = next((item for item in items if item["tenant_id"] == tenant_id and item["id"] == invitation_id), None)
+        if item is None:
+            raise DomainError("invitation not found", 404)
+        item["status"] = "revoked"
+        self.write_invitations(items)
+        return item
 
     async def load_tenant(self, tenant_id: str) -> dict[str, list[dict[str, Any]]]:
         path = self.tenant_file(tenant_id)
@@ -248,6 +278,9 @@ class RentalDevHandler(BaseHTTPRequestHandler):
 
     def dispatch(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/auth/config" and self.command == "GET":
+            self.send_json({"provider": "mock" if self.auth_mode == "mock" else "local"}, HTTPStatus.OK)
+            return
         if parse_api_path(parsed.path):
             self.dispatch_api(parsed)
             return
@@ -267,8 +300,11 @@ class RentalDevHandler(BaseHTTPRequestHandler):
         headers = {}
         if parts != ["health"]:
             headers = {key: value for key, value in self.headers.items()}
+            if self.auth_mode == "mock" and self.headers.get("Authorization") != "Bearer rental-local-mock":
+                self.send_json({"error": "Sign in to continue", "errorCode": "ACCESS_TOKEN_MISSING"}, HTTPStatus.UNAUTHORIZED)
+                return
             path_tenant_id = parts[0] if is_tenant_api_parts(parts) else None
-            context, error = context_from_headers(path_tenant_id, headers, self.auth_mode, self.context_secret)
+            context, error = context_from_headers(path_tenant_id, headers, "local" if self.auth_mode == "mock" else self.auth_mode, self.context_secret)
             if error:
                 self.send_json({"error": error}, HTTPStatus.FORBIDDEN)
                 return
@@ -344,7 +380,7 @@ def main() -> None:
     parser.add_argument("--port", default=8787, type=int)
     parser.add_argument(
         "--auth-mode",
-        choices=("local", "header", "signed"),
+        choices=("local", "mock", "header", "signed"),
         default="local",
         help="Tenant context mode for local API debugging. Default local grants admin access.",
     )
@@ -354,6 +390,8 @@ def main() -> None:
         help="Signing secret required when --auth-mode signed is used.",
     )
     args = parser.parse_args()
+    if args.auth_mode == "mock" and args.host not in ("127.0.0.1", "localhost", "::1"):
+        parser.error("Mock authentication may only bind to loopback")
     if args.auth_mode == "signed" and not args.context_secret:
         parser.error("--context-secret or RENTAL_CONTEXT_SECRET is required with --auth-mode signed")
 

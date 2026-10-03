@@ -14,11 +14,13 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PATHS = (
     "public/index.html",
     "public/app.js",
+    "public/auth.js",
     "public/styles.css",
     "worker/worker.py",
     "worker/api_core.py",
     "worker/domain.py",
     "worker/storage.py",
+    "worker/clerk_directory.py",
     "wrangler.toml",
     "pyproject.toml",
     "package.json",
@@ -38,6 +40,10 @@ REMOVED_LEGACY_PATHS = (
     "requirements_1.txt",
     "run.py",
     "startup.sh",
+    "docs/cloudflare-access-frontdoor.md",
+    "docs/cloudflare-refactor.md",
+    "scripts/tenant_access_assignments.py",
+    "public/login_icon.png",
     ".github/workflows/hosting_mgwrent.yml",
     ".github/workflows/master_mgwrent.yml",
 )
@@ -113,16 +119,26 @@ def validate_project(
 
     if include_frontdoor:
         require_path(root, "frontdoor/access_context_worker.js", errors)
+        require_path(root, "frontdoor/clerk_auth.js", errors)
+        require_path(root, "frontdoor/clerk_roles.js", errors)
         require_path(root, "wrangler.frontdoor.toml", errors)
         frontdoor = read_toml(root / "wrangler.frontdoor.toml", errors)
         if frontdoor:
             validate_frontdoor_wrangler(frontdoor, allow_placeholders, errors)
+            for binding in ("RENTAL_KV", "TENANT_ACCESS_KV"):
+                backend_namespace = namespace_by_binding(backend, binding)
+                frontdoor_namespace = namespace_by_binding(frontdoor, binding)
+                if backend_namespace and frontdoor_namespace:
+                    for field in ("id", "preview_id"):
+                        if backend_namespace.get(field) != frontdoor_namespace.get(field):
+                            errors.append(f"{binding} {field} must match between backend and frontdoor")
     else:
-        warnings.append("frontdoor config skipped; pass --include-frontdoor to validate Cloudflare Access routing")
+        warnings.append("frontdoor config skipped; pass --include-frontdoor to validate Clerk authentication routing")
 
     if allow_placeholders:
         warnings.append("placeholder Cloudflare ids allowed; omit --allow-placeholders before production deploy")
     warnings.append("RENTAL_CONTEXT_SECRET is a Cloudflare secret and must be set outside version control")
+    warnings.append("CLERK_SECRET_KEY must be configured as a secret on both Workers; preflight does not inspect remote secrets")
     return errors, warnings
 
 
@@ -132,11 +148,10 @@ def validate_package(package: dict[str, Any], errors: list[str]) -> None:
         "dev": "uv run pywrangler dev",
         "deploy": "uv run pywrangler deploy",
         "dev:python": "python3 scripts/local_dev_server.py",
-        "test": "node --test tests/test_frontdoor.mjs && PYTHONPATH=.:worker python3 -m unittest discover -s tests",
+        "test": "node --test tests/test_frontdoor.mjs tests/test_clerk_auth.mjs tests/test_clerk_roles.mjs tests/test_auth_ui.mjs tests/test_access_notifications.mjs && PYTHONPATH=.:worker python3 -m unittest discover -s tests",
         "smoke:python": "PYTHONPATH=.:worker python3 scripts/smoke_local.py",
         "smoke:signed": "PYTHONPATH=.:worker python3 scripts/smoke_local.py --signed",
-        "tenant-access": "python3 scripts/tenant_access_assignments.py",
-        "check:js": "node --check public/app.js && node --check frontdoor/access_context_worker.js",
+        "check:js": "node --check public/app.js && node --check public/auth.js && node --check frontdoor/access_context_worker.js && node --check frontdoor/clerk_auth.js && node --check frontdoor/clerk_roles.js && node --check frontdoor/access_notifications.js",
     }
     for name, command in expected.items():
         if scripts.get(name) != command:
@@ -180,11 +195,6 @@ def validate_backend_wrangler(config: dict[str, Any], allow_placeholders: bool, 
         errors.append("wrangler.toml must include python_workers compatibility flag")
     if config.get("vars", {}).get("RENTAL_AUTH_MODE") != "auto":
         errors.append("wrangler.toml must set RENTAL_AUTH_MODE=auto")
-    team_domain = str(config.get("vars", {}).get("CF_ACCESS_TEAM_DOMAIN", ""))
-    if not team_domain:
-        errors.append("wrangler.toml vars.CF_ACCESS_TEAM_DOMAIN is required for logout")
-    elif not allow_placeholders and looks_placeholder(team_domain):
-        errors.append("wrangler.toml vars.CF_ACCESS_TEAM_DOMAIN still uses a placeholder")
 
     namespace = namespace_by_binding(config, "RENTAL_KV")
     if not namespace:
@@ -199,8 +209,6 @@ def validate_backend_wrangler(config: dict[str, Any], allow_placeholders: bool, 
         errors.append("wrangler.toml assets.binding must be ASSETS")
     if "/api/*" not in assets.get("run_worker_first", []):
         errors.append("wrangler.toml assets.run_worker_first must include /api/*")
-    if "/auth/logout" not in assets.get("run_worker_first", []):
-        errors.append("wrangler.toml assets.run_worker_first must include /auth/logout")
 
 
 def validate_frontdoor_wrangler(config: dict[str, Any], allow_placeholders: bool, errors: list[str]) -> None:
@@ -222,14 +230,20 @@ def validate_frontdoor_wrangler(config: dict[str, Any], allow_placeholders: bool
     else:
         validate_namespace_ids(namespace, "TENANT_ACCESS_KV", allow_placeholders, errors)
 
+    registry = namespace_by_binding(config, "RENTAL_KV")
+    if not registry:
+        errors.append("wrangler.frontdoor.toml must bind RENTAL_KV for association mappings")
+    else:
+        validate_namespace_ids(registry, "RENTAL_KV", allow_placeholders, errors)
+
     services = config.get("services", [])
     if not any(item.get("binding") == "RENTAL_BACKEND" and item.get("service") == "association-rental" for item in services):
         errors.append("wrangler.frontdoor.toml must bind RENTAL_BACKEND service to association-rental")
 
     vars_ = config.get("vars", {})
-    for name in ("CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD"):
+    for name in ("CLERK_PUBLISHABLE_KEY",):
         value = str(vars_.get(name, ""))
-        if not value:
+        if not value and not allow_placeholders:
             errors.append(f"wrangler.frontdoor.toml vars.{name} is required")
         elif not allow_placeholders and looks_placeholder(value):
             errors.append(f"wrangler.frontdoor.toml vars.{name} still uses a placeholder")
@@ -414,8 +428,8 @@ def looks_placeholder(value: str) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate local Cloudflare deployment readiness for Rental Desk.")
     parser.add_argument("--root", type=Path, default=ROOT)
-    parser.add_argument("--allow-placeholders", action="store_true", help="Allow placeholder Cloudflare ids and Access vars")
-    parser.add_argument("--include-frontdoor", action="store_true", help="Also validate the Cloudflare Access front door")
+    parser.add_argument("--allow-placeholders", action="store_true", help="Allow placeholder Cloudflare ids and Clerk configuration")
+    parser.add_argument("--include-frontdoor", action="store_true", help="Also validate the Clerk authentication frontdoor")
     args = parser.parse_args(argv)
 
     errors, warnings = validate_project(

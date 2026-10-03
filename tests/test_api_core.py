@@ -1,5 +1,7 @@
 import time
 import unittest
+from unittest.mock import AsyncMock
+from domain import DomainError
 
 from worker.api_core import (
     RequestContext,
@@ -431,12 +433,14 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         repo.associations["tenant-b"] = {
             "tenant_id": "tenant-b",
             "display_name": "Old Association Name",
+            "clerk_organization_id": "org_original",
             "status": "active",
         }
         admin = RequestContext(tenant_id="tenant-b", actor_id="admin-b", role="admin")
 
         status, _ = await handle_api_request("PUT", "/api/tid-tenant-b/import", "", {
             "association_name": "Imported Association Name",
+            "clerk_organization_id": "org_attacker",
             "records": {
                 "instruments": [],
                 "members": [],
@@ -448,6 +452,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status, 200)
         self.assertEqual(repo.associations["tenant-b"]["display_name"], "Imported Association Name")
+        self.assertEqual(repo.associations["tenant-b"]["clerk_organization_id"], "org_original")
         self.assertEqual(repo.associations["tenant-b"]["status"], "active")
 
     async def test_service_record_crud_is_tenant_scoped(self):
@@ -913,136 +918,14 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 404)
         self.assertEqual(body["error"], "user not found")
 
-    async def test_tenant_admin_can_manage_only_tenant_user_memberships(self):
-        repo = MemoryRepository()
-        tenant_admin = RequestContext(tenant_id="tenant-a", actor_id="tenant-admin", role="admin", mode="signed")
-        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="signed")
 
-        status, created = await handle_api_request("POST", "/api/admin/users", "", {
-            "email": "member@example.test",
-            "display_name": "Member",
-            "tenant_role": "operator",
-            "member_links": [{"tenant_id": "tenant-a", "member_id": "mem_a"}],
-        }, repo, tenant_admin)
 
-        self.assertEqual(status, 201)
-        self.assertEqual(created["data"]["global_role"], "none")
-        self.assertEqual(created["data"]["tenant_roles"], [{"tenant_id": "tenant-a", "role": "operator"}])
-        self.assertEqual(created["data"]["member_links"], [{"tenant_id": "tenant-a", "member_id": "mem_a"}])
-        user_id = created["data"]["id"]
 
-        status, body = await handle_api_request("POST", "/api/admin/users", "", {
-            "email": "other@example.test",
-            "global_role": "platform_admin",
-            "tenant_roles": [{"tenant_id": "tenant-b", "role": "admin"}],
-        }, repo, tenant_admin)
 
-        self.assertEqual(status, 400)
-        self.assertEqual(body["error"], "tenant admin can only manage users for their tenant")
 
-        status, users = await handle_api_request("GET", "/api/admin/users", "", {}, repo, tenant_admin)
-        self.assertEqual(status, 200)
-        self.assertEqual([item["id"] for item in users["data"]], [user_id])
 
-        status, updated = await handle_api_request("PUT", f"/api/admin/users/{user_id}", "", {
-            "tenant_role": "reader",
-            "member_links": [{"tenant_id": "tenant-a", "member_id": "mem_a2"}],
-        }, repo, tenant_admin)
 
-        self.assertEqual(status, 200)
-        self.assertEqual(updated["data"]["tenant_roles"], [{"tenant_id": "tenant-a", "role": "reader"}])
-        self.assertEqual(repo.users[user_id]["tenant_roles"], [{"tenant_id": "tenant-a", "role": "reader"}])
 
-        status, platform_update = await handle_api_request("PUT", f"/api/admin/users/{user_id}", "", {
-            "tenant_roles": [
-                {"tenant_id": "tenant-a", "role": "reader"},
-                {"tenant_id": "tenant-b", "role": "admin"},
-            ],
-            "member_links": [{"tenant_id": "tenant-a", "member_id": "mem_a2"}],
-        }, repo, platform_admin)
-        self.assertEqual(status, 200)
-        self.assertEqual(len(platform_update["data"]["tenant_roles"]), 2)
-
-        status, deleted = await handle_api_request("DELETE", f"/api/admin/users/{user_id}", "", {}, repo, tenant_admin)
-        self.assertEqual(status, 200)
-        self.assertEqual(deleted["deleted"], user_id)
-        self.assertEqual(repo.users[user_id]["tenant_roles"], [{"tenant_id": "tenant-b", "role": "admin"}])
-
-    async def test_tenant_admin_cannot_export_frontdoor_access_kv(self):
-        repo = MemoryRepository()
-        tenant_admin = RequestContext(tenant_id="tenant-a", actor_id="tenant-admin", role="admin", mode="signed")
-
-        status, body = await handle_api_request("GET", "/api/admin/users/export/tenant-access", "", {}, repo, tenant_admin)
-
-        self.assertEqual(status, 403)
-        self.assertEqual(body["error"], "platform admin required")
-
-    async def test_admins_can_approve_and_deny_access_requests(self):
-        repo = MemoryRepository()
-        repo.access_requests["access_request:1234567890abcdef12345678"] = {
-            "id": "access_request:1234567890abcdef12345678",
-            "email": "new@example.test",
-            "tenant_id": "tenant-a",
-            "status": "pending",
-            "requested_at": "2026-07-04T00:00:00Z",
-        }
-        repo.access_requests["access_request:abcdef1234567890abcdef12"] = {
-            "id": "access_request:abcdef1234567890abcdef12",
-            "email": "other@example.test",
-            "tenant_id": "tenant-b",
-            "status": "pending",
-            "requested_at": "2026-07-04T00:01:00Z",
-        }
-        tenant_admin = RequestContext(tenant_id="tenant-a", actor_id="tenant-admin", role="admin", mode="signed")
-
-        status, requests = await handle_api_request("GET", "/api/admin/access-requests", "", {}, repo, tenant_admin)
-        self.assertEqual(status, 200)
-        self.assertEqual([item["tenant_id"] for item in requests["data"]], ["tenant-a"])
-
-        status, approved = await handle_api_request("POST", "/api/admin/access-requests/access_request:1234567890abcdef12345678/approve", "", {
-            "tenant_role": "reader",
-        }, repo, tenant_admin)
-
-        self.assertEqual(status, 200)
-        self.assertEqual(approved["data"]["email"], "new@example.test")
-        self.assertEqual(approved["data"]["access_profile"], "basic")
-        self.assertEqual(approved["data"]["tenant_roles"], [{"tenant_id": "tenant-a", "role": "reader"}])
-        self.assertNotIn("access_request:1234567890abcdef12345678", repo.access_requests)
-
-        status, hidden = await handle_api_request("POST", "/api/admin/access-requests/access_request:abcdef1234567890abcdef12/deny", "", {}, repo, tenant_admin)
-        self.assertEqual(status, 404)
-        self.assertEqual(hidden["error"], "access request not found")
-
-        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="signed")
-        status, denied = await handle_api_request("POST", "/api/admin/access-requests/access_request:abcdef1234567890abcdef12/deny", "", {}, repo, platform_admin)
-        self.assertEqual(status, 200)
-        self.assertEqual(denied["denied"], "access_request:abcdef1234567890abcdef12")
-
-    async def test_access_request_approval_keeps_existing_access_profile(self):
-        repo = MemoryRepository()
-        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="signed")
-        status, existing = await handle_api_request("POST", "/api/admin/users", "", {
-            "email": "known@example.test",
-            "access_profile": "full",
-            "tenant_roles": [{"tenant_id": "tenant-a", "role": "reader"}],
-        }, repo, platform_admin)
-        self.assertEqual(status, 201)
-        repo.access_requests["access_request:1234567890abcdef12345678"] = {
-            "id": "access_request:1234567890abcdef12345678",
-            "email": existing["data"]["email"],
-            "tenant_id": "tenant-b",
-            "status": "pending",
-            "requested_at": "2026-07-04T00:00:00Z",
-        }
-
-        status, approved = await handle_api_request("POST", "/api/admin/access-requests/access_request:1234567890abcdef12345678/approve", "", {}, repo, platform_admin)
-
-        self.assertEqual(status, 200)
-        self.assertEqual(approved["data"]["access_profile"], "full")
-        self.assertEqual(approved["data"]["tenant_roles"], [
-            {"tenant_id": "tenant-a", "role": "reader"},
-            {"tenant_id": "tenant-b", "role": "reader"},
-        ])
 
     async def test_tenant_metadata_endpoint_returns_only_metadata(self):
         repo = MemoryRepository()
@@ -1082,21 +965,42 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 403)
         self.assertEqual(body["error"], "platform admin required")
 
-    async def test_signed_platform_admin_can_use_association_admin_center(self):
+
+    async def test_clerk_mapping_is_platform_managed_unique_and_clearable(self):
         repo = MemoryRepository()
-        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="signed")
-
+        admin = RequestContext(tenant_id="platform-admin", actor_id="admin", role="admin", mode="local")
+        tenant_admin = RequestContext(tenant_id="band-a", actor_id="admin-a", role="admin", mode="signed")
         status, created = await handle_api_request("POST", "/api/admin/associations", "", {
-            "tenant_id": "music-club",
-            "display_name": "Music Club",
-        }, repo, platform_admin)
-
+            "tenant_id": "band-a", "clerk_organization_id": "org_123",
+        }, repo, admin)
         self.assertEqual(status, 201)
-        self.assertEqual(created["data"]["tenant_id"], "music-club")
+        self.assertEqual(created["data"]["clerk_organization_id"], "org_123")
+        for payload, expected in [
+            ({"tenant_id": "band-b", "clerk_organization_id": "org_123"}, 409),
+            ({"tenant_id": "band-b", "clerk_organization_id": "not-an-id"}, 400),
+        ]:
+            status, _ = await handle_api_request("POST", "/api/admin/associations", "", payload, repo, admin)
+            self.assertEqual(status, expected)
+        self.assertNotIn("band-b", repo.associations)
+        status, _ = await handle_api_request("PUT", "/api/admin/associations/band-a", "", {
+            "clerk_organization_id": "org_other",
+        }, repo, tenant_admin)
+        self.assertEqual(status, 403)
+        self.assertEqual(repo.associations["band-a"]["clerk_organization_id"], "org_123")
+        status, updated = await handle_api_request("PUT", "/api/admin/associations/band-a", "", {
+            "display_name": "Band A",
+        }, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["data"]["clerk_organization_id"], "org_123")
+        status, updated = await handle_api_request("PUT", "/api/admin/associations/band-a", "", {
+            "clerk_organization_id": "",
+        }, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertIsNone(updated["data"]["clerk_organization_id"])
 
     async def test_reserved_system_route_cannot_be_created_as_association(self):
         repo = MemoryRepository()
-        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="signed")
+        platform_admin = RequestContext(tenant_id="platform-admin", actor_id="platform-admin", role="admin", mode="local")
 
         for tenant_id in ("access-requests", "admin", "auth", "context", "health", "platform-admin"):
             status, body = await handle_api_request("POST", "/api/admin/associations", "", {
@@ -1107,30 +1011,6 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(status, 400)
             self.assertEqual(body["error"], "tenant id is reserved for a system route")
 
-    async def test_global_platform_admin_can_manage_associations_from_tenant_context(self):
-        repo = MemoryRepository()
-        repo.associations["music-club"] = {
-            "tenant_id": "music-club",
-            "display_name": "Music Club",
-            "status": "active",
-        }
-        platform_admin = RequestContext(
-            tenant_id="music-club",
-            actor_id="platform-admin",
-            role="admin",
-            mode="signed",
-            global_role="platform_admin",
-        )
-
-        status, listed = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, platform_admin)
-        self.assertEqual(status, 200)
-        self.assertEqual(listed["data"][0]["tenant_id"], "music-club")
-
-        status, updated = await handle_api_request("PUT", "/api/admin/associations/music-club", "", {
-            "contact": "board@example.test",
-        }, repo, platform_admin)
-        self.assertEqual(status, 200)
-        self.assertEqual(updated["data"]["contact"], "board@example.test")
 
     async def test_admin_center_rejects_non_object_payload(self):
         repo = MemoryRepository()
@@ -1383,7 +1263,6 @@ class ContextTests(unittest.TestCase):
             "tenant_id": "tenant-a",
             "actor_id": "access-user-1",
             "role": "viewer",
-            "global_role": "reader",
             "tenant_count": 2,
             "tenant_switchable": True,
         }, "test-secret")
@@ -1391,11 +1270,11 @@ class ContextTests(unittest.TestCase):
         context, error = context_from_headers("tenant-a", headers, "signed", "test-secret")
 
         self.assertIsNone(error)
-        self.assertEqual(context.global_role, "reader")
+        self.assertEqual(context.global_role, "none")
         self.assertEqual(context.tenant_count, 2)
         self.assertTrue(context.tenant_switchable)
         payload = context_payload(context)
-        self.assertTrue(payload["has_global_role"])
+        self.assertFalse(payload["has_global_role"])
         self.assertTrue(payload["tenant_switchable"])
 
     def test_signed_mode_requires_secret(self):
@@ -1438,3 +1317,82 @@ class ContextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AdmissionsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_admissions_are_scoped_and_read_only(self):
+        repo = MemoryRepository()
+        repo.list_admissions = AsyncMock(return_value={"organizations": [], "memberships": [], "invitations": []})
+        admin = RequestContext(tenant_id="band-a", actor_id="admin", role="admin", mode="signed")
+        status, _ = await handle_api_request("GET", "/api/admin/admissions", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        repo.list_admissions.assert_awaited_once_with("band-a")
+        status, _ = await handle_api_request("POST", "/api/admin/admissions", "", {}, repo, admin)
+        self.assertEqual(status, 405)
+        reader = RequestContext(tenant_id="band-a", actor_id="reader", role="reader", mode="signed")
+        status, _ = await handle_api_request("GET", "/api/admin/admissions", "", {}, repo, reader)
+        self.assertEqual(status, 403)
+        platform = RequestContext(tenant_id="band-a", actor_id="admin", role="admin", mode="signed", global_role="platform_admin")
+        await handle_api_request("GET", "/api/admin/admissions", "", {}, repo, platform)
+        repo.list_admissions.assert_awaited_with("band-a")
+
+    async def test_request_resolution_requires_membership_and_hides_delivery_details(self):
+        repo = MemoryRepository()
+        request_id = "access_request:1234567890abcdef12345678"
+        repo.access_requests[request_id] = {"id": request_id, "tenant_id": "band-a", "email": "member@example.test", "requested_at": "now", "notification": {"status": "sent", "sent_user_ids": ["private_admin_id"]}}
+        repo.list_admissions = AsyncMock(return_value={"memberships": []})
+        admin = RequestContext(tenant_id="band-a", actor_id="admin", role="admin", mode="signed")
+        status, body = await handle_api_request("GET", "/api/admin/access-requests", "", {}, repo, admin)
+        self.assertEqual(body["data"][0]["notification_status"], "sent")
+        self.assertNotIn("notification", body["data"][0])
+        path = f"/api/admin/access-requests/{request_id}/resolve"
+        status, _ = await handle_api_request("POST", path, "", {}, repo, admin)
+        self.assertEqual(status, 409)
+        self.assertIn(request_id, repo.access_requests)
+        repo.list_admissions.return_value = {"memberships": [{"identifier": "member@example.test", "access_profile": "basic"}]}
+        status, _ = await handle_api_request("POST", path, "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertNotIn(request_id, repo.access_requests)
+
+    async def test_hosted_legacy_permissions_and_global_admin_routes_are_retired(self):
+        repo = MemoryRepository()
+        repo.sync_user_access = AsyncMock()
+        for global_role in ("none", "admin", "platform_admin"):
+            admin = RequestContext(tenant_id="band-a", actor_id="admin", role="admin", mode="signed", global_role=global_role)
+            for method in ("GET", "POST", "PUT", "DELETE"):
+                status, _ = await handle_api_request(method, "/api/admin/users", "", {}, repo, admin)
+                self.assertEqual(status, 410)
+            for method in ("GET", "POST"):
+                status, _ = await handle_api_request(method, "/api/admin/associations", "", {}, repo, admin)
+                self.assertEqual(status, 403)
+            for method in ("POST", "DELETE"):
+                status, _ = await handle_api_request(method, "/api/admin/invitations/band-a", "", {}, repo, admin)
+                self.assertEqual(status, 405)
+        repo.sync_user_access.assert_not_awaited()
+
+    def test_signed_context_rejects_every_global_role(self):
+        for role in ("reader", "operator", "admin", "platform_admin"):
+            headers = signed_context_headers({"tenant_id": "band-a", "actor_id": "user_a", "role": "admin", "global_role": role}, "test-secret")
+            context, error = context_from_headers("band-a", headers, "signed", "test-secret")
+            self.assertIsNone(context)
+            self.assertEqual(error, "global roles are not supported in signed tenant context")
+
+    async def test_request_review_stays_tenant_scoped_and_cannot_grant_roles(self):
+        repo = MemoryRepository()
+        request_id = "access_request:1234567890abcdef12345678"
+        repo.access_requests[request_id] = {"id": request_id, "tenant_id": "band-b", "email": "member@example.test", "requested_at": "now", "status": "pending"}
+        admin = RequestContext(tenant_id="band-a", actor_id="admin", role="admin", mode="signed")
+        status, body = await handle_api_request("GET", "/api/admin/access-requests", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["data"], [])
+        for action in ("deny", "resolve", "approve"):
+            status, _ = await handle_api_request("POST", f"/api/admin/access-requests/{request_id}/{action}", "", {}, repo, admin)
+            self.assertEqual(status, 404)
+        repo.access_requests[request_id]["tenant_id"] = "band-a"
+        status, _ = await handle_api_request("POST", f"/api/admin/access-requests/{request_id}/approve", "", {"global_role": "platform_admin"}, repo, admin)
+        self.assertEqual(status, 405)
+        self.assertIn(request_id, repo.access_requests)
+        self.assertEqual(repo.users, {})
+        status, _ = await handle_api_request("POST", f"/api/admin/access-requests/{request_id}/deny", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertNotIn(request_id, repo.access_requests)

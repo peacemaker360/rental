@@ -62,9 +62,46 @@ def empty_metadata(tenant_id: str) -> dict[str, Any]:
 
 
 class KVRepository:
-    def __init__(self, kv: Any, tenant_access_kv: Any = None):
+    def __init__(self, kv: Any, tenant_access_kv: Any = None, directory=None):
         self.kv = kv
         self.tenant_access_kv = tenant_access_kv
+        self.directory = directory
+
+    async def sync_user_access(self, user, tenant_id=None, remove=False):
+        if self.directory is not None:
+            from domain import DomainError
+            raise DomainError("Manage organization permissions in Clerk", 410)
+
+    async def invitation_directory(self, tenant_id):
+        from domain import DomainError
+        if self.directory is None:
+            raise DomainError("Invitations require Clerk or the local mock server", 503)
+        mappings = self.directory.association_mappings(await self.list_associations())
+        organization_id = mappings.get(tenant_id)
+        if not organization_id:
+            raise DomainError("Association has no Clerk organization mapping", 409)
+        return organization_id
+
+    async def list_admissions(self, tenant_id=None):
+        from domain import DomainError
+        if self.directory is None:
+            raise DomainError("Clerk admissions are unavailable in local mode", 503)
+        associations = await self.list_associations()
+        if tenant_id is not None:
+            associations = [item for item in associations if item["tenant_id"] == tenant_id]
+        return await self.directory.admissions(associations)
+
+    async def list_invitations(self, tenant_id):
+        organization_id = await self.invitation_directory(tenant_id)
+        return await self.directory.invitations(organization_id)
+
+    async def create_invitation(self, tenant_id, email, role):
+        organization_id = await self.invitation_directory(tenant_id)
+        return await self.directory.invite(organization_id, email, role)
+
+    async def revoke_invitation(self, tenant_id, invitation_id):
+        organization_id = await self.invitation_directory(tenant_id)
+        return await self.directory.revoke_invitation(organization_id, invitation_id)
 
     async def _get_json(self, key: str, default: Any = None) -> Any:
         value = await self.kv.get(key, type="json")
@@ -164,7 +201,10 @@ class KVRepository:
         return sorted(users, key=lambda item: item.get("email", item.get("id", "")))
 
     async def load_user(self, user_id: str) -> dict[str, Any] | None:
-        return await self._get_json(user_key(user_id))
+        user = await self._get_json(user_key(user_id))
+        if user is not None and self.directory is not None:
+            return await self.directory.read_access(user, await self.list_associations())
+        return user
 
     async def save_user(self, user_id: str, user: dict[str, Any]) -> dict[str, Any]:
         user_ids = await self._get_json(users_index_key(), [])
@@ -173,11 +213,10 @@ class KVRepository:
             user_ids.sort()
             await self._put_json(users_index_key(), user_ids)
         await self._put_json(user_key(user_id), user)
-        await self.save_frontdoor_user_assignment(user)
         return user
 
     async def delete_user(self, user_id: str) -> dict[str, Any] | None:
-        user = await self.load_user(user_id)
+        user = await self._get_json(user_key(user_id))
         if user is None:
             return None
         user_ids = [item for item in await self._get_json(users_index_key(), []) if item != user_id]
@@ -185,22 +224,6 @@ class KVRepository:
         await self._delete(user_key(user_id))
         await self.delete_frontdoor_user_assignment(user)
         return user
-
-    async def save_frontdoor_user_assignment(self, user: dict[str, Any]) -> None:
-        if self.tenant_access_kv is None:
-            return
-        value = {
-            "access_profile": user.get("access_profile", "full"),
-            "email": user["email"],
-            "global_role": user.get("global_role", "none"),
-            "member_links": user.get("member_links", []),
-            "status": user.get("status", "active"),
-            "tenant_roles": user.get("tenant_roles", []),
-        }
-        tenant_roles = value["tenant_roles"]
-        if tenant_roles:
-            value["default_tenant"] = tenant_roles[0]["tenant_id"]
-        await self.tenant_access_kv.put(f"user:{user['email']}", json.dumps(value, separators=(",", ":"), sort_keys=True))
 
     async def delete_frontdoor_user_assignment(self, user: dict[str, Any]) -> None:
         if self.tenant_access_kv is None:

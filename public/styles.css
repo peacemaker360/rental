@@ -24,7 +24,7 @@ body {
   min-height: 100vh;
   background: var(--bg);
   color: var(--ink);
-  overflow-x: hidden;
+  line-height: 1.5;
 }
 
 @keyframes loading-shimmer {
@@ -49,7 +49,7 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -283,7 +283,7 @@ textarea {
 .workspace {
   position: relative;
   min-width: 0;
-  padding: 24px;
+  padding: clamp(20px, 2.5vw, 40px);
 }
 
 .view {
@@ -633,10 +633,7 @@ h3 {
   padding: 34px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(11, 107, 93, 0.08), rgba(34, 87, 122, 0.07)),
-    #ffffff;
-  box-shadow: var(--shadow);
+  background: var(--panel);
 }
 
 .auth-start-mark {
@@ -788,29 +785,38 @@ h3 {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(120px, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  margin-bottom: 28px;
+  border-block: 1px solid var(--line);
 }
 
 .stat {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 16px;
+  padding: 20px 16px;
+  min-width: 0;
+}
+
+.stat + .stat {
+  border-left: 1px solid var(--line);
+}
+
+.stat-attention strong {
+  color: var(--warn);
 }
 
 .stat span {
   color: var(--muted);
   font-size: 0.82rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .stat strong {
   display: block;
-  margin-top: 10px;
-  font-size: 2rem;
+  margin-top: 6px;
+  font-size: 1.8rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 .content-grid {
@@ -1272,6 +1278,10 @@ tr:last-child td {
   align-items: center;
 }
 
+.tenant-access-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 42px;
+}
+
 .customer-rental-board {
   display: grid;
   gap: 18px;
@@ -1602,7 +1612,7 @@ tr:last-child td {
 
   .topbar {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: 8px 10px;
     margin-bottom: 12px;
@@ -1621,32 +1631,25 @@ tr:last-child td {
   }
 
   .topbar-actions {
-    display: grid;
-    grid-template-columns: repeat(5, 36px);
-    justify-content: end;
-    gap: 6px;
-    width: auto;
+    display: flex;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
   }
 
   .topbar-actions .utility-action {
-    width: 36px;
-    min-width: 36px;
-    min-height: 36px;
-    padding: 0;
-    font-size: 0;
-  }
-
-  .topbar-actions .utility-action::before {
-    content: attr(data-icon);
-    font-size: 1rem;
-    line-height: 1;
+    flex: 0 1 auto;
+    width: auto;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 0.875rem;
   }
 
   .topbar-actions > .primary-button {
-    grid-column: 1 / -1;
-    width: 100%;
-    min-height: 38px;
-    font-size: 0.95rem;
+    order: -1;
+    flex: 1 0 100%;
+    min-height: 44px;
   }
 
   .primary-button,
@@ -1718,7 +1721,6 @@ tr:last-child td {
     grid-template-columns: 1fr 1fr;
   }
 
-  .stats-grid,
   .content-grid,
   .split-view,
   .auth-start-steps,
@@ -1862,4 +1864,138 @@ tr:last-child td {
   .field.full {
     grid-column: auto;
   }
+}
+
+/* Shared interaction cues and responsive working layouts. */
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.sidebar :focus-visible,
+.mobile-appbar :focus-visible {
+  outline-color: #d8ead5;
+}
+
+::selection {
+  background: #d8ead5;
+  color: #19312b;
+}
+
+input, textarea { caret-color: var(--accent); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: white;
+  transform: translateY(-150%);
+}
+.skip-link:focus { transform: translateY(0); }
+
+.nav-item.is-active {
+  background: #d8ead5;
+  color: #19312b;
+  font-weight: 700;
+}
+
+.ghost-button:hover, .icon-button:hover {
+  border-color: var(--accent);
+  background: var(--panel-soft);
+  color: var(--ink);
+}
+
+.topbar { flex-wrap: wrap; margin-bottom: 28px; }
+h1 { letter-spacing: -0.03em; line-height: 1.15; }
+.panel, .content-grid > *, .split-view > * { min-width: 0; }
+.content-grid table { min-width: 0; }
+.empty { padding: 24px; text-align: center; }
+.dialog-actions { padding: 0; }
+.segmented { flex-wrap: wrap; overflow: visible; gap: 2px; }
+.segmented button { min-height: 40px; }
+.toolbar > [data-search] { flex: 1 1 240px; }
+.toolbar > .segmented { flex: 1 1 100%; order: 1; }
+.table-wrap { scrollbar-color: var(--line) var(--panel); }
+td { font-variant-numeric: tabular-nums; }
+#view, #mainNav { scroll-margin-top: 72px; }
+
+@media (min-width: 961px) and (max-width: 1200px) {
+  .content-grid, .split-view { grid-template-columns: minmax(0, 1fr); }
+  .detail-panel { position: static; }
+  .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stat:nth-child(3n + 1) { border-left: 0; }
+  .stat:nth-child(n + 4) { border-top: 1px solid var(--line); }
+}
+
+@media (min-width: 681px) and (max-width: 960px) {
+  .sidebar { position: static; }
+  .content-grid, .split-view { grid-template-columns: minmax(0, 1fr); }
+  .stat:nth-child(2n + 1) { border-left: 0; }
+  .stat:nth-child(n + 3) { border-top: 1px solid var(--line); }
+}
+
+@media (max-width: 680px) {
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stat { padding: 14px 12px; }
+  .stat:nth-child(2n + 1) { border-left: 0; }
+  .stat:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  .nav-item, .language-switch button { min-height: 44px; }
+  .mobile-menu-button, .mobile-user-menu summary { width: 44px; min-height: 44px; flex-basis: 44px; }
+  .mobile-session-button { min-height: 44px; }
+  .toolbar > [data-search] { flex-basis: auto; }
+  .toolbar > .segmented { flex-basis: auto; }
+  .segmented button { flex: 1 1 auto; min-height: 44px; }
+  .rental-card-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.dialog-error {
+  padding: 12px 14px;
+  border: 1px solid #f0c5c0;
+  border-radius: 8px;
+  background: #fff4f2;
+  color: var(--danger);
+}
+
+/* Account setup is a single task, with Clerk owning authentication fields. */
+.auth-start { max-width: 680px; margin-inline: auto; }
+.auth-introduction p { margin: 12px 0 0; }
+.auth-introduction .auth-identity { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.auth-session-actions > button { min-height: 44px; }
+.clerk-auth-flow { min-width: 0; max-width: 100%; }
+.auth-error-details, .auth-request-alternative { border-top: 1px solid var(--line); padding-top: 18px; }
+.auth-error-details summary, .auth-request-alternative summary { cursor: pointer; font-weight: 600; padding-block: 6px; }
+.auth-error-details p { overflow-wrap: anywhere; margin: 12px 0 0; }
+.auth-request-alternative form { margin-top: 18px; min-width: 0; }
+.auth-start .dialog-error { margin: 0; color: var(--danger); }
+.is-auth-start .to-top-button, .is-auth-start .mobile-menu-button { display: none; }
+
+@media (max-width: 680px) {
+  .auth-start { padding: 20px 16px; gap: 20px; }
+  .auth-start h2 { font-size: 1.5rem; line-height: 1.25; }
+  .auth-session-actions { align-items: stretch; }
+  .auth-session-actions > button { flex-basis: 100%; }
+  .auth-request-result dl div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}
+
+.organization-switcher { min-width: 0; max-width: 100%; }
+.organization-switcher[hidden] { display: none; }
+.brand-mark img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.organization-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.organization-heading img { border-radius: 8px; object-fit: cover; }
+.organization-heading h3 { margin: 0; overflow-wrap: anywhere; }
+.request-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin-bottom: 20px; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 8px; }
+.request-item { display: grid; gap: 12px; padding-block: 16px; border-bottom: 1px solid var(--line); }
+.request-item p { margin: 4px 0 0; }
+.request-item strong { overflow-wrap: anywhere; }
+.admission-subheading { margin-top: 24px; }
+.invitation-summary { list-style: none; padding: 0; margin: 0; }
+.invitation-summary li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-block: 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.clerk-dashboard-link { color: var(--accent); text-underline-offset: 3px; }
+@media (max-width: 680px) {
+  .request-notice { align-items: stretch; flex-direction: column; }
+  .organization-heading { align-items: flex-start; }
 }

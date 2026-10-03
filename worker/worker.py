@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import json
-import re
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 
 from workers import Response, WorkerEntrypoint
 
@@ -15,6 +14,7 @@ from api_core import (
     parse_api_path,
 )
 from storage import KVRepository
+from clerk_directory import ClerkDirectory
 
 
 JSON_HEADERS = {
@@ -26,8 +26,6 @@ JSON_HEADERS = {
     "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type,authorization,x-rental-context,x-rental-context-signature,x-rental-expected-revision,x-rental-tenant-id,x-rental-actor-id,x-rental-role,x-rental-access-profile,x-rental-member-id,x-rental-user-email",
 }
-AUTH_LOGOUT_PATH = "/auth/logout"
-ACCESS_TEAM_DOMAIN_PATTERN = re.compile(r"^[a-z0-9.-]+\.cloudflareaccess\.com$")
 
 
 def context_error_code(error: str) -> str:
@@ -73,31 +71,6 @@ def worker_auth_mode(env, hostname: str) -> str:
     return "signed"
 
 
-def access_logout_response(env, method: str, request_url: str):
-    if method not in ("GET", "HEAD"):
-        return json_response({"error": "method not allowed"}, 405)
-    team_domain = str(getattr(env, "CF_ACCESS_TEAM_DOMAIN", "")).strip().lower()
-    if not ACCESS_TEAM_DOMAIN_PATTERN.fullmatch(team_domain):
-        return json_response({"error": "logout is not configured"}, 503)
-    parsed_url = urlparse(request_url)
-    return_url = f"{parsed_url.scheme}://{parsed_url.netloc}/?auth=logged-out"
-    logout_query = urlencode({"returnTo": return_url})
-    return Response(
-        "",
-        status=302,
-        headers={
-            "location": f"https://{team_domain}/cdn-cgi/access/logout?{logout_query}",
-            "cache-control": "no-store",
-            "pragma": "no-cache",
-            "referrer-policy": "no-referrer",
-            "set-cookie": (
-                "CF_Authorization=; Max-Age=0; "
-                "Expires=Thu, 01 Jan 1970 00:00:00 GMT; "
-                "Path=/; Secure; HttpOnly; SameSite=Lax"
-            ),
-            "x-rental-auth-handler": "backend",
-        },
-    )
 
 
 class Default(WorkerEntrypoint):
@@ -106,8 +79,10 @@ class Default(WorkerEntrypoint):
             return Response("", status=204, headers=JSON_HEADERS)
 
         parsed = urlparse(request.url)
-        if parsed.path == AUTH_LOGOUT_PATH:
-            return access_logout_response(self.env, request.method, request.url)
+        if parsed.path == "/api/auth/config" and request.method == "GET":
+            if worker_auth_mode(self.env, parsed.hostname or "") in ("local", "open"):
+                return json_response({"provider": "local"})
+            return json_response({"error": "Sign-in gateway is not configured", "errorCode": "AUTH_CONFIGURATION_ERROR"}, 503)
 
         parts = parse_api_path(parsed.path)
         if not parts:
@@ -130,7 +105,8 @@ class Default(WorkerEntrypoint):
             if error:
                 return json_response({"error": error, "errorCode": context_error_code(error)}, 403)
 
-        repo = KVRepository(self.env.RENTAL_KV, getattr(self.env, "TENANT_ACCESS_KV", None))
+        directory = ClerkDirectory(getattr(self.env, "CLERK_SECRET_KEY", None)) if auth_mode == "signed" else None
+        repo = KVRepository(self.env.RENTAL_KV, getattr(self.env, "TENANT_ACCESS_KV", None), directory)
         try:
             payload = await request_json(request) if request.method in ("POST", "PUT") else {}
         except InvalidJsonBody as exc:

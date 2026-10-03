@@ -3,16 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://*.clerk.accounts.dev https://clerk.kittythecat.ch https://challenges.cloudflare.com https://*.protect.clerk.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.clerk.accounts.dev https://clerk.kittythecat.ch https://*.protect.clerk.com:*; img-src 'self' data: https://img.clerk.com; font-src 'self'; worker-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com; object-src 'none'; base-uri 'none'; form-action 'self'">
     <meta name="referrer" content="no-referrer">
     <title>Rental Desk</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
+    <a class="skip-link" href="#view" data-i18n="actions.skip_content">Skip to content</a>
     <div class="app-shell">
       <header class="mobile-appbar">
         <a class="mobile-brand" href="#view" aria-label="Back to top">
-          <span class="brand-mark">RD</span>
+          <span class="brand-mark" data-organization-mark>RD</span>
           <span id="mobileTenantLabel">Association</span>
         </a>
         <div class="mobile-appbar-actions">
@@ -26,6 +27,7 @@
                 <div><dt>Role</dt><dd id="mobileUserMenuRole">-</dd></div>
                 <div><dt>Access</dt><dd id="mobileUserMenuAccess">-</dd></div>
               </dl>
+              <button type="button" class="ghost-button logout-button" data-account data-i18n="actions.account">Account settings</button>
               <button type="button" class="ghost-button logout-button" data-logout data-i18n="actions.logout">Log out</button>
             </div>
           </details>
@@ -34,7 +36,7 @@
       </header>
       <aside class="sidebar">
         <div class="brand">
-          <span class="brand-mark">RD</span>
+          <span class="brand-mark" data-organization-mark>RD</span>
           <div>
             <strong>Rental Desk</strong>
             <span id="tenantLabel">Association</span>
@@ -49,6 +51,7 @@
           <button class="nav-item" data-view="history" data-i18n="views.history">History</button>
           <button class="nav-item" data-view="admin" data-i18n="views.admin">Admin</button>
         </nav>
+        <div id="clerkOrganizationSwitcher" class="organization-switcher" hidden></div>
         <div class="tenant-box">
           <label for="tenantInput" data-i18n="labels.tenant">Tenant</label>
           <div class="tenant-row">
@@ -63,6 +66,7 @@
                   <div><dt>Role</dt><dd id="userMenuRole">-</dd></div>
                   <div><dt>Access</dt><dd id="userMenuAccess">-</dd></div>
                 </dl>
+                <button type="button" class="ghost-button logout-button" data-account data-i18n="actions.account">Account settings</button>
                 <button type="button" class="ghost-button logout-button" data-logout data-i18n="actions.logout">Log out</button>
               </div>
             </details>
@@ -86,7 +90,6 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow" data-i18n="app.eyebrow">Instrument rental</p>
             <h1 id="viewTitle">Dashboard</h1>
           </div>
           <div class="topbar-actions">
@@ -100,11 +103,11 @@
         </header>
 
         <section id="message" class="message" hidden>
-          <span id="messageText"></span>
+          <span id="messageText" role="status" aria-live="polite" aria-atomic="true"></span>
           <button id="messageAction" type="button" class="message-action" hidden></button>
           <button id="messageClose" type="button" class="message-close" aria-label="Close">×</button>
         </section>
-        <section id="view" class="view"></section>
+        <section id="view" class="view" tabindex="-1" aria-labelledby="viewTitle"></section>
         <input id="importFile" type="file" accept="application/json,.json" hidden>
         <input id="hitobitoFile" type="file" accept="application/json,.json" hidden>
         <input id="instrumentFile" type="file" accept="application/json,.json" hidden>
@@ -112,12 +115,13 @@
       <a class="to-top-button" href="#view" aria-label="Back to top">↑</a>
     </div>
 
-    <dialog id="recordDialog" class="record-dialog">
+    <dialog id="recordDialog" class="record-dialog" aria-labelledby="dialogTitle">
       <form id="recordForm" method="dialog">
         <div class="dialog-head">
           <h2 id="dialogTitle">Record</h2>
           <button class="icon-button" value="cancel" formnovalidate title="Close" aria-label="Close" data-i18n-title="actions.close" data-i18n-aria-label="actions.close">×</button>
         </div>
+        <p id="dialogError" class="dialog-error" role="alert" tabindex="-1" hidden></p>
         <div id="formFields" class="form-grid"></div>
         <menu class="dialog-actions">
           <button value="cancel" class="ghost-button" formnovalidate data-i18n="actions.cancel">Cancel</button>
