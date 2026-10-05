@@ -300,6 +300,35 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 500)
         self.assertEqual(body["error"], "unexpected error")
         self.assertNotIn("secret internal", body["error"])
+        self.assertEqual(body["errorCode"], "BACKEND_UNAVAILABLE")
+        self.assertRegex(body["requestId"], r"^[a-f0-9]{32}$")
+        self.assertTrue(body["retryable"])
+
+    async def test_context_metadata_failure_is_safe_and_not_an_auth_error(self):
+        repo = MemoryRepository()
+        async def unavailable(_tenant):
+            raise RuntimeError("secret credentials and private member")
+        repo.load_metadata = unavailable
+        status, body = await handle_api_request("GET", "/api/context", "", {}, repo)
+        self.assertEqual(status, 500)
+        self.assertEqual(body["errorCode"], "BACKEND_UNAVAILABLE")
+        self.assertNotIn("secret", str(body))
+
+    async def test_bad_metadata_blocks_mutation_without_overwriting_data(self):
+        from worker.storage import KVRepository, metadata_key
+        from tests.test_storage import FakeKV
+        kv = FakeKV()
+        kv.values[metadata_key("tenant-a")] = '{"revision": "secret invalid value"}'
+        snapshot = dict(kv.values)
+        repo = KVRepository(kv)
+        context = RequestContext(tenant_id="tenant-a", role="admin")
+        for method, path, payload in [("GET", "/api/context", {}), ("POST", "/api/tid-tenant-a/bootstrap", {})]:
+            status, body = await handle_api_request(method, path, "", payload, repo, context)
+            self.assertEqual(status, 503)
+            self.assertEqual(body["errorCode"], "DATA_INTEGRITY_ERROR")
+            self.assertFalse(body["retryable"])
+            self.assertNotIn("secret", str(body))
+            self.assertEqual(kv.values, snapshot)
 
     async def test_write_accepts_matching_expected_revision(self):
         repo = MemoryRepository()
@@ -1396,3 +1425,29 @@ class AdmissionsTests(unittest.IsolatedAsyncioTestCase):
         status, _ = await handle_api_request("POST", f"/api/admin/access-requests/{request_id}/deny", "", {}, repo, admin)
         self.assertEqual(status, 200)
         self.assertNotIn(request_id, repo.access_requests)
+
+    async def test_member_self_service_shows_current_rentals_without_shared_instrument_history(self):
+        from worker.domain import email_hash
+        repo = MemoryRepository()
+        records = empty_records()
+        records["members"] = [{"id": "member_a", "display_name": "A", "access_email_hash": email_hash("member@example.test"), "is_active": True}, {"id": "member_b", "display_name": "B"}]
+        records["instruments"] = [{"id": "instrument_current", "name": "Current"}, {"id": "instrument_returned", "name": "Returned"}]
+        records["rentals"] = [
+            {"id": "rental_current", "instrument_id": "instrument_current", "member_id": "member_a", "start_date": "2026-01-01"},
+            {"id": "rental_returned", "instrument_id": "instrument_returned", "member_id": "member_a", "start_date": "2026-01-01", "return_date": "2026-02-01"},
+            {"id": "rental_other", "instrument_id": "instrument_current", "member_id": "member_b", "start_date": "2025-01-01", "return_date": "2025-02-01"},
+        ]
+        records["history"] = [{"id": "other_history", "member_id": "member_b", "instrument_id": "instrument_current"}]
+        repo.tenants["band-a"] = records
+        member = RequestContext(tenant_id="band-a", actor_id="clerk-user", role="viewer", mode="signed", access_profile="basic", user_email="member@example.test")
+        for entity, expected in (("rentals", ["rental_current"]), ("instruments", ["instrument_current"]), ("members", ["member_a"]), ("history", [])):
+            status, result = await handle_api_request("GET", f"/api/tid-band-a/{entity}", "", {}, repo, member)
+            self.assertEqual(status, 200)
+            self.assertEqual([item["id"] for item in result["data"]], expected)
+        status, _ = await handle_api_request("POST", "/api/tid-band-a/rentals", "", {}, repo, member)
+        self.assertEqual(status, 403)
+        status, _ = await handle_api_request("GET", "/api/admin/admissions", "", {}, repo, member)
+        self.assertEqual(status, 403)
+        records["members"][0]["is_active"] = False
+        status, result = await handle_api_request("GET", "/api/tid-band-a/rentals", "", {}, repo, member)
+        self.assertEqual(result["data"], [])

@@ -21,7 +21,7 @@ name = "ACCESS_REQUEST_EMAIL"
 
 [vars]
 # Set your Clerk publishable key here; store CLERK_SECRET_KEY as a Worker secret.
-CLERK_PUBLISHABLE_KEY = ""
+CLERK_PUBLISHABLE_KEY = "pk_test_YWRhcHRlZC1nb2JibGVyLTk2MTEuY2xlcmsuYWNjb3VudHMuZGV2JA"
 
 # Set to an address on a domain onboarded to Cloudflare Email Sending.
 ACCESS_REQUEST_FROM = ""

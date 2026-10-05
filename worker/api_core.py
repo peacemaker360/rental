@@ -6,6 +6,7 @@ import hmac
 import json
 import re
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import parse_qs
@@ -34,6 +35,7 @@ from domain import (
     utc_now,
 )
 from migration import instrument_export_package, merge_hitobito_members, merge_instruments
+from errors import DataIntegrityError
 
 
 class TenantRepository(Protocol):
@@ -109,6 +111,7 @@ class RequestContext:
     global_role: str = "none"
     tenant_count: int = 1
     tenant_switchable: bool = False
+    member_associations: tuple = ()
 
 
 def parse_api_path(pathname: str) -> list[str]:
@@ -361,7 +364,7 @@ def normalize_association(
 
     organization_id = optional_text(payload.get("clerk_organization_id", current.get("clerk_organization_id")))
     if organization_id and not re.fullmatch(r"org_[A-Za-z0-9]+", organization_id):
-        raise DomainError("Clerk organization ID must start with org_ and contain only letters and digits")
+        raise DomainError("Authentication provider organization ID must start with org_ and contain only letters and digits")
 
     now = utc_now()
     return {
@@ -481,6 +484,7 @@ def context_from_signed_headers(
         global_role=global_role,
         tenant_count=tenant_count,
         tenant_switchable=bool(payload.get("tenant_switchable")),
+        member_associations=tuple(payload.get("member_associations") or []),
     ), None
 
 
@@ -658,6 +662,7 @@ def context_payload(context: RequestContext) -> dict[str, Any]:
         },
         "global_role": "none",
         "has_global_role": False,
+        "member_associations": list(context.member_associations),
         "tenant_count": context.tenant_count,
         "tenant_switchable": context.tenant_switchable or context.tenant_count > 1,
     }
@@ -753,16 +758,16 @@ async def handle_admin_request(
 
     if parts[1] == "admissions":
         if len(parts) != 2 or method != "GET":
-            return 405, {"error": "admissions are read-only; manage memberships in Clerk"}
+            return 405, {"error": "admissions are read-only; manage memberships with the authentication provider"}
         reader = getattr(repo, "list_admissions", None)
         if reader is None:
-            return 503, {"error": "Clerk admissions are unavailable in local mode"}
+            return 503, {"error": "Authentication provider admissions are unavailable in local mode"}
         data = await reader(None if can_manage_all_users(context) else context.tenant_id)
         return 200, {"data": data}
 
     if parts[1] == "users":
         if context.mode == "signed":
-            return 410, {"error": "Use Clerk admissions; app permission profiles are retired"}
+            return 410, {"error": "Use authentication provider admissions; app permission profiles are retired"}
         return await handle_admin_users_request(method, parts, payload, repo, context)
 
     if parts[1] == "access-requests":
@@ -770,7 +775,7 @@ async def handle_admin_request(
 
     if parts[1] == "invitations":
         if context.mode == "signed" and method != "GET":
-            return 405, {"error": "Manage invitations in Clerk"}
+            return 405, {"error": "Manage invitations with the authentication provider"}
         return await handle_admin_invitations(method, parts, payload, repo, context)
 
     if not can_manage_associations(context):
@@ -813,7 +818,7 @@ async def validate_clerk_association_mapping(repo: TenantRepository, association
         return
     for other in await repo.list_associations():
         if other["tenant_id"] != association["tenant_id"] and other.get("clerk_organization_id") == organization_id:
-            raise DomainError("Clerk organization is already linked to another association", 409)
+            raise DomainError("Authentication provider organization is already linked to another association", 409)
 
 
 async def handle_admin_invitations(method, parts, payload, repo, context):
@@ -891,19 +896,19 @@ async def handle_admin_access_requests(
         return 200, {"denied": request_id, "data": deleted}
 
     if parts[3] == "approve" and context.mode == "signed":
-        return 405, {"error": "Manage memberships in Clerk, then resolve the request"}
+        return 405, {"error": "Manage memberships with the authentication provider, then resolve the request"}
 
     if parts[3] == "resolve":
         reader = getattr(repo, "list_admissions", None)
         if reader is None:
-            return 503, {"error": "Clerk admissions are unavailable"}
+            return 503, {"error": "Authentication provider admissions are unavailable"}
         admissions = await reader(request["tenant_id"])
         if not any(item.get("identifier", "").lower() == request["email"].lower() and item.get("access_profile") != "none" for item in admissions["memberships"]):
-            return 409, {"error": "The user has not accepted a Clerk membership for this association yet"}
+            return 409, {"error": "The user has not accepted an authentication-provider membership for this association yet"}
         await repo.delete_access_request(request_id)
         return 200, {"resolved": request_id}
     if getattr(repo, "directory", None) is not None:
-        return 405, {"error": "Manage memberships in Clerk, then resolve the request"}
+        return 405, {"error": "Manage memberships with the authentication provider, then resolve the request"}
 
     body = object_payload(payload)
     tenant_role = clean_text(body.get("tenant_role", "reader")).lower()
@@ -1067,7 +1072,7 @@ def basic_instrument_ids(records: dict[str, list[dict[str, Any]]], member_id: st
     return {
         rental.get("instrument_id")
         for rental in records["rentals"]
-        if rental.get("member_id") == member_id and rental.get("instrument_id")
+        if rental.get("member_id") == member_id and rental.get("instrument_id") and not rental.get("return_date")
     }
 
 
@@ -1127,13 +1132,13 @@ def basic_access_matches(entity: str, item: dict[str, Any], records: dict[str, l
     if entity == "members":
         return item.get("id") == member_id
     if entity == "rentals":
-        return item.get("member_id") == member_id
+        return item.get("member_id") == member_id and not item.get("return_date")
     if entity == "instruments":
         return item.get("id") in instrument_ids
     if entity == "service_records":
         return item.get("instrument_id") in instrument_ids
     if entity == "history":
-        return item.get("member_id") == member_id or item.get("instrument_id") in instrument_ids
+        return item.get("member_id") == member_id
     return False
 
 
@@ -1182,7 +1187,23 @@ def collection_status_matches(entity: str, item: dict[str, Any], status: str) ->
     return item.get("status") == status
 
 
-async def handle_api_request(
+async def handle_api_request(*args, **kwargs) -> tuple[int, Any]:
+    try:
+        return await _handle_api_request(*args, **kwargs)
+    except Exception as exc:
+        reference = uuid.uuid4().hex
+        integrity = isinstance(exc, DataIntegrityError)
+        # No exception text, stack, request headers, or stored records in logs.
+        print(json.dumps({"request_id": reference, "category": "data_integrity" if integrity else "backend_failure"}))
+        return (503 if integrity else 500), {
+            "error": "Stored data is unavailable" if integrity else "unexpected error",
+            "errorCode": "DATA_INTEGRITY_ERROR" if integrity else "BACKEND_UNAVAILABLE",
+            "requestId": reference,
+            "retryable": not integrity,
+        }
+
+
+async def _handle_api_request(
     method: str,
     pathname: str,
     query: str,
@@ -1369,5 +1390,3 @@ async def handle_api_request(
         return 405, {"error": "method not allowed"}
     except DomainError as exc:
         return exc.status, {"error": str(exc)}
-    except Exception:
-        return 500, {"error": "unexpected error"}

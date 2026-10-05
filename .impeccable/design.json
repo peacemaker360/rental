@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 2,
+  "colorMeta": {
+    "association-green": {"displayName": "Association Green", "role": "primary action and focus"},
+    "sidebar-green": {"displayName": "Sidebar Green", "role": "navigation frame"},
+    "canvas": {"displayName": "Ledger Canvas", "role": "application background"},
+    "surface": {"displayName": "Paper Surface", "role": "cards and controls"},
+    "surface-soft": {"displayName": "Soft Green Surface", "role": "quiet grouping and selection"},
+    "ink": {"displayName": "Charcoal Ink", "role": "primary text"}
+  },
+  "typographyMeta": {
+    "headline": {"displayName": "View Headline"},
+    "body": {"displayName": "Operational Body"},
+    "label": {"displayName": "Compact Label"}
+  },
+  "components": [
+    {
+      "id": "button-primary",
+      "name": "Primary Button",
+      "category": "button",
+      "refersTo": "button-primary",
+      "description": "The single leading action in a task context.",
+      "html": "<button class=\"ds-btn-primary\">New Rental</button>",
+      "css": ".ds-btn-primary { min-height: 42px; padding: 0 16px; border: 0; border-radius: var(--radius, 8px); background: var(--accent, #0b6b5d); color: #fff; font: 700 1rem/1.2 Aptos, Segoe UI, system-ui, sans-serif; } .ds-btn-primary:hover { background: #094d43; } .ds-btn-primary:focus-visible { outline: 3px solid rgba(11,107,93,.28); outline-offset: 2px; }"
+    },
+    {
+      "id": "button-ghost",
+      "name": "Ghost Button",
+      "category": "button",
+      "refersTo": "button-ghost",
+      "description": "A bordered utility or secondary action.",
+      "html": "<button class=\"ds-btn-ghost\">Export</button>",
+      "css": ".ds-btn-ghost { min-height: 42px; padding: 0 14px; border: 1px solid #d8dfda; border-radius: 8px; background: #fff; color: #1e2528; font: 700 1rem/1.2 Aptos, Segoe UI, system-ui, sans-serif; } .ds-btn-ghost:hover { background: #eef5ef; } .ds-btn-ghost:focus-visible { outline: 3px solid rgba(11,107,93,.28); outline-offset: 2px; }"
+    },
+    {
+      "id": "navigation-active",
+      "name": "Active Navigation Row",
+      "category": "navigation",
+      "refersTo": "navigation-active",
+      "description": "The current operational view inside the dark-green frame.",
+      "html": "<button class=\"ds-nav-active\">Rentals</button>",
+      "css": ".ds-nav-active { width: 220px; min-height: 42px; padding: 0 14px; border: 0; border-radius: 8px; text-align: left; background: #314743; color: #fff; font: 600 1rem/1.2 Aptos, Segoe UI, system-ui, sans-serif; } .ds-nav-active:focus-visible { outline: 2px solid #d8ead5; outline-offset: 2px; }"
+    },
+    {
+      "id": "status-pill",
+      "name": "Available Status",
+      "category": "chip",
+      "description": "A compact semantic record status.",
+      "html": "<span class=\"ds-status-pill\">Available</span>",
+      "css": ".ds-status-pill { display: inline-flex; align-items: center; min-height: 26px; padding: 2px 10px; border-radius: 999px; background: #dff1df; color: #285c29; font: 700 .8rem/1.2 Aptos, Segoe UI, system-ui, sans-serif; }"
+    },
+    {
+      "id": "text-input",
+      "name": "Text Input",
+      "category": "input",
+      "description": "A clear operational data entry field.",
+      "html": "<label class=\"ds-field\"><span>Serial number</span><input value=\"A-1042\"></label>",
+      "css": ".ds-field { display: grid; gap: 6px; color: #617071; font: 700 .78rem/1.4 Aptos, Segoe UI, system-ui, sans-serif; text-transform: uppercase; } .ds-field input { min-height: 42px; padding: 0 12px; border: 1px solid #d8dfda; border-radius: 8px; background: #fff; color: #1e2528; font: 400 1rem/1.5 Aptos, Segoe UI, system-ui, sans-serif; text-transform: none; } .ds-field input:focus { border-color: #0b6b5d; outline: 3px solid rgba(11,107,93,.14); }"
+    }
+  ],
+  "extensions": {
+    "shadow": "0 18px 50px rgba(24, 37, 34, 0.12)"
+  },
+  "narrative": {
+    "northStar": "Association Ledger",
+    "overview": "Rental Desk feels like a carefully maintained shared record: calm, accountable, and immediately usable. Its deep green frame, warm off-white work surfaces, restrained teal actions, consistent corners, and clear status colors support both dense staff workflows and simple member rental checks.",
+    "keyCharacteristics": ["Deep green navigation frame around pale working surfaces", "Compact, predictable controls and data-dense layouts", "Restrained accent color reserved for actions and focus", "Clear semantic status treatments", "Responsive behavior that preserves task order and readability"],
+    "rules": [
+      {"name": "Reserved Accent", "body": "Association Green marks action, selection, or focus; it does not become broad decoration inside the workspace.", "section": "colors"},
+      {"name": "Operational Order", "body": "Navigation, context, action, feedback, and records appear in that order at every viewport size.", "section": "layout"},
+      {"name": "Earned Elevation", "body": "A surface receives a shadow only when it temporarily sits above the main workflow.", "section": "elevation"},
+      {"name": "One Radius", "body": "Use the eight-pixel control radius unless the element is explicitly nested or semantically a pill.", "section": "shapes"}
+    ],
+    "dos": ["Keep primary actions scarce and visually decisive.", "Preserve equivalent hierarchy and meaning in English and German.", "Use borders, alignment, and spacing to organize dense records."],
+    "donts": ["Add decorative gradients, glass effects, or ornamental imagery to operational views.", "Use status colors for unrelated decoration.", "Hide critical rental state behind hover-only interactions."]
+  }
+}

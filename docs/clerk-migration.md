@@ -27,12 +27,13 @@ Organization role mapping:
 | `org:operator` | operator | full |
 | `org:admin` | admin | full |
 
-Authorization uses current Clerk organization memberships only. Global app roles
+General tool authorization uses current Clerk organization memberships only. Global app roles
 are retired: private/unsafe user metadata and old KV profiles cannot grant access.
 The gateway does not read KV user status, grants, profiles, or member links.
 Clerk bans/locks still disable account access. Lookup failures deny access.
-Basic users' own-rental visibility matches their verified primary Clerk email to
-the email hash in rental-member records; this relationship does not grant membership.
+Basic own-rental access is independent of organization membership: a verified
+primary Clerk email matching an active rental-member record grants only the
+read-only self-service profile. It never grants general tool access.
 
 The SDK membership lookup follows [Clerk's paginated Backend API](https://clerk.com/docs/reference/backend/user/get-organization-membership-list).
 
@@ -331,3 +332,51 @@ its organization ID is empty. The separate `associations.json` describes `mgw`;
 it has not initialized this local registry. No registry mapping was changed,
 since connecting those different tenant IDs would require deciding which rental
 data the organization owns. Hosted registry state was not inspected.
+
+## Member Self-Service Without Organization Roles
+
+A signed-in user can view their current rentals when their verified primary
+Clerk email matches an active association member's `access_email_hash`. Set the
+member's **Access email** in the rental app; the app stores a normalized email
+hash. No Clerk organization membership or special role is required for this
+profile. It works even if the association has no Clerk mapping yet. Clerk must
+use optional organization membership so personal accounts can complete sign-in.
+
+The gateway discovers matched associations from active member records, without
+using legacy KV permission profiles. Multiple matches appear in **My association**.
+Clerk's organization switcher allows the personal account view for self-service.
+A recognized Clerk org role grants broader tool access when that org is selected;
+selecting a self-service association keeps its API requests scoped to own rentals.
+
+The backend filters current rentals, currently rented instruments, the matching
+member, and that member's history. Other members' history on a shared instrument
+is excluded. Writes and admin endpoints stay forbidden. Unmatched/inactive
+members receive no self-service access; Clerk-banned/locked users remain blocked.
+Removing a tool role removes tool access but preserves own-rental access while
+an active member's access email still matches. To remove that relationship,
+clear/change the member's access email or deactivate the member.
+
+If the membership lookup fails after identity verification, a matched member can
+still reach only self-service; no tool role is assumed. Gateway discovery and
+backend filtering check member data again on requests, so removing the match
+hides rentals. KV's normal propagation delay still applies.
+
+## Safe Errors and Recovery
+
+Unexpected API failures return a generic message and an opaque `requestId`.
+The browser displays that support reference instead of server exception text,
+stack traces, configuration values, or rental/member data. Worker logs record
+only the reference and a failure category; use authorized maintenance tools to
+investigate the affected storage separately.
+
+Rental, inventory, member, service, history, and summary reads retry once after
+a temporary network/server failure. Writes, sign-in/context checks, admin
+requests, permission failures, and configuration failures never auto retry.
+Existing displayed data remains visible if a refresh fails; the error remains
+visible until dismissed or replaced.
+
+Invalid JSON, malformed indices/metadata, or missing/mismatched indexed records
+return `DATA_INTEGRITY_ERROR` without their contents or storage keys. No records,
+indices, organization mappings, or permissions are repaired automatically.
+Check an authorized backup before any manual KV repair. Deploy both Workers
+and the static frontend for these error and recovery behaviors.

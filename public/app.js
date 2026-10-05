@@ -1,4 +1,5 @@
-import {initializeAuth, authFetch, signIn, signOut, openAccount, getAuthState, mountAuthFlow, unmountAuthFlow, getActiveOrganization, mountOrganizationSwitcher, openOrganization} from "./auth.js";
+import {initializeAuth, authFetch, signIn, signOut, openAccount, getAuthState, mountAuthFlow, unmountAuthFlow, getActiveOrganization, mountOrganizationSwitcher, mountUserButton, openOrganization} from "./auth.js";
+import {requestJson} from "./api_response.js";
 
 const state = {
   tenant: localStorage.getItem("rentalTenant") || "demo-association",
@@ -33,6 +34,7 @@ const state = {
   authEmail: "",
   isLoading: true,
   authError: "",
+  memberTenant: "",
   authBusy: false
 };
 
@@ -71,6 +73,7 @@ const mobileTenantLabel = document.querySelector("#mobileTenantLabel");
 const tenantRevision = document.querySelector("#tenantRevision");
 const tenantUpdatedAt = document.querySelector("#tenantUpdatedAt");
 const tenantBox = document.querySelector(".tenant-box");
+const tenantLocalControls = document.querySelector(".tenant-local-controls");
 const tenantMeta = document.querySelector(".tenant-meta");
 const associationHelp = document.querySelector("#associationHelp");
 const saveTenant = document.querySelector("#saveTenant");
@@ -98,25 +101,32 @@ let metadataPollNotifiedRevision = 0;
 const translations = {
   en: {
     "admin.admissions": "Organization admissions",
-    "admin.clerk_managed": "Memberships, roles, and invitations are managed in Clerk. This view shows the current Clerk records.",
-    "admin.manage_clerk": "Manage in Clerk",
-    "admin.dashboard_clerk": "Clerk Dashboard",
+    "admin.clerk_managed": "Memberships, roles, and invitations are managed by your authentication provider. This view shows the current records.",
+    "admin.manage_clerk": "Manage organization",
+    "admin.dashboard_clerk": "Authentication dashboard",
     "admin.no_admissions": "No organization memberships yet.",
-    "admin.permissions": "Clerk permissions",
+    "admin.permissions": "Permissions",
     "admin.no_app_access": "No rental access",
     "admin.pending_notice": "{count} access requests need review",
     "admin.review_requests": "Review access requests",
-    "admin.invite_help": "Invite or change this user’s role in Clerk. Once they accept, mark this request as resolved.",
+    "admin.invite_help": "Invite or change this user’s role through your authentication provider. Once they accept, mark this request as resolved.",
     "admin.resolve": "Mark resolved",
     "admin.retry_email": "Retry email notification",
     "admin.email_sent": "Admin email sent",
     "admin.email_failed": "Admin email not delivered; request is saved",
     "admin.email_config": "Admin email needs configuration; request is saved",
-    "admin.refresh_hint": "After making changes in Clerk, refresh this view.",
-    "auth.select_clerk": "Select an organization in Clerk",
+    "admin.refresh_hint": "After changing memberships, refresh this view.",
+    "auth.select_clerk": "Select your organization",
     "auth.select_clerk_body": "Use the organization switcher below. Your membership determines which association you can access.",
+    "labels.my_association": "My association",
+    "messages.connection_unavailable": "Connection unavailable. Please try again.",
+    "messages.service_unavailable": "Data could not be loaded. Please try again shortly.",
+    "messages.data_unavailable": "Data could not be loaded. Please contact the app administrator.",
+    "messages.configuration_unavailable": "The service needs attention. Please contact the app administrator.",
+    "messages.request_failed": "The request could not be completed. Please try again.",
+    "messages.error_reference": "Support reference: {reference}",
     "auth.unmapped_org": "This organization is not connected to Rental Desk",
-    "auth.unmapped_body": "Your sign-in is valid. Switch organizations, or ask the app operator to connect this Clerk organization ID to your association. Requesting access will not repair a missing connection.",
+    "auth.unmapped_body": "Your sign-in is valid. Switch organizations, or ask the app operator to connect this organization ID to your association. Requesting access will not repair a missing connection.",
     "auth.request_email_warning": "Your request is saved, but the admin email could not be sent. The request is visible in the admin dashboard.",
     "auth.welcome": "Welcome to Rental Desk",
     "auth.welcome_body": "Sign in or create an account. Your association access comes from your organization membership.",
@@ -181,6 +191,8 @@ const translations = {
     "actions.deny": "Deny",
     "actions.cancel": "Cancel",
     "actions.close": "Close",
+    "actions.collapse_sidebar": "Collapse sidebar",
+    "actions.expand_sidebar": "Expand sidebar",
     "actions.save": "Save",
     "actions.saving": "Saving…",
     "actions.edit": "Edit",
@@ -258,7 +270,7 @@ const translations = {
     "fields.region": "Region",
     "fields.locale": "Locale",
     "fields.contact_ref": "Contact ref",
-    "fields.clerk_organization_id": "Clerk organization ID",
+    "fields.clerk_organization_id": "Organization ID",
     "fields.contact": "Contact",
     "fields.hitobito_group_ref": "Hitobito group ref",
     "fields.inventory_ref": "Inventory ref",
@@ -411,25 +423,32 @@ const translations = {
   },
   de: {
     "admin.admissions": "Organisationszugänge",
-    "admin.clerk_managed": "Mitgliedschaften, Rollen und Einladungen werden in Clerk verwaltet. Diese Ansicht zeigt die aktuellen Clerk-Daten.",
-    "admin.manage_clerk": "In Clerk verwalten",
-    "admin.dashboard_clerk": "Clerk-Dashboard",
+    "admin.clerk_managed": "Mitgliedschaften, Rollen und Einladungen werden beim Anmeldeanbieter verwaltet. Diese Ansicht zeigt die aktuellen Daten.",
+    "admin.manage_clerk": "Organisation verwalten",
+    "admin.dashboard_clerk": "Verwaltung beim Anmeldeanbieter",
     "admin.no_admissions": "Noch keine Organisationsmitgliedschaften.",
-    "admin.permissions": "Clerk-Berechtigungen",
+    "admin.permissions": "Berechtigungen",
     "admin.no_app_access": "Kein Verleihzugriff",
     "admin.pending_notice": "{count} Zugangsanfragen warten auf Prüfung",
     "admin.review_requests": "Zugangsanfragen prüfen",
-    "admin.invite_help": "Lade die Person in Clerk ein oder ändere ihre Rolle. Nach Annahme kannst du diese Anfrage abschliessen.",
+    "admin.invite_help": "Lade die Person beim Anmeldeanbieter ein oder ändere ihre Rolle. Nach Annahme kannst du diese Anfrage abschliessen.",
     "admin.resolve": "Als erledigt markieren",
     "admin.retry_email": "E-Mail erneut senden",
     "admin.email_sent": "Admin-E-Mail gesendet",
     "admin.email_failed": "Admin-E-Mail nicht zugestellt; Anfrage gespeichert",
     "admin.email_config": "Admin-E-Mail muss eingerichtet werden; Anfrage gespeichert",
-    "admin.refresh_hint": "Nach Änderungen in Clerk diese Ansicht aktualisieren.",
-    "auth.select_clerk": "Organisation in Clerk auswählen",
+    "admin.refresh_hint": "Nach Änderungen an Mitgliedschaften diese Ansicht aktualisieren.",
+    "auth.select_clerk": "Organisation auswählen",
     "auth.select_clerk_body": "Nutze die Organisationsauswahl unten. Deine Mitgliedschaft bestimmt deinen Vereinszugriff.",
+    "labels.my_association": "Mein Verein",
+    "messages.connection_unavailable": "Keine Verbindung. Bitte versuche es erneut.",
+    "messages.service_unavailable": "Daten konnten nicht geladen werden. Bitte versuche es in Kürze erneut.",
+    "messages.data_unavailable": "Daten konnten nicht geladen werden. Bitte kontaktiere die App-Verwaltung.",
+    "messages.configuration_unavailable": "Der Dienst muss geprüft werden. Bitte kontaktiere die App-Verwaltung.",
+    "messages.request_failed": "Die Anfrage konnte nicht abgeschlossen werden. Bitte versuche es erneut.",
+    "messages.error_reference": "Support-Referenz: {reference}",
     "auth.unmapped_org": "Diese Organisation ist nicht mit Rental Desk verbunden",
-    "auth.unmapped_body": "Deine Anmeldung ist gültig. Wechsle die Organisation oder bitte den App-Betreiber, diese Clerk-Organisations-ID mit deinem Verein zu verbinden. Eine Zugangsanfrage behebt die fehlende Verbindung nicht.",
+    "auth.unmapped_body": "Deine Anmeldung ist gültig. Wechsle die Organisation oder bitte den App-Betreiber, diese Organisations-ID mit deinem Verein zu verbinden. Eine Zugangsanfrage behebt die fehlende Verbindung nicht.",
     "auth.request_email_warning": "Deine Anfrage ist gespeichert, aber die Admin-E-Mail konnte nicht gesendet werden. Sie ist in der Verwaltung sichtbar.",
     "auth.welcome": "Willkommen bei Rental Desk",
     "auth.welcome_body": "Melde dich an oder erstelle ein Konto. Deine Organisationsmitgliedschaft bestimmt deinen Vereinszugriff.",
@@ -494,6 +513,8 @@ const translations = {
     "actions.deny": "Ablehnen",
     "actions.cancel": "Abbrechen",
     "actions.close": "Schliessen",
+    "actions.collapse_sidebar": "Seitenleiste einklappen",
+    "actions.expand_sidebar": "Seitenleiste ausklappen",
     "actions.save": "Speichern",
     "actions.saving": "Wird gespeichert…",
     "actions.edit": "Bearbeiten",
@@ -571,7 +592,7 @@ const translations = {
     "fields.region": "Region",
     "fields.locale": "Sprache/Region",
     "fields.contact_ref": "Kontaktreferenz",
-    "fields.clerk_organization_id": "Clerk-Organisations-ID",
+    "fields.clerk_organization_id": "Organisations-ID",
     "fields.contact": "Kontakt",
     "fields.hitobito_group_ref": "Hitobito-Gruppenreferenz",
     "fields.inventory_ref": "Inventarreferenz",
@@ -810,65 +831,35 @@ function api(path, options = {}) {
   if (["POST", "PUT", "DELETE"].includes(method) && options.expectRevision !== false) {
     headers["x-rental-expected-revision"] = String(Number(state.meta.revision || 0));
   }
-  return authFetch(`/api/${tenantRoutePrefix}${state.tenant}${path}`, {...options, method, headers}).then(async (response) => {
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      if (data.meta) applyMeta(data.meta);
-      const error = new Error(data.error || `Request failed (${response.status})`);
-      error.status = response.status;
-      error.data = data;
-      throw error;
-    }
-    return data;
+  const memberScope = isBasicProfile() && (state.context?.member_associations || []).some(item => item.tenant_id === state.tenant)
+    ? `${path.includes("?") ? "&" : "?"}member_association=${encodeURIComponent(state.tenant)}` : "";
+  const recover = /^\/(summary|instruments|members|rentals|service_records|history)(\?|$)/.test(path);
+  return requestJson(authFetch, `/api/${tenantRoutePrefix}${state.tenant}${path}${memberScope}`, {...options, method, headers}, {recover, translate: t}).catch(error => {
+    if (error.data?.meta) applyMeta(error.data.meta);
+    throw error;
   });
 }
 
 async function apiContext() {
-  const response = await authFetch("/api/context", {
+  return requestJson(authFetch, `/api/context${state.memberTenant ? `?member_association=${encodeURIComponent(state.memberTenant)}` : ""}`, {
     credentials: "same-origin",
     headers: {"content-type": "application/json"}
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(data.error || `Request failed (${response.status})`);
-    error.status = response.status;
-    error.data = data;
-    throw error;
-  }
-  return data;
+  }, {translate: t});
 }
 
 function adminApi(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   const headers = {"content-type": "application/json", ...(options.headers || {})};
-  return authFetch(`/api/admin${path}`, {...options, method, headers}).then(async (response) => {
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(data.error || `Request failed (${response.status})`);
-      error.status = response.status;
-      error.data = data;
-      throw error;
-    }
-    return data;
-  });
+  return requestJson(authFetch, `/api/admin${path}`, {...options, method, headers}, {translate: t});
 }
 
 function accessRequestApi(payload) {
-  return authFetch("/api/access-requests", {
+  return requestJson(authFetch, "/api/access-requests", {
     credentials: "same-origin",
     method: "POST",
     headers: {"content-type": "application/json"},
     body: JSON.stringify(payload)
-  }).then(async (response) => {
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(data.error || `Request failed (${response.status})`);
-      error.status = response.status;
-      error.data = data;
-      throw error;
-    }
-    return data;
-  });
+  }, {translate: t});
 }
 
 function loadStoredAccessRequest() {
@@ -891,6 +882,7 @@ function resetAuthenticatedState() {
   authGeneration++;
   stopMetadataPolling();
   state.context = null;
+  state.memberTenant = "";
   state.authStatus = "signed_out";
   state.authReason = "missing_token";
   state.authEmail = "";
@@ -932,6 +924,7 @@ async function beginLogout() {
 
 function authReasonFromError(error) {
   const errorCode = String(error?.data?.errorCode || "").toUpperCase();
+  if (["DATA_INTEGRITY_ERROR", "BACKEND_UNAVAILABLE"].includes(errorCode) || error?.status >= 500) return "service_unavailable";
   if (errorCode === "ACCESS_SESSION_PENDING" || error?.data?.authReason === "session-pending") return "session_pending";
   if (errorCode === "AUTH_TASK_UNSUPPORTED") return "unsupported_task";
   if (errorCode === "AUTH_CONFIGURATION_ERROR") return "configuration_error";
@@ -973,6 +966,7 @@ function authStartPresentation() {
   if (["no_profile", "access_denied"].includes(reason)) return ["auth.no_access_title", "auth.no_access_body"];
   if (reason === "missing_token") return ["auth.welcome", "auth.welcome_body"];
   const descriptions = {
+    service_unavailable: "messages.service_unavailable",
     invalid_token: "auth.expired", configuration_error: "auth.configuration",
     unsupported_task: "auth.unsupported", email_unverified: "auth.verify_email", account_disabled: "auth.account_disabled"
   };
@@ -1026,6 +1020,7 @@ function renderUserMenu() {
   ].forEach(([menu, emailNode, tenantNode, roleNode, accessNode]) => {
     if (!menu) return;
     menu.hidden = state.authStatus !== "signed_in";
+    if (menu === userMenu && getAuthState().provider === "clerk") menu.hidden = true;
     if (menu.hidden) menu.open = false;
     if (emailNode) emailNode.textContent = context?.user_email || context?.actor_id || "User";
     if (tenantNode) tenantNode.textContent = state.tenant;
@@ -1040,7 +1035,8 @@ function renderSessionButtons() {
   const label = t(signedIn ? "actions.logout" : "actions.sign_in");
   [sessionButton, mobileSessionButton].forEach((button) => {
     if (!button) return;
-    button.hidden = checking;
+    const clerkOwnsSidebarSession = button === sessionButton && signedIn && getAuthState().provider === "clerk";
+    button.hidden = checking || clerkOwnsSidebarSession;
     button.textContent = label;
     button.title = label;
     button.setAttribute("aria-label", label);
@@ -1086,6 +1082,24 @@ function applyMeta(meta = state.meta) {
     : t("labels.updated_at", {date: updatedAt.toLocaleString(locale())});
 }
 
+function restoreSidebarCollapse() {
+  const sidebar = document.querySelector(".collapse-dock");
+  const toggle = sidebar?.querySelector("[data-sidebar-toggle]");
+  const shell = sidebar?.closest(".app-shell");
+  if (!sidebar || !toggle || !shell) return;
+  if (!window.matchMedia("(min-width: 681px)").matches) {
+    shell.style.removeProperty("grid-template-columns");
+    return;
+  }
+  const collapsed = localStorage.getItem("rentalSidebarCollapsed") === "1";
+  sidebar.classList.toggle("is-collapsed", collapsed);
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  const label = t(collapsed ? "actions.expand_sidebar" : "actions.collapse_sidebar");
+  toggle.setAttribute("aria-label", label);
+  toggle.title = label;
+  shell.style.gridTemplateColumns = collapsed ? `${toggle.dataset.collapsedColumn || "96px"} minmax(0, 1fr)` : "248px minmax(0, 1fr)";
+}
+
 function applyLanguage() {
   document.documentElement.lang = state.lang;
   document.title = t("app.title");
@@ -1106,6 +1120,12 @@ function applyLanguage() {
   if (state.context?.tenant_locked && !shouldShowTenantSwitcher()) {
     saveTenant.title = t("tenant.locked");
   }
+  const sidebarToggle = document.querySelector("[data-sidebar-toggle]");
+  if (sidebarToggle) {
+    const label = t(sidebarToggle.closest(".sidebar")?.classList.contains("is-collapsed") ? "actions.expand_sidebar" : "actions.collapse_sidebar");
+    sidebarToggle.setAttribute("aria-label", label);
+    sidebarToggle.title = label;
+  }
   applyMeta();
 }
 
@@ -1123,14 +1143,18 @@ function shouldShowOperationalMeta() {
 }
 
 function applyAccessChrome() {
-  const switcherVisible = state.authStatus === "signed_in" && shouldShowTenantSwitcher();
-  const metaVisible = state.authStatus === "signed_in" && shouldShowOperationalMeta();
+  const signedIn = state.authStatus === "signed_in";
+  const clerkControlsVisible = signedIn && getAuthState().provider === "clerk";
+  const switcherVisible = signedIn && shouldShowTenantSwitcher();
+  const metaVisible = signedIn && shouldShowOperationalMeta();
   const userMenuVisible = state.authStatus === "signed_in";
   if (tenantBox) tenantBox.hidden = !switcherVisible && !metaVisible && !userMenuVisible;
+  if (tenantLocalControls) tenantLocalControls.hidden = clerkControlsVisible;
   if (tenantInput) tenantInput.hidden = !switcherVisible;
   if (saveTenant) saveTenant.hidden = !switcherVisible;
   const tenantRow = tenantInput?.closest(".tenant-row");
   if (tenantRow) tenantRow.hidden = !switcherVisible && !userMenuVisible;
+  if (tenantRow && clerkControlsVisible) tenantRow.hidden = true;
   const tenantLabelElement = tenantBox?.querySelector("label");
   if (tenantLabelElement) tenantLabelElement.hidden = !switcherVisible;
   if (tenantMeta) tenantMeta.hidden = !metaVisible;
@@ -1550,8 +1574,8 @@ function renderAuthStart() {
         ${state.authEmail ? `<p class="auth-identity">${escapeHtml(t("auth.identity", {email: state.authEmail}))}</p>` : ""}
       </div>
       ${state.authError && isError ? `<details class="auth-error-details"><summary>${t("auth.error_details")}</summary><p>${escapeHtml(state.authError)}</p></details>` : ""}
-      ${showClerkFlow ? '<div id="clerkAuthFlow" class="clerk-auth-flow"></div>' : ""}
-      ${!checking && auth.status === "active" ? '<div id="authOrganizationSwitcher" class="organization-switcher"></div>' : ""}
+      ${showClerkFlow ? '<div id="clerkAuthFlow" class="clerk-auth-flow" data-auth-provider-ui></div>' : ""}
+      ${!checking && auth.status === "active" ? '<div id="authOrganizationSwitcher" class="organization-switcher" data-auth-provider-ui></div>' : ""}
       <div id="authFlowError" class="dialog-error" role="alert" hidden></div>
       ${!checking ? `<div class="auth-session-actions">
         <button type="button" class="${showClerkFlow ? "ghost-button" : "primary-button"}" data-auth-retry ${state.authBusy ? "disabled" : ""}>${t(state.authBusy ? "auth.checking" : hasLikelySignInToken() ? "auth.check_access" : auth.provider === "mock" && state.authReason === "missing_token" ? "actions.sign_in" : "auth.retry")}</button>
@@ -1724,7 +1748,7 @@ function clerkImageUrl(value) {
 }
 
 function renderOrganizationChrome() {
-  const organization = getActiveOrganization();
+  const organization = isBasicProfile() ? null : getActiveOrganization();
   const name = organization?.name || (state.authStatus === "signed_in" ? state.summary?.association?.display_name || state.tenant : t("app.eyebrow"));
   tenantLabel.textContent = name;
   if (mobileTenantLabel) mobileTenantLabel.textContent = name;
@@ -1743,11 +1767,20 @@ function renderOrganizationChrome() {
       mark.replaceChildren(image);
     }
   });
-  const switcher = document.querySelector("#clerkOrganizationSwitcher");
-  if (switcher) {
-    switcher.hidden = getAuthState().provider !== "clerk" || state.authStatus !== "signed_in";
+  document.querySelectorAll("[data-member-associations]").forEach(container => {
+    const associations = state.context?.member_associations || [];
+    container.hidden = state.authStatus !== "signed_in" || !isBasicProfile() || associations.length < 2;
+    container.innerHTML = container.hidden ? "" : `<label for="memberAssociation">${t("labels.my_association")}</label><select id="memberAssociation" data-member-association>${associations.map(item => `<option value="${escapeHtml(item.tenant_id)}" ${item.tenant_id === state.tenant ? "selected" : ""}>${escapeHtml(item.display_name)}</option>`).join("")}</select>`;
+  });
+  const showClerkControls = getAuthState().provider === "clerk" && state.authStatus === "signed_in";
+  document.querySelectorAll("[data-clerk-organization-switcher]").forEach((switcher) => {
+    switcher.hidden = !showClerkControls;
     mountOrganizationSwitcher(switcher.hidden ? null : switcher);
-  }
+  });
+  document.querySelectorAll("[data-clerk-user-button]").forEach((button) => {
+    button.hidden = !showClerkControls;
+    mountUserButton(button.hidden ? null : button);
+  });
   if (adminNavItem && capabilities().admin) {
     const count = state.accessRequests.filter(item => item.status === "pending").length;
     adminNavItem.textContent = `${t("views.admin")}${count ? ` (${count})` : ""}`;
@@ -2139,13 +2172,8 @@ function renderToolbar(entity) {
           ? ["name", "tenant", "status"]
           : ["name"];
   return `
-    <div class="toolbar">
+    <div class="toolbar toolbar-layout-a">
       <input data-search type="search" aria-label="${escapeHtml(t("search.placeholder", {entity: t(`entities.${entity}`)}))}" placeholder="${escapeHtml(t("search.placeholder", {entity: t(`entities.${entity}`)}))}" value="${escapeHtml(state.search)}">
-      ${statusOptions.length ? `<div class="segmented">
-        ${statusOptions.map((status) => `
-          <button data-status="${status}" aria-pressed="${state.status === status}" class="${state.status === status ? "is-active" : ""}">${filterLabel(status)}</button>
-        `).join("")}
-      </div>` : ""}
       <label class="sort-control">
         <span>${t("labels.sort")}</span>
         <select data-sort>
@@ -2158,6 +2186,9 @@ function renderToolbar(entity) {
       ${entity === "instruments" && caps.admin ? `<div class="toolbar-actions">
         <button class="ghost-button" data-export-instruments>${t("actions.export_instruments")}</button>
         <button class="ghost-button" data-import-instruments>${t("actions.import_instruments")}</button>
+      </div>` : ""}
+      ${statusOptions.length ? `<div class="segmented">
+        ${statusOptions.map((status) => `<button data-status="${status}" aria-pressed="${state.status === status}" class="${state.status === status ? "is-active" : ""}">${filterLabel(status)}</button>`).join("")}
       </div>` : ""}
     </div>
   `;
@@ -2941,7 +2972,27 @@ view.addEventListener("input", (event) => {
   }
 });
 
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-sidebar-toggle]");
+  if (!toggle) return;
+  const sidebar = toggle.closest(".sidebar");
+  const shell = sidebar?.closest(".app-shell");
+  if (!sidebar || !shell) return;
+  const collapsed = !sidebar.classList.contains("is-collapsed");
+  sidebar.classList.toggle("is-collapsed", collapsed);
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  const label = t(collapsed ? "actions.expand_sidebar" : "actions.collapse_sidebar");
+  toggle.setAttribute("aria-label", label);
+  toggle.title = label;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const speed = Number.parseFloat(toggle.dataset.duration) || 240;
+  shell.style.transition = reduceMotion ? "none" : `grid-template-columns ${speed}ms cubic-bezier(0.16, 1, 0.3, 1)`;
+  shell.style.gridTemplateColumns = collapsed ? `${toggle.dataset.collapsedColumn || "72px"} minmax(0, 1fr)` : "248px minmax(0, 1fr)";
+  localStorage.setItem("rentalSidebarCollapsed", collapsed ? "1" : "0");
+});
+
 view.addEventListener("click", async (event) => {
+  if (event.target.closest("[data-auth-provider-ui]")) return;
   const target = event.target.closest("button");
   if (target) {
     if (target.dataset.revokeInvitation) {
@@ -3097,6 +3148,7 @@ view.addEventListener("click", async (event) => {
 });
 
 view.addEventListener("keydown", (event) => {
+  if (event.target.closest("[data-auth-provider-ui]")) return;
   if (event.key === "Escape" && state.detail) {
     state.detail = null;
     render();
@@ -3455,6 +3507,7 @@ async function init() {
   state.authStatus = "checking";
   state.authError = "";
   applyLanguage();
+  restoreSidebarCollapse();
   render();
   let context;
   try {
@@ -3499,6 +3552,8 @@ async function init() {
     showMessage(error.message, true);
   }
 }
+
+window.addEventListener("resize", restoreSidebarCollapse);
 
 window.addEventListener("pageshow", (event) => {
   if (event.persisted) window.location.reload();
@@ -3556,3 +3611,12 @@ window.addEventListener("rental-auth-change", () => {
 });
 
 refreshAuthentication();
+
+ document.addEventListener("change", event => {
+  if (!event.target.matches("[data-member-association]")) return;
+  const tenant = event.target.value;
+  if (!(state.context?.member_associations || []).some(item => item.tenant_id === tenant)) return;
+  resetAuthenticatedState();
+  state.memberTenant = tenant;
+  refreshAuthentication();
+});

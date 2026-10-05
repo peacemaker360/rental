@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from domain import ENTITY_TYPES, empty_records, utc_now
+from errors import DataIntegrityError
 
 
 def tenant_key(tenant_id: str, suffix: str) -> str:
@@ -70,22 +71,22 @@ class KVRepository:
     async def sync_user_access(self, user, tenant_id=None, remove=False):
         if self.directory is not None:
             from domain import DomainError
-            raise DomainError("Manage organization permissions in Clerk", 410)
+            raise DomainError("Manage organization permissions with the authentication provider", 410)
 
     async def invitation_directory(self, tenant_id):
         from domain import DomainError
         if self.directory is None:
-            raise DomainError("Invitations require Clerk or the local mock server", 503)
+            raise DomainError("Invitations require an authentication provider or the local mock server", 503)
         mappings = self.directory.association_mappings(await self.list_associations())
         organization_id = mappings.get(tenant_id)
         if not organization_id:
-            raise DomainError("Association has no Clerk organization mapping", 409)
+            raise DomainError("Association has no authentication provider organization mapping", 409)
         return organization_id
 
     async def list_admissions(self, tenant_id=None):
         from domain import DomainError
         if self.directory is None:
-            raise DomainError("Clerk admissions are unavailable in local mode", 503)
+            raise DomainError("Authentication provider admissions are unavailable in local mode", 503)
         associations = await self.list_associations()
         if tenant_id is not None:
             associations = [item for item in associations if item["tenant_id"] == tenant_id]
@@ -104,7 +105,10 @@ class KVRepository:
         return await self.directory.revoke_invitation(organization_id, invitation_id)
 
     async def _get_json(self, key: str, default: Any = None) -> Any:
-        value = await self.kv.get(key, type="json")
+        try:
+            value = await self.kv.get(key, type="json")
+        except (ValueError, TypeError) as exc:
+            raise DataIntegrityError() from exc
         return default if value is None else value
 
     async def _put_json(self, key: str, value: Any) -> None:
@@ -119,19 +123,32 @@ class KVRepository:
         records = empty_records()
         for entity in ENTITY_TYPES:
             ids = await self._get_json(index_key(tenant_id, entity), [])
+            if not isinstance(ids, list) or any(not isinstance(value, str) or not value for value in ids):
+                raise DataIntegrityError()
             for record_id in ids:
                 record = await self._get_json(entity_key(tenant_id, entity, record_id))
-                if record is not None:
-                    records[entity].append(record)
+                if not isinstance(record, dict) or record.get("id") != record_id:
+                    raise DataIntegrityError()
+                records[entity].append(record)
         return records
 
     async def load_metadata(self, tenant_id: str) -> dict[str, Any]:
         metadata = await self._get_json(metadata_key(tenant_id), empty_metadata(tenant_id))
+        if not isinstance(metadata, dict) or type(metadata.get("revision", 0)) is not int or metadata.get("revision", 0) < 0:
+            raise DataIntegrityError()
         return {**empty_metadata(tenant_id), **metadata, "tenant_id": tenant_id}
 
     async def save_tenant(self, tenant_id: str, records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+        # Validate revision before the first write; do not partially save over bad metadata.
+        previous_metadata = await self.load_metadata(tenant_id)
+        previous_indexes = {}
         for entity in ENTITY_TYPES:
-            previous_ids = set(await self._get_json(index_key(tenant_id, entity), []))
+            ids = await self._get_json(index_key(tenant_id, entity), [])
+            if not isinstance(ids, list) or any(not isinstance(value, str) or not value for value in ids):
+                raise DataIntegrityError()
+            previous_indexes[entity] = set(ids)
+        for entity in ENTITY_TYPES:
+            previous_ids = previous_indexes[entity]
             ids = []
             for record in records.get(entity, []):
                 ids.append(record["id"])
@@ -139,7 +156,6 @@ class KVRepository:
             for stale_id in previous_ids - set(ids):
                 await self._delete(entity_key(tenant_id, entity, stale_id))
             await self._put_json(index_key(tenant_id, entity), ids)
-        previous_metadata = await self.load_metadata(tenant_id)
         metadata = {
             "tenant_id": tenant_id,
             "revision": int(previous_metadata.get("revision", 0)) + 1,
@@ -160,15 +176,21 @@ class KVRepository:
 
     async def list_associations(self) -> list[dict[str, Any]]:
         tenant_ids = await self._get_json(associations_index_key(), [])
+        if not isinstance(tenant_ids, list) or any(not isinstance(value, str) or not value for value in tenant_ids):
+            raise DataIntegrityError()
         associations = []
         for tenant_id in tenant_ids:
             association = await self.load_association(tenant_id)
-            if association is not None:
-                associations.append(association)
+            if association is None:
+                raise DataIntegrityError()
+            associations.append(association)
         return sorted(associations, key=lambda item: item.get("display_name", item.get("tenant_id", "")))
 
     async def load_association(self, tenant_id: str) -> dict[str, Any] | None:
-        return await self._get_json(association_key(tenant_id))
+        association = await self._get_json(association_key(tenant_id))
+        if association is not None and (not isinstance(association, dict) or association.get("tenant_id") != tenant_id or not isinstance(association.get("display_name", tenant_id), str)):
+            raise DataIntegrityError()
+        return association
 
     async def save_association(self, tenant_id: str, association: dict[str, Any]) -> dict[str, Any]:
         tenant_ids = await self._get_json(associations_index_key(), [])

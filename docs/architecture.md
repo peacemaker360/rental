@@ -31,7 +31,7 @@ tenant must match. The frontend loads context before records; switching needs
 a newly authorized context, not merely a browser-side tenant change.
 
 Clerk organization IDs explicitly map to associations. Names/slugs alone do not
-grant access. Current Clerk organization memberships are authoritative; global app roles are retired;
+grant access. Current Clerk organization memberships control tool access; global app roles are retired;
 old KV grants cannot restore revoked access. See [Clerk role mapping](clerk-migration.md).
 Backend roles are `viewer`, `operator`, and `admin`; user-facing readers map to
 `viewer`. Basic profiles are read-only and limited to linked members, rentals,
@@ -142,3 +142,10 @@ email hashes. Global metadata cannot bypass org membership. Hosted admissions
 are scoped to the current association; registry provisioning is operator work.
 Legacy user permission APIs are retired in signed mode. Local debugging and the
 explicit one-time migration tool retain compatibility with old export schemas.
+
+Member self-service is a separate authorization path: verified Clerk email plus
+an active rental-member email-hash match grants `viewer` with the `basic` profile,
+without org membership. Its association choices are carried in signed context;
+the backend rechecks email matching and filters current rentals. The relationship
+never grants inventory-wide read, write, or administration access. Clerk org
+roles remain authoritative for those broader capabilities.

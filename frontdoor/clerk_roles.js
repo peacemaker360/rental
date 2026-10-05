@@ -16,7 +16,7 @@ export function membershipAccessProfile(user, memberships, associations, memberL
     // KV is eventually consistent; reject ambiguity even if a concurrent write
     // passed the registry's uniqueness check.
     if (mappings.has(organizationId) || mappedTenants.has(association.tenant_id)) {
-      throw new Error("Ambiguous Clerk association mapping");
+      throw new Error("Ambiguous organization association mapping");
     }
     mappings.set(organizationId, association.tenant_id);
     mappedTenants.add(association.tenant_id);
@@ -28,7 +28,7 @@ export function membershipAccessProfile(user, memberships, associations, memberL
     const tenant = mappings.get(membership.organization.id);
     const grant = Object.hasOwn(clerkTenantRoles, membership.role) ? clerkTenantRoles[membership.role] : null;
     if (!tenant || !grant) continue;
-    if (seen.has(tenant)) throw new Error("Multiple Clerk organizations map to one association");
+    if (seen.has(tenant)) throw new Error("Multiple organizations map to one association");
     seen.add(tenant);
     roles.push({tenant_id: tenant, role: grant.role});
     profiles[tenant] = grant.access_profile;

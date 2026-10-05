@@ -1,163 +1,197 @@
 ---
 name: Rental Desk
-description: Compact operational UI for music-association instrument rentals
+description: A calm bilingual operations ledger for association instrument rentals
 colors:
-  accent: "#0b6b5d"
-  accent-strong: "#094d43"
-  background: "#f6f7f3"
-  panel: "#ffffff"
-  panel-soft: "#eef5ef"
+  canvas: "#f6f7f3"
+  surface: "#ffffff"
+  surface-soft: "#eef5ef"
   ink: "#1e2528"
-  muted: "#617071"
-  line: "#d8dfda"
-  warning: "#b55d13"
-  danger: "#b3261e"
-  information: "#22577a"
-  navigation: "#1f302e"
-  navigation-ink: "#f8fbf8"
+  muted-ink: "#617071"
+  divider: "#d8dfda"
+  association-green: "#0b6b5d"
+  association-green-deep: "#094d43"
+  sidebar-green: "#1f302e"
+  warning-amber: "#b55d13"
+  danger-red: "#b3261e"
+  information-blue: "#22577a"
+typography:
+  headline:
+    fontFamily: "Aptos, Segoe UI Variable, Segoe UI, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "clamp(1.8rem, 3vw, 2.6rem)"
+    fontWeight: 700
+    lineHeight: 1.2
+  title:
+    fontFamily: "Aptos, Segoe UI Variable, Segoe UI, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.2rem"
+    fontWeight: 700
+    lineHeight: 1.3
+  body:
+    fontFamily: "Aptos, Segoe UI Variable, Segoe UI, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 400
+    lineHeight: 1.5
+  label:
+    fontFamily: "Aptos, Segoe UI Variable, Segoe UI, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.78rem"
+    fontWeight: 700
+    lineHeight: 1.4
+rounded:
+  control: "8px"
+  segmented: "6px"
+  pill: "999px"
+spacing:
+  xs: "6px"
+  sm: "8px"
+  md: "12px"
+  lg: "16px"
+  xl: "24px"
+  section: "28px"
+components:
+  button-primary:
+    backgroundColor: "{colors.association-green}"
+    textColor: "{colors.surface}"
+    rounded: "{rounded.control}"
+    height: "42px"
+  button-ghost:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    height: "42px"
+  navigation-active:
+    backgroundColor: "#314743"
+    textColor: "{colors.surface}"
+    rounded: "{rounded.control}"
+    height: "42px"
 ---
+
+# Design System: Rental Desk
 
 ## Overview
 
-Established 2026-10-03 for [PRODUCT.md](PRODUCT.md). Tokens are extracted from
-`public/styles.css`. This captures incumbent design and interaction requirements,
-not a completed visual/accessibility audit. Owner confirmation of visual direction
-is pending; no redesign is authorized by this document alone.
+**Creative North Star: "Association Ledger"**
 
-Prioritize scanning, repeated actions, and confidence in state. This is a CRUD
-workspace, not a marketing page. The basic member portal is a complete simple
-experience, not an admin dashboard with controls removed.
+Rental Desk feels like a carefully maintained shared record: calm, accountable, and immediately usable. Its dark green frame gives the application institutional steadiness, while warm off-white work surfaces and restrained teal actions keep long operational sessions comfortable. The visual language is compact enough for data work without becoming cramped.
+
+Expression comes from precision rather than decoration. Repeated eight-pixel corners, clear status colors, firm labels, and consistent surface boundaries make changing rental data feel safe. The interface should remain equally legible for staff working across dense tables and members checking a small set of personal rentals.
+
+**Key Characteristics:**
+
+- Deep green navigation frame around pale working surfaces
+- Compact, predictable controls and data-dense layouts
+- Restrained accent color reserved for actions and focus
+- Clear semantic status treatments
+- Responsive behavior that preserves task order and readability
 
 ## Colors
 
-Use green for primary commands/selection, light neutral record surfaces, and
-dark green navigation. Keep distinct warning, danger, and information colors;
-do not make every state green. Orange means attention/due soon, red overdue/error,
-and blue information. Pair color with labels, dates, or recognizable icons.
-Do not use severity colors just to distinguish arbitrary roles.
+The palette combines ledger-paper neutrals with deep association greens and a small set of semantic status colors.
 
-Light flyouts use panel/ink colors even inside dark navigation. Never inherit
-white sidebar text into white cards. Verify actual contrast combinations.
+### Primary
+
+- **Association Green:** Primary actions, links, focus cues, and selected operational emphasis.
+- **Deep Association Green:** Hover and pressed emphasis for primary actions.
+- **Sidebar Green:** Persistent navigation frame and the strongest brand field.
+
+### Secondary
+
+- **Information Blue:** Rented and informational states that need distinction from actions.
+- **Warning Amber:** Due dates, attention states, and cautionary operational signals.
+- **Danger Red:** Destructive controls and errors only.
+
+### Neutral
+
+- **Ledger Canvas:** Page background that softens contrast around white work surfaces.
+- **Paper Surface:** Cards, tables, dialogs, menus, and controls.
+- **Soft Green Surface:** Quiet grouping, notices, and selected rows.
+- **Charcoal Ink:** Primary text.
+- **Muted Ink:** Supporting text and labels.
+- **Divider:** Borders and separators that organize data without dominating it.
+
+**The Reserved Accent Rule.** Association Green marks action, selection, or focus; it does not become broad decoration inside the workspace.
+
+**The Semantic Color Rule.** Warning, danger, and information colors keep stable meanings across English and German views.
 
 ## Typography
 
-Use the existing Inter/system sans-serif stack; external font loading must not
-be required for usability. Strong record names, readable body text, quieter
-metadata, and modest tool-sized headings establish hierarchy.
-Use fixed type steps rather than viewport-width scaling and zero letter spacing.
-Wrap long names/emails/German labels without pushing controls outside the viewport.
-Do not truncate the only readable copy of critical dates, roles, or references.
+**Display Font:** Aptos with Segoe UI Variable and system sans-serif fallbacks
+**Body Font:** Aptos with Segoe UI Variable and system sans-serif fallbacks
+
+**Character:** Neutral, sturdy, and highly readable. Weight and size establish hierarchy while the single family keeps mixed data, controls, and bilingual copy visually coherent.
+
+### Hierarchy
+
+- **Headline** (700, `clamp(1.8rem, 3vw, 2.6rem)`, 1.2): Current view titles and the strongest page orientation.
+- **Title** (700, `1.2rem`, 1.3): Panel and dialog headings.
+- **Body** (400, `1rem`, 1.5): Operational copy, record values, and form content.
+- **Label** (700, `0.78rem`, 1.4, uppercase where used): Field names, metadata, and compact navigational context.
+
+**The Plain Language Rule.** Type supports scanning and comprehension; decorative type treatments do not compete with records or actions.
 
 ## Layout
 
-Desktop uses a 248px sidebar and `minmax(0, 1fr)` content track. CSS adapts at
-960px and 680px; inspect the full cascade. Preserve desktop split-view details.
-Keep search/filter/sort near the list heading. Wide tables may scroll inside a
-container; the page must not overflow horizontally.
+Desktop uses a fixed 248-pixel sidebar and a flexible workspace. The workspace carries a top bar, messages, and a view region with generous outer padding, while panels, statistics, toolbars, and tables use an eight-pixel rhythm with 12-, 16-, 24-, and 28-pixel grouping intervals. Dense information stays aligned to shared grid and table edges.
 
-Sections are unframed layouts/full-width bands. Cards belong to repeated entities,
-personal rentals, and bounded tools, not nested page-section containers. Keep
-toolbars, counters, icons, and journey markers dimensionally stable.
+At narrow widths the persistent sidebar yields to a mobile app bar and menu flow. Toolbars and action groups wrap, tables retain horizontal scrolling when their data cannot collapse safely, and primary actions remain reachable. Responsive changes preserve task sequence rather than merely shrinking the desktop composition.
 
-Mobile requirements:
-- One minimal sticky identity/header with account access and a menu toggle.
-- Expanded navigation must not duplicate the logo or stay screen-filling.
-- Wrap/collapse menus; no sideways scrolling to discover destinations.
-- Selected details open directly beneath the row/card using desktop detail
-  content; hide the duplicate bottom panel.
-- Compact import/export icons sit beside the heading. Hitobito is Members-only.
-- Back-to-top floats clear of forms/dialogs and device safe areas.
-- Prefer 44px mobile icon targets; test German text, long lists, and zoom/reflow.
+**The Operational Order Rule.** Navigation, context, action, feedback, and records appear in that order at every viewport size.
 
 ## Elevation & Depth
 
-Use borders/spacing for routine grouping and stronger shadows for floating
-surfaces, not every section. The existing shadow is
-`0 18px 50px rgba(24, 37, 34, 0.12)`.
-Account flyouts open upward from lower/sidebar anchors where space permits,
-adapt to available space, and never clip. Close on outside interaction, focus
-leaving the surface, or Escape; restore keyboard focus appropriately. The user
-icon must not be the only dismissal mechanism.
+The system is flat by default and separates regions with tonal surfaces and fine borders. A single soft ambient shadow (`0 18px 50px rgba(24, 37, 34, 0.12)`) is reserved for overlays, menus, and loading surfaces that must visibly float above the ledger.
+
+**The Earned Elevation Rule.** A surface receives a shadow only when it temporarily sits above the main workflow.
 
 ## Shapes
 
-Use restrained rectangular panels/controls. Standard/new cards and controls
-have radii no larger than 8px; incumbent exceptions do not justify rounding
-everything. Circular shapes fit journey stops and familiar iconography.
-Use selects for roles/member choices, toggles/checkboxes for binary settings,
-date inputs for dates, and recognizable command buttons.
+Eight-pixel corners unify controls, panels, dialogs, and branded marks. Six-pixel corners distinguish nested segmented controls, while fully rounded pills are reserved for compact statuses and small identity indicators. Borders are thin and quiet; silhouettes stay rectilinear and space-efficient.
+
+**The One Radius Rule.** Use the eight-pixel control radius unless the element is explicitly nested or semantically a pill.
 
 ## Components
 
-### Shell And Account
+### Buttons
 
-Association identity is context, not a browser-side permission grant. Offer
-switching only when an authorized choice exists; Clerk owns hosted organization
-selection. Keep revision/update metadata in operational/admin views, not the
-member portal. Never expose legacy debug privileges in hosted UI.
-Provide a recognizable user icon, identity/role/profile, explicit sign-in/out,
-and account settings. Show member help only when association contact exists.
+- **Shape:** Compact rectangular controls with gently rounded corners (8px) and a minimum touch-friendly height near 42px.
+- **Primary:** Association Green with white text; used for the single leading action in a task context.
+- **Ghost:** White or transparent with a Divider border; used for utilities and secondary actions.
+- **Danger:** Pale red surface with a restrained red border and text; used only for destructive actions.
+- **Hover / Focus:** Primary actions deepen in color; all controls retain a clear visible focus treatment.
 
-### Lists And Forms
+### Navigation
 
-Rows have visible selection and keyboard-operable detail access; closing detail
-preserves useful list context. Embedded controls must not accidentally open rows.
-Nullable dates are clearable. Represent a stored email hash as "configured", not
-an email; replacement is deliberate. Failed saves retain input, errors are
-visible, and repeat submissions are disabled while pending.
+- **Style:** Text-first rows inside the Sidebar Green frame, with a darker lifted green selection field and white active text.
+- **Behavior:** Selected state is obvious without relying on color alone through the filled row treatment.
 
-### Journeys
+### Cards / Containers
 
-Use connected labeled stops for rental/service events, dates, conditions, and
-job notes. This is operational history, not decoration. Align dates with phases
-and keep marker baselines aligned even when dates are absent. Planned phases
-must not imply completed events.
-Rental cards show instrument, state, start, due, and return. Missing due means
-localized "Forever". Current due-soon threshold: 31 days inclusive; due today
-is warning, past due is overdue, and returned loans have no active overdue warning.
+- **Corner Style:** Eight-pixel corners with Divider borders.
+- **Surface:** Paper Surface for data containers; Soft Green Surface for contextual emphasis.
+- **Depth:** Flat at rest. Menus and modal layers may use the ambient shadow.
 
-### Loading And Feedback
+### Inputs
 
-Use restrained shimmer/skeleton/loading treatment while waiting; never flash a
-false empty dataset. Respect reduced motion and retain a static loading signal.
-Banners exist only for messages, last up to one minute, and have close controls.
-Pending requests and unresolved errors need persistent content, not only timers.
-Demo loading is onboarding-only and hidden once working data exists. Replacement
-imports/destructive actions require contextual confirmation.
+- **Style:** White fields with a Divider border, dark text, and the shared control radius.
+- **Labels:** Compact, firm labels above fields; supporting and error copy remains adjacent to the affected control.
 
-### Authentication And Admissions
+### Status Pills
 
-Distinguish signed out, checking, pending session task, missing membership,
-pending request, unmapped organization, and provider/network failure. De-emphasize
-irrelevant phases without illegibility. Cookie presence is not verified sign-in.
-Retain retry/check-access and session-aware sign-out. A join form must not pretend
-to repair an unmapped organization. Code input starts empty with a hint; submit
-needs a nonblank code and valid identity. Prefill verified email when available.
-Show submitted state, reference, association, and configured contact. Distinguish
-submission from notification delivery and approval. Browser-saved status is not
-live approval evidence. Named Clerk admin handoffs are intentional exceptions to
-provider-neutral general sign-in copy.
-
-### Accessibility And Localization
-
-Acceptance targets keyboard operation, visible focus, semantic labels, named icon
-buttons, status announcements, and WCAG 2.2 AA contrast/reflow. No certification
-is claimed. Tooltips supplement accessible names. Prefer an existing icon library
-for new controls. Update EN/DE together, including errors, empty states, tooltips,
-and dates; do not rely on English widths or concatenate translated sentence parts.
+- **Style:** Fully rounded compact labels with tinted backgrounds and dark semantic text.
+- **State:** Green indicates available or returned, blue indicates rented or active, amber indicates paused or attention, and red indicates overdue or destructive risk.
 
 ## Do's and Don'ts
 
-- Preserve compact CRUD and distinct member/admin experiences.
-- Verify desktop/mobile with long German labels, absent dates, long lists,
-  flyouts, reduced motion, keyboard interaction, and failed requests.
-- Use actual instrument information and purposeful imagery where identification
-  benefits; invented fixtures/images are not evidence of real inventory.
-- Avoid marketing heroes, decorative gradients/orbs, oversized headings, and
-  nested cards. Loading shimmer is functional, not the visual theme.
-- Never clip flyouts, bury mobile details under long lists, duplicate identity
-  headers, or require sideways menu scrolling.
-- Hiding controls is not authorization; backend enforcement remains mandatory.
+### Do
 
-These are implementation/review standards, not a claim that current screens
-already satisfy every item. This documentation change does not redesign the app.
+- Keep primary actions scarce and visually decisive.
+- Preserve equivalent hierarchy and meaning in English and German.
+- Use borders, alignment, and spacing to organize dense records.
+- Keep member views simpler while retaining the same visual system.
+- Maintain keyboard focus, semantic status, and responsive reading order.
+
+### Don't
+
+- Add decorative gradients, glass effects, or ornamental imagery to operational views.
+- Use status colors for unrelated decoration.
+- Introduce new corner radii when an existing role fits.
+- Hide critical rental state behind hover-only interactions.
+- Compress controls or copy until German labels wrap unpredictably.

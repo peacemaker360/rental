@@ -12,7 +12,7 @@
   --danger: #b3261e;
   --blue: #22577a;
   --shadow: 0 18px 50px rgba(24, 37, 34, 0.12);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: Aptos, "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
 }
 
 * {
@@ -969,6 +969,9 @@ tr:last-child td {
   padding: 0 9px;
   font-size: 0.8rem;
   font-weight: 800;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
   background: #eef1ee;
   color: var(--muted);
 }
@@ -1998,4 +2001,217 @@ td { font-variant-numeric: tabular-nums; }
 @media (max-width: 680px) {
   .request-notice { align-items: stretch; flex-direction: column; }
   .organization-heading { align-items: flex-start; }
+}
+
+/* Accepted sidebar account dock: compact navigation with grouped tenant utilities. */
+.sidebar.sidebar-v1 {
+  gap: 20px;
+  padding: 22px 14px 16px;
+  background: #1f302e;
+}
+
+.sidebar-v1 .brand {
+  padding: 0 4px 18px;
+  border-bottom: 1px solid rgba(216, 234, 213, 0.16);
+}
+
+.sidebar-v1 .nav { gap: 4px; }
+.sidebar-v1 .nav-item {
+  min-height: 40px;
+  padding-inline: 12px;
+  font-weight: 650;
+}
+
+.sidebar-v1 .tenant-box {
+  margin-top: auto;
+  padding: 12px;
+  border: 1px solid #49625d;
+  border-radius: 8px;
+  background: #314743;
+}
+
+.sidebar-v1 .tenant-box label { color: #dbe5df; letter-spacing: 0.06em; }
+.sidebar-v1 .tenant-row {
+  grid-template-columns: minmax(0, 1fr) 38px 38px;
+  gap: 5px;
+}
+.sidebar-v1 .tenant-row input,
+.sidebar-v1 .tenant-row button,
+.sidebar-v1 .tenant-row summary { min-height: 40px; }
+.sidebar-v1 .tenant-meta {
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  padding-top: 10px;
+  border-top: 1px solid #49625d;
+  color: #c5d2cc;
+}
+.sidebar-v1 .tenant-meta span:last-child { text-align: right; }
+.sidebar-v1 .language-box {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding-inline: 4px;
+}
+.sidebar-v1 .language-box > span { color: #dbe5df; }
+.sidebar-v1 .language-switch { width: 96px; }
+.sidebar-v1 .sidebar-session-button {
+  min-height: 40px;
+  margin-inline: 4px;
+  border-color: #d8ead5;
+  background: #d8ead5;
+  color: #19312b;
+}
+
+/* Accepted two-tier toolbar layout: commands first, record filters second. */
+.toolbar.toolbar-layout-a {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  grid-template-areas:
+    "search sort direction actions"
+    "filters filters filters filters";
+  gap: 8px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.toolbar-layout-a > [data-search] {
+  grid-area: search;
+  min-width: 0;
+}
+.toolbar-layout-a > .sort-control { grid-area: sort; }
+.toolbar-layout-a > [data-sort-direction] { grid-area: direction; }
+.toolbar-layout-a > .toolbar-actions {
+  grid-area: actions;
+  justify-self: end;
+}
+.toolbar-layout-a > .segmented {
+  grid-area: filters;
+  width: 100%;
+  overflow-x: auto;
+  justify-content: flex-start;
+  padding: 4px;
+}
+.toolbar-layout-a > .segmented button { flex: 0 0 auto; }
+
+@media (max-width: 900px) {
+  .toolbar.toolbar-layout-a {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "search sort direction"
+      "filters filters filters"
+      "actions actions actions";
+  }
+  .toolbar-layout-a > .toolbar-actions { justify-self: start; }
+}
+
+@media (max-width: 680px) {
+  .toolbar.toolbar-layout-a {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "search search"
+      "sort direction"
+      "filters filters"
+      "actions actions";
+  }
+}
+
+/* Accepted Clerk identity stack: organization context, then the native account menu. */
+.clerk-identity-v1 {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-color: #49625d;
+  background: #314743;
+}
+.clerk-identity-v1 .organization-switcher,
+.clerk-identity-v1 .clerk-user-button {
+  width: 100%;
+  min-width: 0;
+}
+.clerk-identity-v1 .cl-organizationSwitcherTrigger,
+.clerk-identity-v1 .cl-userButtonTrigger {
+  width: 100% !important;
+  min-height: 44px !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  padding: 7px 10px !important;
+  border: 1px solid #6f8781 !important;
+  border-radius: 8px !important;
+  background: #263b38 !important;
+  color: #ffffff !important;
+}
+.clerk-identity-v1 .cl-organizationSwitcherTrigger > svg,
+.clerk-identity-v1 .cl-userButtonTrigger > svg {
+  margin-left: auto !important;
+}
+.clerk-identity-v1 .cl-organizationPreviewMainIdentifier,
+.clerk-identity-v1 .cl-userPreviewMainIdentifier {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+.clerk-identity-v1 .tenant-meta {
+  margin-top: 2px;
+  padding: 8px 2px 0;
+}
+.tenant-local-controls[hidden] { display: none; }
+
+/* Accepted compact collapsible sidebar dock. */
+.collapse-dock {
+  position: relative;
+  overflow: visible;
+  transition: background-color 160ms ease-out;
+}
+.collapse-dock .sidebar-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(216, 234, 213, 0.12);
+  color: #ffffff;
+}
+.collapse-dock .sidebar-toggle:hover,
+.collapse-dock .sidebar-toggle:focus-visible {
+  background: rgba(216, 234, 213, 0.22);
+}
+.collapse-dock .sidebar-toggle:focus-visible {
+  outline: 2px solid #d8ead5;
+  outline-offset: 2px;
+}
+.collapse-dock .sidebar-toggle svg {
+  width: 18px;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.collapse-dock.is-collapsed {
+  padding: 20px 12px;
+  background: #243633;
+}
+.collapse-dock.is-collapsed .brand {
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+}
+.collapse-dock.is-collapsed .brand > div,
+.collapse-dock.is-collapsed .nav,
+.collapse-dock.is-collapsed .tenant-box,
+.collapse-dock.is-collapsed .association-help,
+.collapse-dock.is-collapsed .language-box,
+.collapse-dock.is-collapsed .sidebar-session-button {
+  display: none !important;
+}
+.collapse-dock.is-collapsed .brand-mark {
+  width: 36px;
+  height: 36px;
+}
+.collapse-dock.is-collapsed .sidebar-toggle { margin: 0; }
+.collapse-dock.is-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .collapse-dock,
+  .collapse-dock .sidebar-toggle svg { transition-duration: 1ms; }
 }

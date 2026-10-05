@@ -64,6 +64,19 @@ function assignmentFixture() {
   return {claims, env, legacy, revoke: () => { memberships = []; }};
 }
 
+test("malformed association registry is a non-permission data failure", async () => {
+  const {claims, env} = assignmentFixture();
+  for (const value of [{private: "invalid index"}, [null], ["missing-association"]]) {
+    env.RENTAL_KV.get = async key => key === "associations:index" ? value : null;
+    await assert.rejects(loadTenantAssignment(claims, env, new URL("https://example.test/api/context")), error => {
+      assert.equal(error.status, 503);
+      assert.equal(error.errorCode, "DATA_INTEGRITY_ERROR");
+      assert.doesNotMatch(error.message, /private|missing-association/);
+      return true;
+    });
+  }
+});
+
 test("gateway uses Clerk roles per tenant, never the old KV global role", async () => {
   const {claims, env} = assignmentFixture();
   const basic = await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context"));
@@ -129,4 +142,70 @@ test("an unsupported Clerk role is distinguished from a missing mapping", async 
   const {claims, env} = assignmentFixture();
   claims.clerkClient.users.getOrganizationMembershipList = async () => ({data: [{role: "org:custom", organization: {id: "org_a"}}], totalCount: 1});
   await assert.rejects(loadTenantAssignment(claims, env, new URL("https://rental.test/api/context")), {errorCode: "ACCESS_ORGANIZATION_ROLE_UNSUPPORTED"});
+});
+
+async function memberFixture() {
+  const fixture = assignmentFixture();
+  fixture.claims.activeOrganizationId = null;
+  fixture.revoke();
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fixture.claims.email))), byte => byte.toString(16).padStart(2, "0")).join("");
+  const members = new Map([
+    ["tenant:band-a:index:members", ["member_a"]],
+    ["tenant:band-a:members:member_a", {id: "member_a", access_email_hash: hash, is_active: true}]
+  ]);
+  const registryGet = fixture.env.RENTAL_KV.get;
+  fixture.env.RENTAL_KV.get = async key => members.get(key) ?? await registryGet(key);
+  return {...fixture, members, hash};
+}
+
+test("a verified email match grants own-rentals access without Clerk org membership", async () => {
+  const {claims, env} = await memberFixture();
+  const assignment = await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context"));
+  assert.equal(assignment.role, "viewer");
+  assert.equal(assignment.access_profile, "basic");
+  assert.equal(assignment.tenant_id, "band-a");
+  assert.deepEqual(assignment.member_associations, [{tenant_id: "band-a", display_name: "band-a"}]);
+  await assert.rejects(loadTenantAssignment(claims, env, new URL("https://rental.test/api/tid-band-b/rentals")), {errorCode: "ACCESS_PROFILE_NOT_FOUND"});
+});
+
+test("unsupported roles and unrelated selected orgs do not block a member's own rentals", async () => {
+  const {claims, env} = await memberFixture();
+  claims.activeOrganizationId = "org_unmapped";
+  assert.equal((await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context"))).access_profile, "basic");
+  claims.activeOrganizationId = "org_a";
+  claims.clerkClient.users.getOrganizationMembershipList = async () => ({data: [{role: "org:custom", organization: {id: "org_a"}}], totalCount: 1});
+  assert.equal((await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context"))).access_profile, "basic");
+});
+
+test("Clerk tool roles remain separate from explicitly selected own-rentals scope", async () => {
+  const {claims, env} = await memberFixture();
+  claims.activeOrganizationId = "org_a";
+  claims.clerkClient.users.getOrganizationMembershipList = async () => ({data: [{role: "org:admin", organization: {id: "org_a"}}], totalCount: 1});
+  assert.equal((await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context"))).role, "admin");
+  const own = await loadTenantAssignment(claims, env, new URL("https://rental.test/api/tid-band-a/rentals?member_association=band-a"));
+  assert.equal(own.role, "viewer");
+  assert.equal(own.access_profile, "basic");
+  await assert.rejects(loadTenantAssignment(claims, env, new URL("https://rental.test/api/context?member_association=band-b")), {errorCode: "TENANT_ACCESS_DENIED"});
+});
+
+test("inactive, missing email matches and banned accounts never grant member access", async () => {
+  const {claims, env, members} = await memberFixture();
+  members.get("tenant:band-a:members:member_a").is_active = false;
+  await assert.rejects(loadTenantAssignment(claims, env, new URL("https://rental.test/api/context")), {errorCode: "ACCESS_PROFILE_NOT_FOUND"});
+  members.get("tenant:band-a:members:member_a").is_active = true;
+  members.get("tenant:band-a:members:member_a").access_email_hash = "different";
+  await assert.rejects(loadTenantAssignment(claims, env, new URL("https://rental.test/api/context")), {errorCode: "ACCESS_PROFILE_NOT_FOUND"});
+  claims.clerkUser.banned = true;
+  await assert.rejects(loadTenantAssignment(claims, env, new URL("https://rental.test/api/context")), {errorCode: "ACCESS_PROFILE_DISABLED"});
+});
+
+test("members can select only their matched associations and roles fail safely on provider errors", async () => {
+  const {claims, env, members, hash} = await memberFixture();
+  members.set("tenant:band-b:index:members", ["member_b"]);
+  members.set("tenant:band-b:members:member_b", {id: "member_b", access_email_hash: hash});
+  claims.clerkClient.users.getOrganizationMembershipList = async () => { throw new Error("offline"); };
+  const context = await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context?member_association=band-b"));
+  assert.equal(context.tenant_id, "band-b");
+  assert.equal(context.member_associations.length, 2);
+  assert.equal(context.role, "viewer");
 });

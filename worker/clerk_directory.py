@@ -29,7 +29,7 @@ def clerk_failure(method, path, status, body):
     except (ValueError, AttributeError, TypeError):
         pass
     detail = f"; code={','.join(codes)}" if codes else ""
-    return (f"Clerk request failed: {method} {route} (HTTP {status}{detail}). "
+    return (f"Authentication provider request failed: {method} {route} (HTTP {status}{detail}). "
             "Some changes may already have applied; review before retrying.")
 
 
@@ -42,7 +42,7 @@ class ClerkDirectory:
 
     async def request(self, method, path, payload=None, allow_missing=False):
         if not self.secret:
-            raise DomainError("Clerk user management is not configured", 503)
+            raise DomainError("Authentication provider user management is not configured", 503)
         transport = self.transport
         if transport is None:
             from workers import fetch
@@ -68,7 +68,7 @@ class ClerkDirectory:
         except DomainError:
             raise
         except Exception as exc:
-            raise DomainError("Clerk is unavailable. Retry the access update.", 503) from exc
+            raise DomainError("Authentication provider is unavailable. Retry the access update.", 503) from exc
 
     async def find_user(self, email, required=True):
         users = await self.request("GET", "/users?" + urlencode({"email_address[]": email, "limit": 100}))
@@ -92,7 +92,7 @@ class ClerkDirectory:
             if not organization:
                 continue
             if organization in used or association["tenant_id"] in mappings:
-                raise DomainError("Ambiguous Clerk association mapping", 409)
+                raise DomainError("Ambiguous authentication provider association mapping", 409)
             used.add(organization)
             mappings[association["tenant_id"]] = organization
         return mappings
@@ -203,7 +203,7 @@ class ClerkDirectory:
             if remove or user.get("status") == "disabled" or user.get("tenant_statuses", {}).get(tenant) == "disabled":
                 continue
             if tenant not in targets:
-                raise DomainError(f"Association {tenant} has no Clerk organization mapping", 409)
+                raise DomainError(f"Association {tenant} has no authentication provider organization mapping", 409)
             profile = user.get("tenant_profiles", {}).get(tenant, user.get("access_profile", "full"))
             desired[targets[tenant]] = "org:member" if profile == "basic" else f"org:{item['role']}"
         if remove and user.get("clerk_user_id"):

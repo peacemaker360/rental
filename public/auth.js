@@ -176,6 +176,30 @@ export function openAccount() {
 }
 
 const organizationSwitchers = new Set();
+const userButtons = new Set();
+
+export function mountUserButton(node) {
+  for (const previous of userButtons) {
+    if (!previous.isConnected || getAuthState().status !== "active") {
+      clerk?.unmountUserButton(previous);
+      userButtons.delete(previous);
+    }
+  }
+  if (!node || !clerk || getAuthState().status !== "active" || userButtons.has(node)) return;
+  clerk.mountUserButton(node, {
+    showName: true,
+    userProfileMode: "modal",
+    appearance: {
+      variables: {
+        colorPrimary: "#0b6b5d",
+        colorForeground: "#1e2528",
+        borderRadius: "8px"
+      }
+    }
+  });
+  userButtons.add(node);
+}
+
 
 export function getActiveOrganization() {
   const organization = clerk?.organization;
@@ -191,7 +215,7 @@ export function mountOrganizationSwitcher(node) {
     }
   }
   if (!node || !clerk || getAuthState().status !== "active" || organizationSwitchers.has(node)) return;
-  clerk.mountOrganizationSwitcher(node, {hidePersonal: true, organizationProfileMode: "modal"});
+  clerk.mountOrganizationSwitcher(node, {hidePersonal: false, organizationProfileMode: "modal"});
   organizationSwitchers.add(node);
 }
 

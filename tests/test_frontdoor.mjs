@@ -9,6 +9,38 @@ import {
   routeTenant,
   validAssociationTenantId
 } from "../frontdoor/access_context_worker.js";
+import gateway from "../frontdoor/access_context_worker.js";
+import {webcrypto} from "node:crypto";
+if (!globalThis.crypto) globalThis.crypto = webcrypto;
+
+test("gateway catches rejected backend calls without exposing exception contents", async () => {
+  const response = await gateway.fetch(new Request("https://example.test/api/health"), {
+    RENTAL_BACKEND: {fetch: async () => { throw new Error("secret token and private member data"); }}
+  });
+  assert.equal(response.status, 500);
+  const data = await response.json();
+  assert.equal(data.errorCode, "BACKEND_UNAVAILABLE");
+  assert.match(data.requestId, /^[a-f0-9]{32}$/);
+  assert.equal(data.retryable, true);
+  assert.doesNotMatch(JSON.stringify(data), /secret|private member/);
+});
+
+test("gateway replaces raw backend error bodies and keeps safe integrity failures", async () => {
+  for (const body of ["Bad Request: secret infrastructure details", JSON.stringify({error: "private member", errorCode: "DATA_INTEGRITY_ERROR", requestId: "a".repeat(32), retryable: false})]) {
+    const response = await gateway.fetch(new Request("https://example.test/api/health"), {
+      RENTAL_BACKEND: {fetch: async () => new Response(body, {status: 503})}
+    });
+    const data = await response.json();
+    assert.equal(response.status, 503);
+    assert.doesNotMatch(JSON.stringify(data), /secret|private member/);
+    assert.match(data.requestId, /^[a-f0-9]{32}$/);
+    if (body.startsWith("{")) {
+      assert.equal(data.errorCode, "DATA_INTEGRITY_ERROR");
+      assert.equal(data.retryable, false);
+      assert.equal(data.requestId, "a".repeat(32));
+    }
+  }
+});
 
 
 test("auth routes are never interpreted as tenant ids", () => {

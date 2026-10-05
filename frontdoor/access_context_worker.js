@@ -31,10 +31,10 @@ export default {
         return jsonResponse(clerkConfiguration(env), 200);
       }
       if (url.pathname === "/api/health") {
-        return forwardToBackend(request, env, null);
+        return await forwardToBackend(request, env, null);
       }
       if (!url.pathname.startsWith("/api/")) {
-        return forwardToBackend(request, env, null);
+        return await forwardToBackend(request, env, null);
       }
 
       const claims = await authenticateClerk(request, env);
@@ -45,7 +45,7 @@ export default {
       try {
         assignment = await loadTenantAssignment(claims, env, url);
       } catch (error) {
-        return jsonResponse(authenticatedErrorBody(error, claims), error.status || 403);
+        return jsonResponse(authenticatedErrorBody(error, claims), failureStatus(error));
       }
       const notificationRoute = url.pathname.match(/^\/api\/admin\/access-requests\/(access_request:[a-f0-9]{24})\/notify$/);
       if (notificationRoute && request.method === "POST") {
@@ -54,7 +54,7 @@ export default {
           return jsonResponse({error: "Access request not found"}, 404);
         }
         const association = await env.RENTAL_KV.get(`associations:${item.tenant_id}`, {type: "json"});
-        if (!association?.clerk_organization_id) return jsonResponse({error: "Association is not mapped to Clerk"}, 409);
+        if (!association?.clerk_organization_id) return jsonResponse({error: "Association is not mapped to the authentication provider"}, 409);
         item.notification = await notifyOrganizationAdmins(item, association, env, claims.clerkClient, url.origin);
         await env.TENANT_ACCESS_KV.put(item.id, JSON.stringify(item));
         return jsonResponse({notification_status: notificationSummary(item)}, 200);
@@ -63,6 +63,7 @@ export default {
         access_profile: assignment.access_profile || "full",
         actor_id: assignment.actor_id || `clerk:${await shortDigest(claims.sub)}`,
         issued_at: Date.now() / 1000,
+        member_associations: assignment.member_associations || [],
         member_id: assignment.member_id,
         role: assignment.role,
         tenant_count: assignment.tenant_count || 0,
@@ -71,9 +72,9 @@ export default {
         user_email: assignment.email
       };
       const signedHeaders = await signedContextHeaders(context, env.RENTAL_CONTEXT_SECRET);
-      return forwardToBackend(request, env, signedHeaders);
+      return await forwardToBackend(request, env, signedHeaders);
     } catch (error) {
-      return jsonResponse(errorBody(error), error.status || 403);
+      return jsonResponse(errorBody(error), failureStatus(error));
     }
   }
 };
@@ -87,13 +88,30 @@ function authenticatedErrorBody(error, claims) {
 }
 
 function errorBody(error) {
+  if ((!error?.errorCode && errorCodeFor(error) === ERROR_CODES.ACCESS_CONTEXT_ERROR) || failureStatus(error) >= 500) {
+    const configuration = error?.errorCode === "AUTH_CONFIGURATION_ERROR";
+    const integrity = error?.errorCode === "DATA_INTEGRITY_ERROR";
+    const provider = error?.errorCode === "AUTH_PROVIDER_UNAVAILABLE";
+    const requestId = crypto.randomUUID().replaceAll("-", "");
+    console.error(JSON.stringify({request_id: requestId, category: configuration ? "configuration" : integrity ? "data_integrity" : "gateway_failure"}));
+    return {
+      error: configuration ? "Service configuration needs attention" : integrity ? "Stored data is unavailable" : "Service temporarily unavailable",
+      errorCode: configuration ? "AUTH_CONFIGURATION_ERROR" : integrity ? "DATA_INTEGRITY_ERROR" : provider ? "AUTH_PROVIDER_UNAVAILABLE" : "BACKEND_UNAVAILABLE",
+      requestId,
+      retryable: !configuration && !integrity && !provider
+    };
+  }
   const body = {
-    error: error?.message || "frontdoor request failed",
+    error: error?.errorCode ? error.message : "The request could not be completed",
     errorCode: errorCodeFor(error)
   };
   if (error?.accessRequest) body.accessRequest = error.accessRequest;
   if (error?.authReason) body.authReason = error.authReason;
   return body;
+}
+
+function failureStatus(error) {
+  return error?.status || (errorCodeFor(error) === ERROR_CODES.ACCESS_CONTEXT_ERROR ? 500 : 403);
 }
 
 function errorCodeFor(error) {
@@ -120,7 +138,7 @@ function accessError(message, errorCode, status = 403, accessRequest = null) {
 }
 
 export async function createAccessRequest(request, env, claims) {
-  if (!env.TENANT_ACCESS_KV) throw new Error("TENANT_ACCESS_KV binding is required");
+  if (!env.TENANT_ACCESS_KV) throw accessError("Service configuration needs attention", "AUTH_CONFIGURATION_ERROR", 503);
   const payload = await request.json().catch(() => ({}));
   const email = cleanEmail(claims?.email || payload.email);
   if (!validEmail(email)) throw new Error("valid email is required");
@@ -128,7 +146,7 @@ export async function createAccessRequest(request, env, claims) {
   if (!validAssociationTenantId(tenantId)) throw new Error("tenant id is invalid or reserved");
   const association = await env.RENTAL_KV?.get(`associations:${tenantId}`, {type: "json"});
   if (!association?.clerk_organization_id || (association.status && association.status !== "active")) {
-    throw accessError("Association is unavailable or has not been connected to Clerk", "ACCESS_REQUEST_INVALID", 404);
+    throw accessError("Association is unavailable or has not been connected to the authentication provider", "ACCESS_REQUEST_INVALID", 404);
   }
   const now = new Date().toISOString();
   const id = `access_request:${await shortDigest(`${email}:${tenantId}`)}`;
@@ -176,42 +194,67 @@ function jsonResponse(body, status) {
 
 
 async function loadTenantAssignment(claims, env, url) {
-  if (!env.TENANT_ACCESS_KV) throw new Error("TENANT_ACCESS_KV binding is required");
+  if (!env.TENANT_ACCESS_KV) throw accessError("Service configuration needs attention", "AUTH_CONFIGURATION_ERROR", 503);
   const email = String(claims.email || "").trim().toLowerCase();
   if (!validEmail(email)) throw new Error("Sign-in email is invalid");
   if (!env.RENTAL_KV) throw accessError("Association registry is unavailable", "AUTH_CONFIGURATION_ERROR", 503);
-  const tenantIds = await env.RENTAL_KV.get("associations:index", {type: "json"}) || [];
+  const tenantIds = await readStoredJson(env.RENTAL_KV, "associations:index", []);
+  validateStoredIds(tenantIds);
   const associations = [];
   for (const tenantId of tenantIds) {
-    const association = await env.RENTAL_KV.get(`associations:${tenantId}`, {type: "json"});
-    if (association) associations.push(association);
+    const association = await readStoredJson(env.RENTAL_KV, `associations:${tenantId}`);
+    if (!association || typeof association !== "object" || Array.isArray(association) || association.tenant_id !== tenantId) throw dataIntegrityError();
+    associations.push(association);
   }
-  let memberships;
+  // Clerk verifies identity and tool roles. A rental-member email match grants
+  // only the separate own-rentals profile, never general association access.
+  if (claims.clerkUser.banned || claims.clerkUser.locked) {
+    throw accessError("This account is disabled", "ACCESS_PROFILE_DISABLED");
+  }
+  let memberships = [];
+  let providerUnavailable = false;
   try {
     memberships = await listUserMemberships(claims.clerkClient, claims.sub);
   } catch {
-    throw accessError("Unable to check association access right now", "AUTH_PROVIDER_UNAVAILABLE", 503);
+    providerUnavailable = true;
   }
   const profile = membershipAccessProfile(claims.clerkUser, memberships, associations);
   const activeAssociation = associations.find(item => item.clerk_organization_id === claims.activeOrganizationId);
-  if (activeAssociation && profile.tenant_roles.some(item => item.tenant_id === activeAssociation.tenant_id)) {
-    profile.default_tenant = activeAssociation.tenant_id;
-  }
-  if (!routeTenant(url)) {
-    if (claims.activeOrganizationId && !activeAssociation) {
-      throw accessError("The selected Clerk organization has no association mapping in Rental Desk. Ask the app operator to connect its organization ID to the existing association.", "ACCESS_ORGANIZATION_UNMAPPED");
+  const toolTenant = routeTenant(url) || activeAssociation?.tenant_id;
+  const memberAssociations = profile.tenant_profiles[toolTenant] === "full" && !url.searchParams.has("member_association")
+    ? [] : await matchingMemberAssociations(email, routeTenant(url) ? associations.filter(item => item.tenant_id === routeTenant(url)) : associations, env.RENTAL_KV);
+  for (const association of memberAssociations) {
+    if (!profile.tenant_roles.some(item => item.tenant_id === association.tenant_id)) {
+      profile.tenant_roles.push({tenant_id: association.tenant_id, role: "reader"});
+      profile.tenant_profiles[association.tenant_id] = "basic";
     }
-    if (claims.activeOrganizationId && !profile.tenant_roles.some(item => item.tenant_id === activeAssociation?.tenant_id)) {
+  }
+  const selectedMemberTenant = url.searchParams.get("member_association");
+  const selectedMember = memberAssociations.find(item => item.tenant_id === selectedMemberTenant);
+  if (selectedMemberTenant && !selectedMember) throw accessError("No matching association member for this account", "TENANT_ACCESS_DENIED");
+  const activeAccess = activeAssociation && profile.tenant_roles.some(item => item.tenant_id === activeAssociation.tenant_id);
+  profile.default_tenant = selectedMember?.tenant_id || (activeAccess ? activeAssociation.tenant_id : memberAssociations[0]?.tenant_id) || profile.default_tenant;
+  if (selectedMember) {
+    profile.tenant_profiles[selectedMember.tenant_id] = "basic";
+    profile.tenant_roles.find(item => item.tenant_id === selectedMember.tenant_id).role = "reader";
+  }
+  if (!routeTenant(url) && !selectedMember && !memberAssociations.length) {
+    if (providerUnavailable) throw accessError("Unable to check association access right now", "AUTH_PROVIDER_UNAVAILABLE", 503);
+    if (claims.activeOrganizationId && !activeAssociation) {
+      throw accessError("The selected organization has no association mapping in Rental Desk. Ask the app operator to connect its organization ID to the existing association.", "ACCESS_ORGANIZATION_UNMAPPED");
+    }
+    if (claims.activeOrganizationId && !activeAccess) {
       const membership = memberships.find(item => item.organization.id === claims.activeOrganizationId);
       throw membership
-        ? accessError("Your Clerk organization role is not supported by Rental Desk. Ask an organization admin to assign a rental role in Clerk.", "ACCESS_ORGANIZATION_ROLE_UNSUPPORTED")
-        : accessError("You no longer have membership in the selected Clerk organization. Switch organizations or ask its admin for an invitation.", "ACCESS_ORGANIZATION_ACCESS_DENIED");
+        ? accessError("Your organization role is not supported by Rental Desk. Ask an organization admin to assign a rental role with your authentication provider.", "ACCESS_ORGANIZATION_ROLE_UNSUPPORTED")
+        : accessError("You no longer have membership in the selected organization. Switch organizations or ask its admin for an invitation.", "ACCESS_ORGANIZATION_ACCESS_DENIED");
     }
     if (!claims.activeOrganizationId && profile.tenant_roles.length) {
-      throw accessError("Select your organization in Clerk to continue", "ACCESS_ORGANIZATION_REQUIRED");
+      throw accessError("Select your organization to continue", "ACCESS_ORGANIZATION_REQUIRED");
     }
   }
-  if (profile.tenant_roles.length) return resolveUserAssignment(profile, email, url);
+  if (profile.tenant_roles.length) return {...resolveUserAssignment(profile, email, url), member_associations: memberAssociations};
+  if (providerUnavailable) throw accessError("Unable to check association access right now", "AUTH_PROVIDER_UNAVAILABLE", 503);
 
   const pendingRequest = await pendingAccessRequestForEmail(email, env);
   if (pendingRequest) {
@@ -226,6 +269,26 @@ async function loadTenantAssignment(claims, env, url) {
     "no user access profile for authenticated email",
     ERROR_CODES.ACCESS_PROFILE_NOT_FOUND
   );
+}
+
+async function matchingMemberAssociations(email, associations, kv) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(email));
+  const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+  const matches = [];
+  for (const association of associations) {
+    if (!validAssociationTenantId(association.tenant_id) || (association.status && association.status !== "active")) continue;
+    const ids = await readStoredJson(kv, `tenant:${association.tenant_id}:index:members`, []);
+    validateStoredIds(ids);
+    for (const id of ids) {
+      const member = await readStoredJson(kv, `tenant:${association.tenant_id}:members:${id}`);
+      if (!member || typeof member !== "object" || Array.isArray(member) || member.id !== id) throw dataIntegrityError();
+      if (member?.is_active !== false && member?.access_email_hash === hash) {
+        matches.push({tenant_id: association.tenant_id, display_name: association.display_name || association.tenant_id});
+        break;
+      }
+    }
+  }
+  return matches;
 }
 
 async function addEmailRequestIndex(email, requestId, env) {
@@ -367,7 +430,7 @@ function opaqueMemberId(value) {
 }
 
 async function signedContextHeaders(context, secret) {
-  if (!secret) throw new Error("RENTAL_CONTEXT_SECRET is required");
+  if (!secret) throw accessError("Service configuration needs attention", "AUTH_CONFIGURATION_ERROR", 503);
   const encoded = base64UrlEncodeText(JSON.stringify(context));
   return {
     [CONTEXT_HEADER]: encoded,
@@ -393,7 +456,7 @@ async function shortDigest(value) {
   return Array.from(new Uint8Array(digest).slice(0, 12), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function forwardToBackend(request, env, signedHeaders) {
+async function forwardToBackend(request, env, signedHeaders) {
   const headers = new Headers(request.headers);
   stripUntrustedIdentityHeaders(headers);
   if (signedHeaders) {
@@ -403,19 +466,72 @@ function forwardToBackend(request, env, signedHeaders) {
 
   const forwarded = new Request(request, {headers});
   if (env.RENTAL_BACKEND && typeof env.RENTAL_BACKEND.fetch === "function") {
-    return env.RENTAL_BACKEND.fetch(forwarded);
+    return sanitizeBackendResponse(await env.RENTAL_BACKEND.fetch(forwarded));
   }
   if (env.RENTAL_BACKEND_URL) {
     const original = new URL(request.url);
     const target = new URL(`${original.pathname}${original.search}`, env.RENTAL_BACKEND_URL);
-    return fetch(new Request(target.toString(), {
+    return sanitizeBackendResponse(await fetch(new Request(target.toString(), {
       body: ["GET", "HEAD"].includes(forwarded.method) ? undefined : forwarded.body,
       headers: forwarded.headers,
       method: forwarded.method,
       redirect: "manual"
-    }));
+    })));
   }
-  throw new Error("RENTAL_BACKEND service binding or RENTAL_BACKEND_URL is required");
+  throw accessError("Service configuration needs attention", "AUTH_CONFIGURATION_ERROR", 503);
+}
+
+async function sanitizeBackendResponse(response) {
+  if (response.status < 500) return response;
+  const data = await boundedErrorJson(response);
+  const code = ["DATA_INTEGRITY_ERROR", "AUTH_CONFIGURATION_ERROR", "CONTEXT_CONFIGURATION_ERROR"].includes(data?.errorCode) ? data.errorCode : "BACKEND_UNAVAILABLE";
+  const requestId = /^[a-f0-9]{32}$/.test(data?.requestId || "") ? data.requestId : crypto.randomUUID().replaceAll("-", "");
+  console.error(JSON.stringify({request_id: requestId, category: "backend_failure", status: response.status}));
+  return jsonResponse({
+    error: code === "DATA_INTEGRITY_ERROR" ? "Stored data is unavailable" : "Service temporarily unavailable",
+    errorCode: code,
+    requestId,
+    retryable: code === "BACKEND_UNAVAILABLE" && data?.retryable !== false
+  }, response.status);
+}
+
+async function boundedErrorJson(response) {
+  const reader = response.body?.getReader();
+  if (!reader) return {};
+  try {
+    let size = 0;
+    let text = "";
+    const decoder = new TextDecoder();
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 16384) return {};
+      text += decoder.decode(value, {stream: true});
+    }
+    return JSON.parse(text + decoder.decode());
+  } catch {
+    return {};
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+}
+
+function dataIntegrityError() {
+  return accessError("Stored data is unavailable", "DATA_INTEGRITY_ERROR", 503);
+}
+
+function validateStoredIds(value) {
+  if (!Array.isArray(value) || value.some(id => typeof id !== "string" || !id)) throw dataIntegrityError();
+}
+
+async function readStoredJson(kv, key, fallback = null) {
+  try {
+    return (await kv.get(key, {type: "json"})) ?? fallback;
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof TypeError) throw dataIntegrityError();
+    throw error;
+  }
 }
 
 function stripUntrustedIdentityHeaders(headers) {

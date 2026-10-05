@@ -21,7 +21,7 @@ export async function notifyOrganizationAdmins(item, association, env, client, a
         const email = user.emailAddresses?.find(value => value.id === user.primaryEmailAddressId && value.verification?.status === "verified")?.emailAddress;
         if (!email || user.banned || user.locked) { result.status = "failed"; continue; }
         const name = association.display_name || association.tenant_id;
-        const text = `${item.email} has requested access to ${name}.\n\nOpen Rental Desk, select the organization in Clerk, and open Admin Center to review the request. Invite the user or manage their role in Clerk.\n\n${appOrigin}/?view=admin\n\nRequest: ${item.id}\n\n${item.email} hat Zugriff auf ${name} angefragt. Bitte öffne die Verwaltung in Rental Desk und verwalte die Mitgliedschaft in Clerk.`;
+        const text = `${item.email} has requested access to ${name}.\n\nOpen Rental Desk, select the organization with your authentication provider, and open Admin Center to review the request. Invite the user or manage their role with your authentication provider.\n\n${appOrigin}/?view=admin\n\nRequest: ${item.id}\n\n${item.email} hat Zugriff auf ${name} angefragt. Bitte öffne die Verwaltung in Rental Desk und verwalte die Mitgliedschaft beim Anmeldeanbieter.`;
         await env.ACCESS_REQUEST_EMAIL.send({
           from: {email: env.ACCESS_REQUEST_FROM, name: "Rental Desk"},
           to: email,

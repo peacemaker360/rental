@@ -241,3 +241,81 @@ test("account setup and access failures produce distinct recovery copy", async (
     assert.equal(presentation()[1], description);
   }
 });
+
+test("embedded provider controls keep click and keyboard propagation for organization selection", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const {runInNewContext} = await import("node:vm");
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const start = source.indexOf('view.addEventListener("click",');
+  const end = source.indexOf('view.addEventListener("submit",', start);
+  const handlers = {};
+  const state = {detail: {entity: "instruments", id: "existing"}};
+  let renders = 0;
+  runInNewContext(source.slice(start, end), {
+    view: {addEventListener: (name, fn) => { handlers[name] = fn; }},
+    state, render: () => { renders++; }
+  });
+  const providerRoot = {};
+  let stopped = false;
+  const providerEvent = {
+    target: {closest: selector => selector === "[data-auth-provider-ui]" ? providerRoot : {dataset: {}}},
+    stopPropagation() { stopped = true; },
+    preventDefault() { throw new Error("Provider event was cancelled"); }
+  };
+  await handlers.click(providerEvent);
+  for (const key of ["Enter", "Escape"]) handlers.keydown({...providerEvent, key});
+  assert.equal(stopped, false);
+  assert.equal(renders, 0);
+  assert.equal(state.detail.id, "existing");
+  const appButton = {dataset: {}};
+  await handlers.click({target: {closest: selector => selector === "button" ? appButton : null}, stopPropagation() { stopped = true; }});
+  assert.equal(stopped, true);
+  handlers.keydown({target: {closest: () => null}, key: "Escape"});
+  assert.equal(state.detail, null);
+  assert.equal(renders, 1);
+  assert.match(source, /id="authOrganizationSwitcher"[^>]*data-auth-provider-ui/);
+  assert.match(source, /id="clerkAuthFlow"[^>]*data-auth-provider-ui/);
+});
+
+test("organization switcher stays mounted while opened and changes refresh the app from personal or another org", async () => {
+  const originals = {window: globalThis.window, fetch: globalThis.fetch};
+  let listener;
+  const mounts = [], unmounts = [], events = [];
+  const clerk = {
+    session: {id: "session_a", status: "active"}, organization: null,
+    load: async () => {}, addListener: fn => { listener = fn; },
+    mountOrganizationSwitcher: (node, props) => mounts.push({node, props}),
+    unmountOrganizationSwitcher: node => unmounts.push(node),
+  };
+  globalThis.window = {Clerk: clerk, __internal_ClerkUICtor: {}, dispatchEvent: event => events.push(event.type)};
+  globalThis.fetch = async () => new Response(JSON.stringify({provider: "clerk", frontendApi: "https://example.clerk.accounts.dev", publishableKey: "pk_test_example"}));
+  try {
+    const auth = await import("../public/auth.js?org-selection-regression");
+    await auth.initializeAuth();
+    const node = {isConnected: true};
+    auth.mountOrganizationSwitcher(node);
+    auth.mountOrganizationSwitcher(null);
+    auth.mountOrganizationSwitcher(node);
+    assert.equal(mounts.length, 1);
+    assert.equal(mounts[0].props.hidePersonal, false);
+    listener(); // Opening the menu without a session/org change must not trigger a rerender.
+    assert.equal(events.length, 0);
+    clerk.organization = {id: "org_a", name: "Association A"};
+    listener();
+    assert.deepEqual(events, ["rental-auth-change"]);
+    clerk.organization = {id: "org_b", name: "Association B"};
+    listener();
+    clerk.organization = null;
+    listener();
+    assert.equal(events.length, 3);
+    node.isConnected = false;
+    const replacement = {isConnected: true};
+    auth.mountOrganizationSwitcher(replacement);
+    assert.deepEqual(unmounts, [node]);
+    assert.equal(mounts.length, 2);
+  } finally {
+    for (const [key, value] of Object.entries(originals)) {
+      if (value === undefined) delete globalThis[key]; else globalThis[key] = value;
+    }
+  }
+});

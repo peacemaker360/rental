@@ -1,6 +1,7 @@
 import json
 import unittest
 from unittest.mock import AsyncMock
+from errors import DataIntegrityError
 
 from worker.storage import (
     KVRepository,
@@ -39,6 +40,36 @@ class FakeKV:
 
 
 class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_invalid_data_does_not_get_skipped_or_rewritten(self):
+        for key, raw in [
+            (index_key("tenant-a", "instruments"), '{"secret": "wrong shape"}'),
+            (index_key("tenant-a", "instruments"), 'invalid JSON private data'),
+            (metadata_key("tenant-a"), '{"revision": "bad"}'),
+            (metadata_key("tenant-a"), '[]'),
+        ]:
+            kv = FakeKV()
+            kv.values[key] = raw
+            snapshot = dict(kv.values)
+            repo = KVRepository(kv)
+            with self.assertRaises(DataIntegrityError):
+                if key.endswith(":meta"):
+                    await repo.load_metadata("tenant-a")
+                else:
+                    await repo.load_tenant("tenant-a")
+            with self.assertRaises(DataIntegrityError):
+                await repo.save_tenant("tenant-a", {"instruments": [{"id": "new"}]})
+            self.assertEqual(kv.values, snapshot)
+            self.assertEqual(kv.deleted, [])
+
+    async def test_missing_or_mismatched_indexed_record_blocks_reads(self):
+        for record in [None, [], {"id": "different", "note": "private"}]:
+            kv = FakeKV()
+            kv.values[index_key("tenant-a", "instruments")] = '["inst_1"]'
+            if record is not None:
+                kv.values[entity_key("tenant-a", "instruments", "inst_1")] = json.dumps(record)
+            with self.assertRaises(DataIntegrityError):
+                await KVRepository(kv).load_tenant("tenant-a")
+
     async def test_user_reads_use_directory_without_overwriting_kv_snapshot(self):
         kv = FakeKV()
         snapshot = {"id": "user_a", "email": "member@example.test", "global_role": "admin"}

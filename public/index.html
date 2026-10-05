@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://*.clerk.accounts.dev https://clerk.kittythecat.ch https://challenges.cloudflare.com https://*.protect.clerk.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.clerk.accounts.dev https://clerk.kittythecat.ch https://*.protect.clerk.com:*; img-src 'self' data: https://img.clerk.com; font-src 'self'; worker-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com; object-src 'none'; base-uri 'none'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' http://localhost:8400 https://*.clerk.accounts.dev https://clerk.kittythecat.ch https://challenges.cloudflare.com https://*.protect.clerk.com; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:8400 https://*.clerk.accounts.dev https://clerk.kittythecat.ch https://*.protect.clerk.com:*; img-src 'self' data: https://img.clerk.com; font-src 'self'; worker-src 'self' blob:; frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com; object-src 'none'; base-uri 'none'; form-action 'self'">
     <meta name="referrer" content="no-referrer">
     <title>Rental Desk</title>
     <link rel="stylesheet" href="/styles.css">
@@ -34,57 +34,64 @@
           <a class="mobile-menu-button" href="#mainNav" aria-label="Open menu">☰</a>
         </div>
       </header>
-      <aside class="sidebar">
-        <div class="brand">
-          <span class="brand-mark" data-organization-mark>RD</span>
-          <div>
-            <strong>Rental Desk</strong>
-            <span id="tenantLabel">Association</span>
-          </div>
-        </div>
-        <nav id="mainNav" class="nav" aria-label="Main">
-          <button class="nav-item is-active" data-view="dashboard" data-i18n="views.dashboard">Dashboard</button>
-          <button class="nav-item" data-view="instruments" data-i18n="views.instruments">Instruments</button>
-          <button class="nav-item" data-view="members" data-i18n="views.members">Members</button>
-          <button class="nav-item" data-view="rentals" data-i18n="views.rentals">Rentals</button>
-          <button class="nav-item" data-view="service_records" data-i18n="views.service_records">Service</button>
-          <button class="nav-item" data-view="history" data-i18n="views.history">History</button>
-          <button class="nav-item" data-view="admin" data-i18n="views.admin">Admin</button>
-        </nav>
-        <div id="clerkOrganizationSwitcher" class="organization-switcher" hidden></div>
-        <div class="tenant-box">
-          <label for="tenantInput" data-i18n="labels.tenant">Tenant</label>
-          <div class="tenant-row">
-            <input id="tenantInput" autocomplete="off" spellcheck="false" pattern="[a-z0-9][a-z0-9_-]{1,62}" title="2-63 lowercase letters, numbers, hyphens, or underscores" data-i18n-title="tenant.title">
-            <button id="saveTenant" class="icon-button" title="Switch tenant" aria-label="Switch tenant" data-i18n-title="actions.switch_tenant" data-i18n-aria-label="actions.switch_tenant">↵</button>
-            <details id="userMenu" class="user-menu tenant-user-menu" hidden>
-              <summary aria-label="User access"></summary>
-              <div class="user-card">
-                <strong id="userMenuEmail">User</strong>
-                <dl>
-                  <div><dt>Tenant</dt><dd id="userMenuTenant">-</dd></div>
-                  <div><dt>Role</dt><dd id="userMenuRole">-</dd></div>
-                  <div><dt>Access</dt><dd id="userMenuAccess">-</dd></div>
-                </dl>
-                <button type="button" class="ghost-button logout-button" data-account data-i18n="actions.account">Account settings</button>
-                <button type="button" class="ghost-button logout-button" data-logout data-i18n="actions.logout">Log out</button>
+
+
+      <aside class="sidebar sidebar-v1 collapse-dock">
+            <div class="brand">
+              <span class="brand-mark" data-organization-mark>RD</span>
+              <div>
+                <strong>Rental Desk</strong>
+                <span id="tenantLabel">Association</span>
               </div>
-            </details>
-          </div>
-          <div class="tenant-meta" aria-live="polite">
-            <span><span data-i18n="labels.revision">Revision</span> <strong id="tenantRevision">0</strong></span>
-            <span id="tenantUpdatedAt"></span>
-          </div>
-        </div>
-        <aside id="associationHelp" class="association-help" hidden></aside>
-        <div class="language-box">
-          <span data-i18n="labels.language">Language</span>
-          <div class="language-switch" aria-label="Language" data-i18n-aria-label="labels.language">
-            <button type="button" data-lang="en">EN</button>
-            <button type="button" data-lang="de">DE</button>
-          </div>
-        </div>
-        <button id="sessionButton" type="button" class="session-button sidebar-session-button" data-session-action hidden>Sign in</button>
+              <button type="button" class="sidebar-toggle" data-sidebar-toggle data-collapsed-column="96px" data-duration="200ms" aria-expanded="true" aria-label="Collapse sidebar" title="Collapse sidebar"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M12.5 5.5 8 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+            <nav id="mainNav" class="nav" aria-label="Main">
+              <button class="nav-item is-active" data-view="dashboard" data-i18n="views.dashboard">Dashboard</button>
+              <button class="nav-item" data-view="instruments" data-i18n="views.instruments">Instruments</button>
+              <button class="nav-item" data-view="members" data-i18n="views.members">Members</button>
+              <button class="nav-item" data-view="rentals" data-i18n="views.rentals">Rentals</button>
+              <button class="nav-item" data-view="service_records" data-i18n="views.service_records">Service</button>
+              <button class="nav-item" data-view="history" data-i18n="views.history">History</button>
+              <button class="nav-item" data-view="admin" data-i18n="views.admin">Admin</button>
+            </nav>
+            <div class="tenant-box clerk-identity-v1">
+              <div class="organization-switcher" data-clerk-organization-switcher data-auth-provider-ui hidden></div>
+              <div class="organization-switcher" data-member-associations hidden></div>
+              <div class="clerk-user-button" data-clerk-user-button data-auth-provider-ui hidden></div>
+              <div class="tenant-local-controls">
+                <label for="tenantInput" data-i18n="labels.tenant">Tenant</label>
+                <div class="tenant-row">
+                  <input id="tenantInput" autocomplete="off" spellcheck="false" pattern="[a-z0-9][a-z0-9_-]{1,62}" title="2-63 lowercase letters, numbers, hyphens, or underscores" data-i18n-title="tenant.title">
+                  <button id="saveTenant" class="icon-button" title="Switch tenant" aria-label="Switch tenant" data-i18n-title="actions.switch_tenant" data-i18n-aria-label="actions.switch_tenant">↵</button>
+                  <details id="userMenu" class="user-menu tenant-user-menu" hidden>
+                    <summary aria-label="User access"></summary>
+                    <div class="user-card">
+                      <strong id="userMenuEmail">User</strong>
+                      <dl>
+                        <div><dt>Tenant</dt><dd id="userMenuTenant">-</dd></div>
+                        <div><dt>Role</dt><dd id="userMenuRole">-</dd></div>
+                        <div><dt>Access</dt><dd id="userMenuAccess">-</dd></div>
+                      </dl>
+                      <button type="button" class="ghost-button logout-button" data-account data-i18n="actions.account">Account settings</button>
+                      <button type="button" class="ghost-button logout-button" data-logout data-i18n="actions.logout">Log out</button>
+                    </div>
+                  </details>
+                </div>
+              </div>
+              <div class="tenant-meta" aria-live="polite">
+                <span><span data-i18n="labels.revision">Revision</span> <strong id="tenantRevision">0</strong></span>
+                <span id="tenantUpdatedAt"></span>
+              </div>
+            </div>
+            <aside id="associationHelp" class="association-help" hidden></aside>
+            <div class="language-box">
+              <span data-i18n="labels.language">Language</span>
+              <div class="language-switch" aria-label="Language" data-i18n-aria-label="labels.language">
+                <button type="button" data-lang="en">EN</button>
+                <button type="button" data-lang="de">DE</button>
+              </div>
+            </div>
+            <button id="sessionButton" type="button" class="session-button sidebar-session-button" data-session-action hidden>Sign in</button>
       </aside>
 
       <main class="workspace">
