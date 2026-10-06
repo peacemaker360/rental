@@ -192,14 +192,14 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn("importPhonePattern.test(child)", self.app_js)
         self.assertIn('function assertLowPiiImport(payload)', self.app_js)
         tenant_import = re.search(r'const result = await api\("/import".{0,180}', self.app_js, re.DOTALL)
-        instrument_import = re.search(r'const result = await api\("/instruments/import".{0,180}', self.app_js, re.DOTALL)
+        instrument_import = re.search(r'const result = await api\("/instruments/import".{0,180}', self.app_js[self.app_js.index('instrumentFile.addEventListener("change"'):], re.DOTALL)
         hitobito_import = re.search(r'const result = await api\("/members/import/hitobito".{0,180}', self.app_js, re.DOTALL)
 
         self.assertIsNotNone(tenant_import)
         self.assertIsNotNone(instrument_import)
         self.assertIsNotNone(hitobito_import)
         self.assertIn("assertLowPiiImport(payload)", self.app_js[tenant_import.start() - 120:tenant_import.start()])
-        self.assertIn("assertLowPiiImport(payload)", self.app_js[instrument_import.start() - 120:instrument_import.start()])
+        self.assertIn("assertLowPiiImport(payload)", self.app_js[self.app_js.index('instrumentFile.addEventListener("change"') + instrument_import.start() - 120:self.app_js.index('instrumentFile.addEventListener("change"') + instrument_import.start()])
         self.assertNotIn("assertLowPiiImport(payload)", self.app_js[hitobito_import.start() - 120:hitobito_import.start()])
 
     def test_crud_forms_have_client_pii_preflight(self):
@@ -272,9 +272,9 @@ class FrontendI18nTests(unittest.TestCase):
 
     def test_admin_center_uses_platform_admin_capability(self):
         self.assertIn("platform_admin", self.app_js)
-        self.assertIn('capabilities().platform_admin ? adminApi("/associations")', self.app_js)
-        self.assertIn('capabilities().admin && !clerkManaged ? adminApi("/users")', self.app_js)
-        self.assertIn('capabilities().admin ? adminApi("/access-requests")', self.app_js)
+        self.assertIn('caps.platform_admin ? adminApi("/associations")', self.app_js)
+        self.assertIn('caps.admin && !clerkManaged ? adminApi("/users")', self.app_js)
+        self.assertIn('caps.admin ? adminApi("/access-requests")', self.app_js)
         self.assertIn('button.hidden = !caps.admin', self.app_js)
         self.assertIn('if (state.view === "admin" && !caps.admin)', self.app_js)
 
@@ -465,7 +465,7 @@ class FrontendI18nTests(unittest.TestCase):
         self.assertIn("function hasExistingTenantData()", self.app_js)
         self.assertIn("Object.values(state.records).some((records) => Array.isArray(records) && records.length > 1)", self.app_js)
         self.assertIn("seedButton.hidden = basic || hasExistingTenantData();", self.app_js)
-        self.assertIn("seedButton.disabled = !caps.admin || seedButton.hidden;", self.app_js)
+        self.assertIn("seedButton.disabled = !caps.admin || seedButton.hidden || state.mutationBusy;", self.app_js)
 
     def test_data_refresh_clears_missing_detail_selection(self):
         self.assertIn("reconcileDetailSelection();", self.app_js)

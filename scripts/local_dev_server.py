@@ -113,6 +113,15 @@ class JsonFileRepository:
         data = data.get("records", data)
         return {entity: data.get(entity, []) for entity in ENTITY_TYPES}
 
+    async def load_state(self, tenant_id: str) -> dict[str, Any]:
+        path = self.tenant_file(tenant_id)
+        data = json.loads(path.read_text()) if path.exists() else {}
+        records = data.get("records", data)
+        return {
+            "records": {entity: records.get(entity, []) for entity in ENTITY_TYPES},
+            "meta": {**empty_metadata(tenant_id), **data.get("meta", {}), "tenant_id": tenant_id},
+        }
+
     async def load_metadata(self, tenant_id: str) -> dict[str, Any]:
         path = self.tenant_file(tenant_id)
         if not path.exists():
@@ -128,6 +137,7 @@ class JsonFileRepository:
         metadata = {
             "tenant_id": tenant_id,
             "revision": int(previous_metadata.get("revision", 0)) + 1,
+            "commit_id": uuid.uuid4().hex,
             "updated_at": utc_now(),
         }
         temp_path = path.with_suffix(".json.tmp")

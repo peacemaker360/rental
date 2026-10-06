@@ -369,14 +369,44 @@ stack traces, configuration values, or rental/member data. Worker logs record
 only the reference and a failure category; use authorized maintenance tools to
 investigate the affected storage separately.
 
-Rental, inventory, member, service, history, and summary reads retry once after
+Rental, inventory, member, service, history, summary, and snapshot reads retry once after
 a temporary network/server failure. Writes, sign-in/context checks, admin
 requests, permission failures, and configuration failures never auto retry.
 Existing displayed data remains visible if a refresh fails; the error remains
 visible until dismissed or replaced.
 
-Invalid JSON, malformed indices/metadata, or missing/mismatched indexed records
-return `DATA_INTEGRITY_ERROR` without their contents or storage keys. No records,
+Invalid JSON, malformed indices/metadata, or mismatched indexed records
+return `DATA_INTEGRITY_ERROR` without their contents or storage keys. A missing
+legacy indexed record returns retryable `DATA_VISIBILITY_PENDING`; it is never
+silently skipped by a mutation. No records,
 indices, organization mappings, or permissions are repaired automatically.
 Check an authorized backup before any manual KV repair. Deploy both Workers
 and the static frontend for these error and recovery behaviors.
+
+## Operational Deletion and Reset
+
+Sign-in context no longer loads rental revisions or working records. Full Clerk
+tool roles rely on the organization mapping and current provider membership.
+Member self-service still needs an active member-email match; discovery uses
+the committed snapshot when present and never falls back to deleted legacy
+members after a snapshot is visible. Normal KV propagation delays still apply
+to member-access removal. Admin loading is independent of working-data loading.
+
+Admins can toggle **Select records** in a working-list toolbar and delete the
+selection in one request. The entire selection is checked before saving. A
+member/instrument with assigned rentals cannot be removed through normal or
+bulk deletion; **View assigned rentals** opens those rows for cleanup.
+
+The admin **Danger zone** resets instruments, members, rentals, or all working
+data for the current tenant. Type its exact ID and confirm before submission.
+Parent resets also remove their dependent rentals; instrument resets remove
+service records. Existing history remains, and rental/service deletion history
+captures names before removing their source records. Accounts, admissions,
+invitations, permissions, association mappings, and other tenants are untouched.
+
+Deletes display saving/synchronizing feedback and block further working writes
+until the acknowledged revision/commit and expected removals are visible.
+Waiting is bounded; a saved-but-still-synchronizing state offers **Refresh** and
+never resubmits the delete. Deploy both Workers together with frontend assets
+for snapshot-backed self-service and the new API/UI behavior. See
+[storage details](architecture.md) before manually editing operational KV keys.

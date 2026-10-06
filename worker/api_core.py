@@ -13,6 +13,7 @@ from urllib.parse import parse_qs
 
 from domain import (
     DomainError,
+    DeletionBlocked,
     EMAIL_PATTERN,
     ENTITY_TYPES,
     PHONE_PATTERN,
@@ -22,6 +23,8 @@ from domain import (
     clean_text,
     create_record,
     delete_record,
+    delete_operational_records,
+    reset_operational_records,
     demo_records,
     email_hash,
     export_package,
@@ -35,7 +38,7 @@ from domain import (
     utc_now,
 )
 from migration import instrument_export_package, merge_hitobito_members, merge_instruments
-from errors import DataIntegrityError
+from errors import DataIntegrityError, DataVisibilityPending
 
 
 class TenantRepository(Protocol):
@@ -704,26 +707,12 @@ async def scoped_tenant_summary(
     return {**data, "meta": await tenant_metadata(repo, tenant_id), "association": await public_association_summary(repo, tenant_id)}
 
 
-async def ensure_association(repo: TenantRepository, tenant_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    load_association = getattr(repo, "load_association", None)
-    save_association = getattr(repo, "save_association", None)
-    if load_association is None or save_association is None:
-        return None
-    existing = await load_association(tenant_id)
-    if existing is not None and not payload:
-        return existing
-    association = normalize_association({"tenant_id": tenant_id, **(payload or {})}, existing)
-    return await save_association(tenant_id, association)
-
-
 async def save_tenant_mutation(
     repo: TenantRepository,
     tenant_id: str,
     records: dict[str, list[dict[str, Any]]],
 ) -> dict[str, Any]:
-    metadata = await repo.save_tenant(tenant_id, records)
-    await ensure_association(repo, tenant_id)
-    return metadata
+    return await repo.save_tenant(tenant_id, records)
 
 
 async def association_with_meta(repo: TenantRepository, association: dict[str, Any]) -> dict[str, Any]:
@@ -735,13 +724,6 @@ def object_payload(payload: Any, message: str = "request payload must be an obje
     if not isinstance(payload, dict):
         raise DomainError(message)
     return payload
-
-
-def association_payload_from_import(payload: Any) -> dict[str, Any] | None:
-    if not isinstance(payload, dict):
-        return None
-    display_name = clean_text(payload.get("display_name") or payload.get("association_name"))
-    return {"display_name": display_name} if display_name else None
 
 
 async def handle_admin_request(
@@ -1193,11 +1175,12 @@ async def handle_api_request(*args, **kwargs) -> tuple[int, Any]:
     except Exception as exc:
         reference = uuid.uuid4().hex
         integrity = isinstance(exc, DataIntegrityError)
+        pending = isinstance(exc, DataVisibilityPending)
         # No exception text, stack, request headers, or stored records in logs.
-        print(json.dumps({"request_id": reference, "category": "data_integrity" if integrity else "backend_failure"}))
-        return (503 if integrity else 500), {
+        print(json.dumps({"request_id": reference, "category": "data_integrity" if integrity else "data_visibility" if pending else "backend_failure"}))
+        return (503 if integrity or pending else 500), {
             "error": "Stored data is unavailable" if integrity else "unexpected error",
-            "errorCode": "DATA_INTEGRITY_ERROR" if integrity else "BACKEND_UNAVAILABLE",
+            "errorCode": "DATA_INTEGRITY_ERROR" if integrity else "DATA_VISIBILITY_PENDING" if pending else "BACKEND_UNAVAILABLE",
             "requestId": reference,
             "retryable": not integrity,
         }
@@ -1224,7 +1207,8 @@ async def _handle_api_request(
         error = validate_tenant_id(context.tenant_id)
         if error:
             return 403, {"error": error, "errorCode": "CONTEXT_INVALID"}
-        return 200, {**context_payload(context), "meta": await tenant_metadata(repo, context.tenant_id)}
+        # Sign-in/permissions are independent of operational storage health.
+        return 200, context_payload(context)
 
     if parts[0] == "admin":
         context = context or RequestContext(tenant_id="demo-association", role="admin", mode="local")
@@ -1261,6 +1245,35 @@ async def _handle_api_request(
             metadata = await save_tenant_mutation(repo, tenant_id, records)
             return 201, {"tenant_id": tenant_id, "records": hydrate(records), "summary": summary(records), "meta": metadata}
 
+        if len(parts) == 2 and parts[1] == "snapshot" and method == "GET":
+            load_state = getattr(repo, "load_state", None)
+            stored = await load_state(tenant_id) if load_state else {"records": await repo.load_tenant(tenant_id), "meta": await tenant_metadata(repo, tenant_id)}
+            records = stored["records"]
+            collections = {entity: filtered_collection(entity, records, "", context) for entity in ENTITY_TYPES}
+            data_summary = basic_customer_summary(records, context) if context.access_profile == "basic" else summary(records)
+            data_summary["association"] = await public_association_summary(repo, tenant_id)
+            return 200, {"records": collections, "summary": data_summary, "meta": stored["meta"]}
+
+        if (len(parts) == 2 and parts[1] == "reset-data") or (len(parts) == 3 and parts[2] == "bulk-delete"):
+            if method != "POST":
+                return 405, {"error": "method not allowed"}
+            if not can_admin(context):
+                return 403, {"error": "admin role required"}
+            payload = object_payload(payload)
+            conflict = await revision_conflict_response(repo, tenant_id, headers)
+            if conflict:
+                return conflict
+            records = await repo.load_tenant(tenant_id)
+            if parts[1] == "reset-data":
+                if payload.get("confirm_tenant") != tenant_id:
+                    return 400, {"error": "Confirm the association ID before resetting data"}
+                updated, removed = reset_operational_records(records, tenant_id, payload.get("scope"), context.actor_id)
+                metadata = await save_tenant_mutation(repo, tenant_id, updated)
+                return 200, {"removed": removed, "meta": metadata}
+            updated = delete_operational_records(records, tenant_id, parts[1], payload.get("ids"), context.actor_id)
+            metadata = await save_tenant_mutation(repo, tenant_id, updated)
+            return 200, {"deleted": payload["ids"], "meta": metadata}
+
         records = await repo.load_tenant(tenant_id)
 
         if len(parts) == 2 and parts[1] == "summary" and method == "GET":
@@ -1281,7 +1294,6 @@ async def _handle_api_request(
                 return conflict
             imported = import_package(payload, tenant_id)
             metadata = await repo.save_tenant(tenant_id, imported)
-            await ensure_association(repo, tenant_id, association_payload_from_import(payload))
             return 200, {"tenant_id": tenant_id, "summary": summary(imported), "meta": metadata}
 
         if len(parts) < 2:
@@ -1389,4 +1401,6 @@ async def _handle_api_request(
             return 200, {**response, "meta": metadata}
         return 405, {"error": "method not allowed"}
     except DomainError as exc:
+        if isinstance(exc, DeletionBlocked):
+            return exc.status, {"error": str(exc), "errorCode": "DELETE_BLOCKED", "blockers": exc.blockers}
         return exc.status, {"error": str(exc)}

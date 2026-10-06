@@ -150,10 +150,10 @@ def validate_package(package: dict[str, Any], errors: list[str]) -> None:
         "dev": "uv run pywrangler dev",
         "deploy": "uv run pywrangler deploy",
         "dev:python": "python3 scripts/local_dev_server.py",
-        "test": "node --test tests/test_api_response.mjs tests/test_frontdoor.mjs tests/test_clerk_auth.mjs tests/test_clerk_roles.mjs tests/test_auth_ui.mjs tests/test_access_notifications.mjs && PYTHONPATH=.:worker python3 -m unittest discover -s tests",
+        "test": "node --test tests/test_record_transfer.mjs tests/test_api_response.mjs tests/test_frontdoor.mjs tests/test_clerk_auth.mjs tests/test_clerk_roles.mjs tests/test_auth_ui.mjs tests/test_access_notifications.mjs && PYTHONPATH=.:worker python3 -m unittest discover -s tests",
         "smoke:python": "PYTHONPATH=.:worker python3 scripts/smoke_local.py",
         "smoke:signed": "PYTHONPATH=.:worker python3 scripts/smoke_local.py --signed",
-        "check:js": "node --check public/app.js && node --check public/auth.js && node --check frontdoor/access_context_worker.js && node --check frontdoor/clerk_auth.js && node --check frontdoor/clerk_roles.js && node --check frontdoor/access_notifications.js && node --check public/api_response.js",
+        "check:js": "node --check public/app.js && node --check public/auth.js && node --check frontdoor/access_context_worker.js && node --check frontdoor/clerk_auth.js && node --check frontdoor/clerk_roles.js && node --check frontdoor/access_notifications.js && node --check public/api_response.js && node --check public/record_transfer.js && node --check public/transfer_ui.js",
     }
     for name, command in expected.items():
         if scripts.get(name) != command:

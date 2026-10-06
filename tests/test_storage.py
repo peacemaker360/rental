@@ -1,7 +1,7 @@
 import json
 import unittest
 from unittest.mock import AsyncMock
-from errors import DataIntegrityError
+from errors import DataIntegrityError, DataVisibilityPending
 
 from worker.storage import (
     KVRepository,
@@ -13,6 +13,7 @@ from worker.storage import (
     entity_key,
     index_key,
     metadata_key,
+    snapshot_key,
     user_key,
     users_index_key,
 )
@@ -67,7 +68,7 @@ class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
             kv.values[index_key("tenant-a", "instruments")] = '["inst_1"]'
             if record is not None:
                 kv.values[entity_key("tenant-a", "instruments", "inst_1")] = json.dumps(record)
-            with self.assertRaises(DataIntegrityError):
+            with self.assertRaises(DataVisibilityPending if record is None else DataIntegrityError):
                 await KVRepository(kv).load_tenant("tenant-a")
 
     async def test_user_reads_use_directory_without_overwriting_kv_snapshot(self):
@@ -83,56 +84,49 @@ class KVRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(kv.values[user_key("user_a")]), snapshot)
         self.assertEqual(directory.read_access.await_count, 2)
 
-    async def test_save_tenant_deletes_stale_record_keys(self):
+    async def test_snapshot_publication_preserves_legacy_and_administrative_keys(self):
+        kv = FakeKV()
+        old = {"id": "inst_1", "name": "Flute"}
+        kv.values[index_key("tenant-a", "instruments")] = '["inst_1"]'
+        kv.values[entity_key("tenant-a", "instruments", "inst_1")] = json.dumps(old)
+        kv.values["associations:tenant-a"] = '{"tenant_id":"tenant-a","display_name":"A"}'
+        kv.values["users:example"] = '{"role":"admin"}'
+        legacy = dict(kv.values)
+        repo = KVRepository(kv)
+        metadata = await repo.save_tenant("tenant-a", {"instruments": []})
+        self.assertEqual(metadata["revision"], 1)
+        self.assertEqual((await repo.load_tenant("tenant-a"))["instruments"], [])
+        self.assertEqual(await repo.load_metadata("tenant-a"), metadata)
+        self.assertEqual({key: kv.values[key] for key in legacy}, legacy)
+        self.assertEqual(kv.deleted, [])
+        self.assertEqual(set(kv.values) - set(legacy), {snapshot_key("tenant-a")})
+        # Delayed legacy indices/records are no longer consulted after publication.
+        kv.values[index_key("tenant-a", "instruments")] = 'invalid old index'
+        self.assertEqual((await repo.load_state("tenant-a"))["records"]["instruments"], [])
+
+    async def test_snapshot_changes_only_matching_tenant(self):
         kv = FakeKV()
         repo = KVRepository(kv)
+        await repo.save_tenant("tenant-a", {"instruments": [{"id": "inst_1", "name": "Flute"}]})
+        await repo.save_tenant("tenant-b", {"instruments": [{"id": "inst_1", "name": "Other Flute"}]})
+        before = kv.values[snapshot_key("tenant-b")]
+        await repo.save_tenant("tenant-a", {"instruments": []})
+        self.assertEqual(kv.values[snapshot_key("tenant-b")], before)
+        self.assertEqual((await repo.load_tenant("tenant-a"))["instruments"], [])
+        self.assertEqual((await repo.load_metadata("tenant-a"))["revision"], 2)
 
-        await repo.save_tenant("tenant-a", {
-            "instruments": [{"id": "inst_1", "name": "Flute"}, {"id": "inst_2", "name": "Horn"}],
-            "members": [],
-            "rentals": [],
-            "history": [],
-        })
-        self.assertIn(entity_key("tenant-a", "instruments", "inst_2"), kv.values)
-        self.assertEqual(json.loads(kv.values[metadata_key("tenant-a")])["revision"], 1)
-
-        await repo.save_tenant("tenant-a", {
-            "instruments": [{"id": "inst_1", "name": "Flute"}],
-            "members": [],
-            "rentals": [],
-            "history": [],
-        })
-
-        stale_key = entity_key("tenant-a", "instruments", "inst_2")
-        self.assertIn(stale_key, kv.deleted)
-        self.assertNotIn(stale_key, kv.values)
-        self.assertEqual(json.loads(kv.values[index_key("tenant-a", "instruments")]), ["inst_1"])
-        self.assertEqual(json.loads(kv.values[metadata_key("tenant-a")])["revision"], 2)
-
-    async def test_save_tenant_prunes_only_matching_tenant(self):
+    async def test_failed_snapshot_publication_leaves_old_state_readable(self):
         kv = FakeKV()
         repo = KVRepository(kv)
-        await repo.save_tenant("tenant-a", {
-            "instruments": [{"id": "inst_1", "name": "Flute"}],
-            "members": [],
-            "rentals": [],
-            "history": [],
-        })
-        await repo.save_tenant("tenant-b", {
-            "instruments": [{"id": "inst_1", "name": "Other Flute"}],
-            "members": [],
-            "rentals": [],
-            "history": [],
-        })
-        await repo.save_tenant("tenant-a", {
-            "instruments": [],
-            "members": [],
-            "rentals": [],
-            "history": [],
-        })
-
-        self.assertNotIn(entity_key("tenant-a", "instruments", "inst_1"), kv.values)
-        self.assertIn(entity_key("tenant-b", "instruments", "inst_1"), kv.values)
+        await repo.save_tenant("tenant-a", {"instruments": [{"id": "old", "name": "Flute"}]})
+        before = dict(kv.values)
+        async def fail(*args):
+            raise RuntimeError("unavailable")
+        kv.put = fail
+        with self.assertRaises(RuntimeError):
+            await repo.save_tenant("tenant-a", {"instruments": []})
+        self.assertEqual(kv.values, before)
+        self.assertEqual((await repo.load_tenant("tenant-a"))["instruments"][0]["id"], "old")
 
     async def test_load_metadata_defaults_for_new_tenant(self):
         repo = KVRepository(FakeKV())

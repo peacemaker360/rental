@@ -1,8 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {requestJson} from "../public/api_response.js";
+import {requestJson, commitVisible, observeCommit} from "../public/api_response.js";
 
 const settings = {recover: true, translate: (key, values) => key + (values?.reference || ""), wait: async () => {}};
+
+test("commit observation waits for both the acknowledged version and removed records", async () => {
+  const expected = {revision: 4, commit_id: "commit"};
+  const verify = records => !records.members.some(item => item.id === "deleted");
+  const states = [
+    {meta: {revision: 3}, records: {members: [{id: "deleted"}]}},
+    {meta: {revision: 4, commit_id: "other"}, records: {members: []}},
+    {meta: expected, records: {members: [{id: "deleted"}]}},
+    {meta: expected, records: {members: []}}
+  ];
+  let calls = 0;
+  const observed = await observeCommit(async () => states[calls++], expected, verify, () => true, {wait: async () => {}});
+  assert.deepEqual(observed, states[3]);
+  assert.equal(calls, 4);
+  assert.equal(commitVisible({meta: {revision: 5}, records: {members: []}}, expected, verify), true);
+});
+
+test("commit waiting is bounded and stops on tenant changes without replaying a mutation", async () => {
+  let calls = 0;
+  const read = async () => { calls++; return {meta: {revision: 1}, records: {}}; };
+  assert.equal(await observeCommit(read, {revision: 2}, () => true, () => true, {attempts: 3, wait: async () => {}}), null);
+  assert.equal(calls, 3);
+  calls = 0;
+  assert.equal(await observeCommit(read, {revision: 2}, () => true, () => calls === 0, {wait: async () => {}}), null);
+  assert.equal(calls, 1);
+});
 
 test("temporary data read failure recovers once, without retrying writes or system reads", async () => {
   for (const [method, recover, expected] of [["GET", true, 2], ["POST", true, 1], ["PUT", true, 1], ["DELETE", true, 1], ["GET", false, 1]]) {

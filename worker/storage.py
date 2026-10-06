@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from typing import Any
 
 from domain import ENTITY_TYPES, empty_records, utc_now
-from errors import DataIntegrityError
+from errors import DataIntegrityError, DataVisibilityPending
 
 
 def tenant_key(tenant_id: str, suffix: str) -> str:
@@ -18,6 +19,10 @@ def entity_key(tenant_id: str, entity: str, record_id: str) -> str:
 
 def index_key(tenant_id: str, entity: str) -> str:
     return tenant_key(tenant_id, f"index:{entity}")
+
+
+def snapshot_key(tenant_id: str) -> str:
+    return tenant_key(tenant_id, "snapshot")
 
 
 def metadata_key(tenant_id: str) -> str:
@@ -119,7 +124,32 @@ class KVRepository:
         if delete is not None:
             await delete(key)
 
+    async def load_state(self, tenant_id: str) -> dict[str, Any]:
+        snapshot = await self._get_json(snapshot_key(tenant_id))
+        if snapshot is not None:
+            if not isinstance(snapshot, dict) or snapshot.get("schema") != "rental-tenant-snapshot-v1":
+                raise DataIntegrityError()
+            records, metadata = snapshot.get("records"), snapshot.get("meta")
+            if not isinstance(records, dict) or any(
+                not isinstance(records.get(entity), list) or any(
+                    not isinstance(record, dict) or not isinstance(record.get("id"), str)
+                    for record in records[entity]
+                ) for entity in ENTITY_TYPES
+            ):
+                raise DataIntegrityError()
+            self._validate_metadata(metadata)
+            return {"records": records, "meta": {**metadata, "tenant_id": tenant_id}}
+        return {"records": await self._load_legacy_tenant(tenant_id), "meta": await self._load_legacy_metadata(tenant_id)}
+
+    @staticmethod
+    def _validate_metadata(metadata):
+        if not isinstance(metadata, dict) or type(metadata.get("revision", 0)) is not int or metadata.get("revision", 0) < 0:
+            raise DataIntegrityError()
+
     async def load_tenant(self, tenant_id: str) -> dict[str, list[dict[str, Any]]]:
+        return (await self.load_state(tenant_id))["records"]
+
+    async def _load_legacy_tenant(self, tenant_id: str) -> dict[str, list[dict[str, Any]]]:
         records = empty_records()
         for entity in ENTITY_TYPES:
             ids = await self._get_json(index_key(tenant_id, entity), [])
@@ -127,44 +157,50 @@ class KVRepository:
                 raise DataIntegrityError()
             for record_id in ids:
                 record = await self._get_json(entity_key(tenant_id, entity, record_id))
+                if record is None:
+                    raise DataVisibilityPending()
                 if not isinstance(record, dict) or record.get("id") != record_id:
                     raise DataIntegrityError()
                 records[entity].append(record)
         return records
 
     async def load_metadata(self, tenant_id: str) -> dict[str, Any]:
+        snapshot = await self._get_json(snapshot_key(tenant_id))
+        if snapshot is not None:
+            if not isinstance(snapshot, dict) or snapshot.get("schema") != "rental-tenant-snapshot-v1":
+                raise DataIntegrityError()
+            metadata = snapshot.get("meta")
+            self._validate_metadata(metadata)
+            return {**metadata, "tenant_id": tenant_id}
+        return await self._load_legacy_metadata(tenant_id)
+
+    async def _load_legacy_metadata(self, tenant_id: str) -> dict[str, Any]:
         metadata = await self._get_json(metadata_key(tenant_id), empty_metadata(tenant_id))
         if not isinstance(metadata, dict) or type(metadata.get("revision", 0)) is not int or metadata.get("revision", 0) < 0:
             raise DataIntegrityError()
         return {**empty_metadata(tenant_id), **metadata, "tenant_id": tenant_id}
 
     async def save_tenant(self, tenant_id: str, records: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-        # Validate revision before the first write; do not partially save over bad metadata.
-        previous_metadata = await self.load_metadata(tenant_id)
-        previous_indexes = {}
-        for entity in ENTITY_TYPES:
-            ids = await self._get_json(index_key(tenant_id, entity), [])
-            if not isinstance(ids, list) or any(not isinstance(value, str) or not value for value in ids):
-                raise DataIntegrityError()
-            previous_indexes[entity] = set(ids)
-        for entity in ENTITY_TYPES:
-            previous_ids = previous_indexes[entity]
-            ids = []
-            for record in records.get(entity, []):
-                ids.append(record["id"])
-                await self._put_json(entity_key(tenant_id, entity, record["id"]), record)
-            for stale_id in previous_ids - set(ids):
-                await self._delete(entity_key(tenant_id, entity, stale_id))
-            await self._put_json(index_key(tenant_id, entity), ids)
+        # Validate legacy data before the first transition. From then on, one KV
+        # value publishes records and their revision together; old keys are untouched.
+        previous = await self.load_state(tenant_id)
         metadata = {
             "tenant_id": tenant_id,
-            "revision": int(previous_metadata.get("revision", 0)) + 1,
+            "revision": previous["meta"].get("revision", 0) + 1,
+            "commit_id": uuid.uuid4().hex,
             "updated_at": utc_now(),
         }
-        await self._put_json(metadata_key(tenant_id), metadata)
+        snapshot = {
+            "schema": "rental-tenant-snapshot-v1",
+            "meta": metadata,
+            "records": {entity: records.get(entity, []) for entity in ENTITY_TYPES},
+        }
+        await self._put_json(snapshot_key(tenant_id), snapshot)
         return metadata
 
     async def tenant_exists(self, tenant_id: str) -> bool:
+        if await self.kv.get(snapshot_key(tenant_id)) is not None:
+            return True
         metadata = await self.kv.get(metadata_key(tenant_id))
         if metadata is not None:
             return True

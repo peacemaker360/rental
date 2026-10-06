@@ -158,6 +158,29 @@ async function memberFixture() {
   return {...fixture, members, hash};
 }
 
+test("staff sign-in does not read operational storage even if it is unavailable", async () => {
+  const {claims, env} = assignmentFixture();
+  claims.activeOrganizationId = "org_b";
+  const registryGet = env.RENTAL_KV.get;
+  env.RENTAL_KV.get = async key => {
+    if (key.startsWith("tenant:")) assert.fail("Staff sign-in must not depend on working data");
+    return registryGet(key);
+  };
+  const assignment = await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context"));
+  assert.equal(assignment.access_profile, "full");
+  assert.equal(assignment.tenant_id, "band-b");
+});
+
+test("self-service uses the published snapshot instead of stale deleted-member indices", async () => {
+  const {claims, env, members, hash} = await memberFixture();
+  members.set("tenant:band-a:snapshot", {schema: "rental-tenant-snapshot-v1", records: {members: [{id: "new", access_email_hash: hash}]}});
+  members.set("tenant:band-a:index:members", ["missing"]);
+  const assignment = await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context"));
+  assert.equal(assignment.access_profile, "basic");
+  members.set("tenant:band-a:snapshot", {schema: "rental-tenant-snapshot-v1", records: {members: []}});
+  await assert.rejects(loadTenantAssignment(claims, env, new URL("https://rental.test/api/context")), {errorCode: "ACCESS_PROFILE_NOT_FOUND"});
+});
+
 test("a verified email match grants own-rentals access without Clerk org membership", async () => {
   const {claims, env} = await memberFixture();
   const assignment = await loadTenantAssignment(claims, env, new URL("https://rental.test/api/context"));

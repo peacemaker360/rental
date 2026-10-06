@@ -1,5 +1,211 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
+import {commitVisible, observeCommit} from "../public/api_response.js";
+
+test("dashboard and table creation actions respect access and pending writes", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const {runInNewContext} = await import("node:vm");
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const functionSource = name => {
+    const start = source.indexOf(`function ${name}(`);
+    return source.slice(start, source.indexOf("\nfunction ", start + 1));
+  };
+  const state = {view: "members", mutationBusy: false};
+  const caps = {write: true};
+  const {dashboard, row} = runInNewContext(`${functionSource("renderDashboardActions")}\n${functionSource("renderCollectionCreateAction")}\n${functionSource("renderCollectionCreateRow")}\n({dashboard: renderDashboardActions, row: renderCollectionCreateRow})`, {
+    state, capabilities: () => caps, isBasicProfile: () => caps.basic, t: key => key
+  });
+  for (const entity of ["rentals", "instruments", "members", "service_records"]) {
+    assert.match(dashboard(), new RegExp(`data-create="${entity}"`));
+  }
+  assert.match(row("members", 5), /colspan="5".*data-create="members"/s);
+  assert.equal(row("rentals", 6), "");
+  state.mutationBusy = true;
+  assert.equal((dashboard().match(/disabled/g) || []).length, 4);
+  assert.match(row("members", 5), /disabled/);
+  caps.write = false;
+  assert.equal(dashboard(), "");
+  assert.equal(row("members", 5), "");
+  caps.write = true;
+  caps.basic = true;
+  assert.equal(dashboard(), "");
+  assert.equal(row("members", 5), "");
+});
+
+test("JSON shortcuts are hidden for non-admins and dashboard import is hidden for admins", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const {runInNewContext} = await import("node:vm");
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const guards = source.split("\n").filter(line => /^  (exportButton|importButton)\.hidden =/.test(line)).join("\n");
+  for (const admin of [false, true]) {
+    for (const view of ["dashboard", "instruments", "members"]) {
+      const context = {caps: {admin}, basic: false, state: {view}, exportButton: {}, importButton: {}};
+      runInNewContext(guards, context);
+      assert.equal(context.exportButton.hidden, !admin);
+      assert.equal(context.importButton.hidden, !admin || view === "dashboard");
+    }
+  }
+});
+
+test("collection headers contain selection while attached rows contain only CSV transfer tools", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const {runInNewContext} = await import("node:vm");
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const functions = ["renderCollection", "renderCollectionCreateAction", "renderCollectionSelectionHeader", "renderCollectionCreateRow", "renderTableAction", "renderInstrumentTable", "renderMemberTable", "renderServiceTable", "renderRentalTable"].map(name => {
+    const start = source.indexOf(`function ${name}(`);
+    return source.slice(start, source.indexOf("\nfunction ", start + 1));
+  }).join("\n");
+  const entities = ["instruments", "members", "rentals", "service_records"];
+  const state = {records: Object.fromEntries(entities.map(entity => [entity, []])), advancedToolsOpen: {instruments: true, members: true}, selectedIds: new Set(), detail: null};
+  const caps = {admin: true, write: true};
+  const view = {innerHTML: ""};
+  const render = runInNewContext(`${functions}\nrenderCollection`, {
+    state, view, capabilities: () => caps, isBasicProfile: () => caps.basic,
+    filterItems: items => items, renderToolbar: () => "", renderDetail: () => '<aside class="detail-panel">Details</aside>', t: key => key,
+    escapeHtml: value => String(value || ""), formatDate: () => "", conditionPill: () => "", statusPill: () => "",
+    renderRecordSelection: () => "", renderInlineDetail: () => "", serviceDueStatus: () => "",
+    serviceInstrumentName: () => "", serviceDuePill: () => ""
+  });
+  for (const entity of entities) {
+    state.view = entity;
+    for (const records of [[], [{id: "example"}]]) {
+      state.records[entity] = records;
+      render(entity);
+      const header = view.innerHTML.slice(view.innerHTML.indexOf("<thead"), view.innerHTML.indexOf("</thead>"));
+      assert.match(header, /data-bulk-toggle/);
+      assert.equal((view.innerHTML.match(/data-create=/g) || []).length, 2);
+      assert.doesNotMatch(view.innerHTML, /transfer-technical|data-import-instruments|data-export-instruments/);
+      if (records.length) {
+        assert.doesNotMatch(view.innerHTML, /table-action is-icon-only/);
+        state.detail = {entity, id: "example"};
+        render(entity);
+        assert.match(view.innerHTML, /split-view collection-context/);
+        assert.match(view.innerHTML, /table-action is-icon-only/);
+        assert.match(view.innerHTML, /aria-label="actions.edit: example" title="actions.edit: example"/);
+        assert.match(view.innerHTML, /aria-label="actions.delete: example" title="actions.delete: example"/);
+        if (entity === "rentals") assert.match(view.innerHTML, /aria-label="actions.return: example"/);
+        state.detail = null;
+      }
+      if (["members", "instruments"].includes(entity)) {
+        assert.equal((view.innerHTML.match(/data-advanced-toggle=/g) || []).length, 2);
+        assert.equal((view.innerHTML.match(/data-transfer=/g) || []).length, 4);
+        assert.match(view.innerHTML, new RegExp(`id="transfer-${entity}-top"`));
+        assert.match(view.innerHTML, new RegExp(`id="transfer-${entity}-bottom"`));
+      }
+    }
+  }
+  caps.admin = false;
+  render("members");
+  assert.doesNotMatch(view.innerHTML, /data-bulk-toggle|data-advanced-toggle/);
+  caps.write = false;
+  render("members");
+  assert.doesNotMatch(view.innerHTML, /data-create=/);
+});
+
+test("admin data remains available when operational reads fail and admin navigation avoids them", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const {runInNewContext} = await import("node:vm");
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function loadAdminData()");
+  const end = source.indexOf("function stopMetadataPolling()", start);
+  const state = {view: "dashboard", tenant: "tenant-a", records: {}, selectedIds: new Set()};
+  let workingCalls = 0;
+  const loadData = runInNewContext(`${source.slice(start, end)}; loadData`, {
+    state, authGeneration: 1, capabilities: () => ({admin: true}), getAuthState: () => ({provider: "clerk"}),
+    adminApi: async path => ({data: path === "/admissions" ? {organizations: [{id: "org_a"}]} : []}),
+    api: async () => { workingCalls++; throw new Error("working data unavailable"); },
+    render() {}, renderOrganizationChrome() {}, startMetadataPolling() {}
+  });
+  await assert.rejects(loadData(), /working data unavailable/);
+  assert.equal(state.admissions.organizations[0].id, "org_a");
+  state.view = "admin";
+  await loadData();
+  assert.equal(workingCalls, 1);
+  assert.equal(state.adminErrors.length, 0);
+});
+
+test("deletion stays busy through stale visibility, rejects duplicate clicks, and never requests admin data", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const {runInNewContext} = await import("node:vm");
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function loadAdminData()");
+  const end = source.indexOf("function stopMetadataPolling()", start);
+  const state = {tenant: "tenant-a", records: {members: [{id: "member"}]}, selectedIds: new Set(["member"])};
+  const states = [];
+  let writes = 0;
+  let reads = 0;
+  let acknowledge;
+  const runDeletion = runInNewContext(`${source.slice(start, end)}; runDeletion`, {
+    state, authGeneration: 1, commitVisible,
+    observeCommit: (read, expected, verify, current) => observeCommit(read, expected, verify, current, {wait: async () => {}}),
+    api: async path => {
+      assert.equal(path, "/snapshot");
+      assert.equal(state.mutationBusy, true);
+      return ++reads === 1 ? {meta: {revision: 1}, records: {members: [{id: "member"}]}}
+        : {meta: {revision: 2}, records: {members: []}, summary: {members: 0}};
+    },
+    render: () => states.push(state.operationStatus), applyMeta() {}, reconcileDetailSelection() {},
+    showMessage() {}, t: key => key, handleMutationError: async () => assert.fail("Unexpected mutation failure")
+  });
+  const request = () => { writes++; return new Promise(resolve => { acknowledge = resolve; }); };
+  const pending = runDeletion(request, records => !records.members.length);
+  assert.equal(state.mutationBusy, true);
+  await runDeletion(request, () => true);
+  assert.equal(writes, 1);
+  acknowledge({meta: {revision: 2}});
+  await pending;
+  assert.equal(reads, 2);
+  assert.equal(state.mutationBusy, false);
+  assert.equal(state.pendingCommit, null);
+  assert.equal(state.records.members.length, 0);
+  assert.ok(states.includes("delete.saving"));
+  assert.ok(states.includes("delete.syncing"));
+});
+
+test("collection add action works on empty and populated lists and respects read-only access", async () => {
+  const {readFile} = await import("node:fs/promises");
+  const {runInNewContext} = await import("node:vm");
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const start = source.indexOf("function renderCollection(entity)");
+  const end = source.indexOf("function renderDetail(", start);
+  const eventStart = source.indexOf('view.addEventListener("click",');
+  const eventEnd = source.indexOf('view.addEventListener("submit",', eventStart);
+  const entities = ["instruments", "members", "rentals", "service_records"];
+  const state = {records: Object.fromEntries(entities.map(entity => [entity, []])), detail: null};
+  const handlers = {};
+  const view = {innerHTML: "", addEventListener: (name, fn) => { handlers[name] = fn; }};
+  const dialogs = [];
+  const caps = {write: true};
+  const table = items => items.length ? '<div class="table-wrap"><table></table></div>' : '<div class="empty">No items</div>';
+  const context = {
+    state, view, capabilities: () => caps, isBasicProfile: () => caps.access_profile === "basic",
+    t: key => key, filterItems: items => items, renderToolbar: () => "",
+    renderInstrumentTable: table, renderMemberTable: table, renderServiceTable: table, renderRentalTable: table,
+    openDialog: (entity, defaults) => dialogs.push({entity, defaults})
+  };
+  const renderCollection = runInNewContext(`${source.slice(start, end)}\n${source.slice(eventStart, eventEnd)}\nrenderCollection`, context);
+  for (const entity of entities) {
+    for (const records of [[], [{id: "existing"}]]) {
+      state.records[entity] = records;
+      renderCollection(entity);
+      assert.match(view.innerHTML, new RegExp(`data-create="${entity}"`));
+      assert.ok(view.innerHTML.lastIndexOf("collection-create") > view.innerHTML.indexOf(records.length ? "<table>" : "No items"));
+    }
+    const button = {dataset: {create: entity}};
+    await handlers.click({target: {closest: selector => selector === "button" ? button : null}, stopPropagation() {}});
+    assert.equal(dialogs.at(-1).entity, entity);
+    if (entity === "service_records") assert.equal(dialogs.at(-1).defaults.condition, "good");
+    else assert.equal(dialogs.at(-1).defaults.is_active, true);
+  }
+  for (const restricted of [{write: false}, {write: true, access_profile: "basic"}]) {
+    Object.assign(caps, restricted);
+    renderCollection("instruments");
+    assert.doesNotMatch(view.innerHTML, /data-create/);
+    const button = {dataset: {create: "instruments"}};
+    await handlers.click({target: {closest: selector => selector === "button" ? button : null}, stopPropagation() {}});
+    assert.equal(dialogs.length, 4);
+  }
+});
 
 test("offline mock sign-in uses the normal bearer flow and clears the session on logout", async () => {
   const originals = {window: globalThis.window, sessionStorage: globalThis.sessionStorage, fetch: globalThis.fetch};

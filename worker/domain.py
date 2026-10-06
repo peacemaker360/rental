@@ -22,6 +22,12 @@ class DomainError(ValueError):
         self.status = status
 
 
+class DeletionBlocked(DomainError):
+    def __init__(self, entity, record_id, rentals):
+        super().__init__("Remove the assigned rentals before deleting this record", 409)
+        self.blockers = [{"entity": entity, "record_id": record_id, "rental_ids": [item["id"] for item in rentals]}]
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -530,18 +536,68 @@ def return_rental(
 def delete_record(records: dict[str, list[dict[str, Any]]], entity: str, record_id: str) -> dict[str, Any]:
     record = find_record(records, entity, record_id)
     if entity == "instruments":
-        if active_rental_for_instrument(records["rentals"], record_id):
-            raise DomainError("cannot delete instrument with active rentals", 409)
+        assigned = [rental for rental in records["rentals"] if rental.get("instrument_id") == record_id]
+        if assigned:
+            raise DeletionBlocked(entity, record_id, assigned)
     if entity == "members":
-        active = [rental for rental in records["rentals"] if rental.get("member_id") == record_id and not rental.get("return_date")]
-        if active:
-            raise DomainError("cannot delete member with active rentals", 409)
+        assigned = [rental for rental in records["rentals"] if rental.get("member_id") == record_id]
+        if assigned:
+            raise DeletionBlocked(entity, record_id, assigned)
     if entity == "history":
         raise DomainError("history is append-only", 405)
     records[entity] = [item for item in records[entity] if item["id"] != record_id]
     if entity == "instruments":
         records["service_records"] = [item for item in records["service_records"] if item.get("instrument_id") != record_id]
     return record
+
+
+def delete_operational_records(records, tenant_id, entity, ids, actor):
+    if entity not in ("instruments", "members", "rentals", "service_records"):
+        raise DomainError("Only operational records can be deleted", 400)
+    if not isinstance(ids, list) or not ids or len(ids) > 500 or any(not isinstance(item, str) or not item for item in ids) or len(set(ids)) != len(ids):
+        raise DomainError("Select between 1 and 500 distinct records", 400)
+    updated = clone_records(records)
+    # Preflight the entire selection so no partial deletion reaches storage.
+    for record_id in ids:
+        find_record(updated, entity, record_id)
+        if entity in ("instruments", "members"):
+            assigned = [rental for rental in updated["rentals"] if rental.get("instrument_id" if entity == "instruments" else "member_id") == record_id]
+            if assigned:
+                raise DeletionBlocked(entity, record_id, assigned)
+    for record_id in ids:
+        record = find_record(updated, entity, record_id)
+        if entity == "rentals":
+            add_history(updated, tenant_id, record, "deleted", actor)
+        elif entity == "service_records":
+            add_service_history(updated, tenant_id, record, "deleted", actor)
+        elif entity == "instruments":
+            for service in list(updated["service_records"]):
+                if service.get("instrument_id") == record_id:
+                    add_service_history(updated, tenant_id, service, "deleted", actor)
+        delete_record(updated, entity, record_id)
+    return updated
+
+
+def reset_operational_records(records, tenant_id, scope, actor):
+    if scope not in ("instruments", "members", "rentals", "all"):
+        raise DomainError("Invalid data reset scope", 400)
+    updated = clone_records(records)
+    # Removing a parent also removes dependent live records. Capture their
+    # history while the instrument/member names are still available.
+    rentals = list(updated["rentals"])
+    services = list(updated["service_records"]) if scope in ("instruments", "all") else []
+    for rental in rentals:
+        add_history(updated, tenant_id, rental, "deleted", actor)
+    for service in services:
+        add_service_history(updated, tenant_id, service, "deleted", actor)
+    updated["rentals"] = []
+    if scope in ("instruments", "all"):
+        updated["instruments"] = []
+        updated["service_records"] = []
+    if scope in ("members", "all"):
+        updated["members"] = []
+    removed = {entity: len(records[entity]) - len(updated[entity]) for entity in ("instruments", "members", "rentals", "service_records")}
+    return updated, removed
 
 
 def find_record(records: dict[str, list[dict[str, Any]]], entity: str, record_id: str) -> dict[str, Any]:

@@ -1,5 +1,6 @@
 import {initializeAuth, authFetch, signIn, signOut, openAccount, getAuthState, mountAuthFlow, unmountAuthFlow, getActiveOrganization, mountOrganizationSwitcher, mountUserButton, openOrganization} from "./auth.js";
-import {requestJson} from "./api_response.js";
+import {requestJson, commitVisible, observeCommit} from "./api_response.js";
+import {openRecordTransfer} from "./transfer_ui.js";
 
 const state = {
   tenant: localStorage.getItem("rentalTenant") || "demo-association",
@@ -25,6 +26,13 @@ const state = {
   invitationTenant: "",
   invitations: [],
   invitationError: "",
+  bulkMode: false,
+  advancedToolsOpen: {},
+  selectedIds: new Set(),
+  mutationBusy: false,
+  pendingCommit: null,
+  operationStatus: "",
+  operationalLoaded: false,
   accessRequestResult: null,
   summary: {},
   meta: {revision: 0, updated_at: null},
@@ -119,6 +127,31 @@ const translations = {
     "auth.select_clerk": "Select your organization",
     "auth.select_clerk_body": "Use the organization switcher below. Your membership determines which association you can access.",
     "labels.my_association": "My association",
+    "delete.select": "Select records",
+    "delete.cancel_selection": "Done selecting",
+    "delete.select_visible": "Select / clear visible",
+    "delete.selected": "Delete selected ({count})",
+    "delete.select_record": "Select {name}",
+    "delete.confirm_selected": "Delete {count} selected records? This cannot be undone.",
+    "delete.blocked": "This record still has assigned rentals. Return active rentals and remove their rental rows first; history is retained.",
+    "delete.view_rentals": "View assigned rentals",
+    "delete.show_all_rentals": "Show all rentals",
+    "delete.saving": "Deleting records…",
+    "delete.syncing": "Deletion saved. Waiting for the updated data…",
+    "delete.pending": "Deletion saved; data is still synchronizing. Refresh to check progress before making further changes.",
+    "delete.complete": "Deletion complete. The updated data is visible.",
+    "reset.title": "Danger zone",
+    "reset.description": "Reset working data for this association. Accounts, organization settings, permissions and existing history are retained.",
+    "reset.cascade": "Resetting members also removes their rentals. Resetting instruments also removes their rentals and service records. Deletion history is recorded before cleanup.",
+    "reset.scope": "Data to remove",
+    "reset.instruments": "All instruments and their dependent records",
+    "reset.members": "All members and their rentals",
+    "reset.rentals": "All rentals",
+    "reset.all": "All working data",
+    "reset.confirm": "Type {tenant} to confirm the association",
+    "reset.action": "Reset selected data",
+    "reset.confirm_error": "The confirmation must match the association ID.",
+    "reset.final_confirm": "Permanently reset this association’s selected working data? Existing history and user access settings will remain.",
     "messages.connection_unavailable": "Connection unavailable. Please try again.",
     "messages.service_unavailable": "Data could not be loaded. Please try again shortly.",
     "messages.data_unavailable": "Data could not be loaded. Please contact the app administrator.",
@@ -173,11 +206,16 @@ const translations = {
     "tenant.invalid": "Tenant id must use 2-63 lowercase letters, numbers, hyphens, or underscores and cannot be a reserved system name",
     "actions.switch_tenant": "Switch tenant",
     "actions.load_demo": "Load Demo",
-    "actions.export": "Export",
-    "actions.import": "Import",
+    "actions.export": "JSON export",
+    "actions.import": "JSON import",
     "actions.import_hitobito": "Hitobito",
-    "actions.export_instruments": "Export Inventory",
-    "actions.import_instruments": "Import Inventory",
+    "actions.export_instruments": "Inventory JSON export",
+    "actions.import_instruments": "Inventory JSON import",
+    "actions.spreadsheet": "Spreadsheet import / export",
+    "actions.advanced": "Advanced",
+    "actions.import_csv": "Import CSV",
+    "actions.export_csv": "Export CSV",
+    "sections.quick_actions": "Create a record",
     "actions.export_tenant_access": "Export Access KV",
     "actions.refresh": "Refresh",
     "actions.sign_in": "Sign in",
@@ -288,6 +326,7 @@ const translations = {
     "table.updated": "Updated",
     "table.reference": "Reference",
     "table.contact": "Roster note",
+    "table.groups": "Groups",
     "table.instrument": "Instrument",
     "table.member": "Member",
     "table.start": "Start",
@@ -441,6 +480,31 @@ const translations = {
     "auth.select_clerk": "Organisation auswählen",
     "auth.select_clerk_body": "Nutze die Organisationsauswahl unten. Deine Mitgliedschaft bestimmt deinen Vereinszugriff.",
     "labels.my_association": "Mein Verein",
+    "delete.select": "Einträge auswählen",
+    "delete.cancel_selection": "Auswahl beenden",
+    "delete.select_visible": "Sichtbare auswählen / abwählen",
+    "delete.selected": "Auswahl löschen ({count})",
+    "delete.select_record": "{name} auswählen",
+    "delete.confirm_selected": "{count} ausgewählte Einträge löschen? Dies kann nicht rückgängig gemacht werden.",
+    "delete.blocked": "Diesem Eintrag sind noch Ausleihen zugeordnet. Gib aktive Ausleihen zurück und entferne zuerst deren Ausleiheinträge. Der Verlauf bleibt erhalten.",
+    "delete.view_rentals": "Zugeordnete Ausleihen ansehen",
+    "delete.show_all_rentals": "Alle Ausleihen anzeigen",
+    "delete.saving": "Einträge werden gelöscht…",
+    "delete.syncing": "Löschung gespeichert. Warten auf die aktualisierten Daten…",
+    "delete.pending": "Löschung gespeichert; Daten werden noch synchronisiert. Aktualisiere zur Prüfung, bevor du weitere Änderungen vornimmst.",
+    "delete.complete": "Löschung abgeschlossen. Die aktualisierten Daten sind sichtbar.",
+    "reset.title": "Gefahrenbereich",
+    "reset.description": "Arbeitsdaten dieses Vereins zurücksetzen. Konten, Organisationseinstellungen, Berechtigungen und bestehender Verlauf bleiben erhalten.",
+    "reset.cascade": "Beim Zurücksetzen der Mitglieder werden auch deren Ausleihen entfernt. Bei Instrumenten werden auch deren Ausleihen und Serviceeinträge entfernt. Der Löschverlauf wird vor der Bereinigung gespeichert.",
+    "reset.scope": "Zu entfernende Daten",
+    "reset.instruments": "Alle Instrumente und zugehörigen Einträge",
+    "reset.members": "Alle Mitglieder und deren Ausleihen",
+    "reset.rentals": "Alle Ausleihen",
+    "reset.all": "Alle Arbeitsdaten",
+    "reset.confirm": "Gib {tenant} zur Bestätigung des Vereins ein",
+    "reset.action": "Ausgewählte Daten zurücksetzen",
+    "reset.confirm_error": "Die Bestätigung muss der Vereins-ID entsprechen.",
+    "reset.final_confirm": "Ausgewählte Arbeitsdaten dieses Vereins endgültig zurücksetzen? Bestehender Verlauf und Benutzerberechtigungen bleiben erhalten.",
     "messages.connection_unavailable": "Keine Verbindung. Bitte versuche es erneut.",
     "messages.service_unavailable": "Daten konnten nicht geladen werden. Bitte versuche es in Kürze erneut.",
     "messages.data_unavailable": "Daten konnten nicht geladen werden. Bitte kontaktiere die App-Verwaltung.",
@@ -495,11 +559,16 @@ const translations = {
     "tenant.invalid": "Mandant muss aus 2-63 Kleinbuchstaben, Zahlen, Bindestrichen oder Unterstrichen bestehen und darf keine reservierte Systembezeichnung sein",
     "actions.switch_tenant": "Mandant wechseln",
     "actions.load_demo": "Demo laden",
-    "actions.export": "Export",
-    "actions.import": "Import",
+    "actions.export": "JSON exportieren",
+    "actions.import": "JSON importieren",
     "actions.import_hitobito": "Hitobito",
-    "actions.export_instruments": "Inventar exportieren",
-    "actions.import_instruments": "Inventar importieren",
+    "actions.export_instruments": "Inventar als JSON exportieren",
+    "actions.import_instruments": "Inventar als JSON importieren",
+    "actions.spreadsheet": "Tabellen importieren / exportieren",
+    "actions.advanced": "Erweitert",
+    "actions.import_csv": "CSV importieren",
+    "actions.export_csv": "CSV exportieren",
+    "sections.quick_actions": "Eintrag erstellen",
     "actions.export_tenant_access": "Access-KV exportieren",
     "actions.refresh": "Aktualisieren",
     "actions.sign_in": "Anmelden",
@@ -610,6 +679,7 @@ const translations = {
     "table.updated": "Aktualisiert",
     "table.reference": "Referenz",
     "table.contact": "Listenhinweis",
+    "table.groups": "Gruppen",
     "table.instrument": "Instrument",
     "table.member": "Mitglied",
     "table.start": "Start",
@@ -827,13 +897,14 @@ function api(path, options = {}) {
     return Promise.reject(new Error(t("tenant.invalid")));
   }
   const method = (options.method || "GET").toUpperCase();
+  if (state.pendingCommit && method !== "GET") return Promise.reject(new Error(t("delete.pending")));
   const headers = {"content-type": "application/json", ...(options.headers || {})};
   if (["POST", "PUT", "DELETE"].includes(method) && options.expectRevision !== false) {
     headers["x-rental-expected-revision"] = String(Number(state.meta.revision || 0));
   }
   const memberScope = isBasicProfile() && (state.context?.member_associations || []).some(item => item.tenant_id === state.tenant)
     ? `${path.includes("?") ? "&" : "?"}member_association=${encodeURIComponent(state.tenant)}` : "";
-  const recover = /^\/(summary|instruments|members|rentals|service_records|history)(\?|$)/.test(path);
+  const recover = /^\/(snapshot|summary|instruments|members|rentals|service_records|history)(\?|$)/.test(path);
   return requestJson(authFetch, `/api/${tenantRoutePrefix}${state.tenant}${path}${memberScope}`, {...options, method, headers}, {recover, translate: t}).catch(error => {
     if (error.data?.meta) applyMeta(error.data.meta);
     throw error;
@@ -880,7 +951,14 @@ function saveStoredAccessRequest(request) {
 
 function resetAuthenticatedState() {
   authGeneration++;
+  document.querySelector(".transfer-dialog")?.close();
   stopMetadataPolling();
+  state.pendingCommit = null;
+  state.mutationBusy = false;
+  state.operationStatus = "";
+  state.operationalLoaded = false;
+  state.bulkMode = false;
+  state.selectedIds.clear();
   state.context = null;
   state.memberTenant = "";
   state.authStatus = "signed_out";
@@ -1260,6 +1338,15 @@ function showMessage(text, isError = false, action = null) {
 }
 
 async function handleMutationError(error) {
+  if (error.data?.errorCode === "DELETE_BLOCKED") {
+    const rentalIds = new Set((error.data.blockers || []).flatMap(item => item.rental_ids || []));
+    showMessage(t("delete.blocked"), true, {label: t("delete.view_rentals"), onClick: () => {
+      switchView("rentals");
+      state.relatedRentalIds = rentalIds;
+      render();
+    }});
+    return;
+  }
   if (error.status === 409) {
     await loadData().catch(() => {});
     showMessage(t("messages.revision_conflict"), true);
@@ -1353,50 +1440,115 @@ function switchView(viewName) {
   state.sort = defaultSortFor(viewName);
   state.sortDirection = defaultSortDirectionFor(viewName);
   state.detail = null;
+  state.bulkMode = false;
+  state.selectedIds.clear();
+  if (viewName !== "rentals") state.relatedRentalIds = null;
 }
 
-async function loadData() {
+async function loadAdminData() {
   const generation = authGeneration;
-  const requestedTenant = state.tenant;
-  const adminErrors = [];
-  const captureAdminError = error => { adminErrors.push(error.message); return {data: []}; };
+  const tenant = state.tenant;
+  const errors = [];
+  const capture = error => { errors.push(error.message); return {data: []}; };
   const clerkManaged = getAuthState().provider === "clerk";
-  const associationsPromise = capabilities().platform_admin ? adminApi("/associations").catch(captureAdminError) : Promise.resolve({data: []});
-  const usersPromise = capabilities().admin && !clerkManaged ? adminApi("/users").catch(captureAdminError) : Promise.resolve({data: []});
-  const requestsPromise = capabilities().admin ? adminApi("/access-requests").catch(captureAdminError) : Promise.resolve({data: []});
-  const admissionsPromise = capabilities().admin && clerkManaged ? adminApi("/admissions").catch(error => { adminErrors.push(error.message); return {data: null}; }) : Promise.resolve({data: null});
-  const tenantAvailable = validAssociationTenantId(state.tenant);
-  const emptyCollection = Promise.resolve({data: []});
-  const [summary, instruments, members, rentals, serviceRecords, history, associations, users, accessRequests, admissions] = await Promise.all([
-    tenantAvailable ? api("/summary") : Promise.resolve({meta: {revision: 0, updated_at: null}}),
-    tenantAvailable ? api("/instruments") : emptyCollection,
-    tenantAvailable ? api("/members") : emptyCollection,
-    tenantAvailable ? api("/rentals") : emptyCollection,
-    tenantAvailable ? api("/service_records") : emptyCollection,
-    tenantAvailable ? api("/history") : emptyCollection,
-    associationsPromise,
-    usersPromise,
-    requestsPromise,
-    admissionsPromise
+  const caps = capabilities();
+  const [associations, users, requests, admissions] = await Promise.all([
+    caps.platform_admin ? adminApi("/associations").catch(capture) : {data: []},
+    caps.admin && !clerkManaged ? adminApi("/users").catch(capture) : {data: []},
+    caps.admin ? adminApi("/access-requests").catch(capture) : {data: []},
+    caps.admin && clerkManaged ? adminApi("/admissions").catch(capture) : {data: null}
   ]);
-  if (generation !== authGeneration || requestedTenant !== state.tenant) return;
-  state.summary = summary;
-  applyMeta(summary.meta);
-  state.records = {
-    instruments: instruments.data || [],
-    members: members.data || [],
-    rentals: rentals.data || [],
-    service_records: serviceRecords.data || [],
-    history: history.data || []
-  };
+  if (generation !== authGeneration || tenant !== state.tenant) return;
   state.associations = associations.data || [];
   state.users = users.data || [];
-  state.accessRequests = accessRequests.data || [];
+  state.accessRequests = requests.data || [];
   state.admissions = admissions.data;
-  state.adminErrors = adminErrors;
+  state.adminErrors = errors;
+  renderOrganizationChrome();
+  if (state.view === "admin") render();
+}
+
+function applyOperationalSnapshot(snapshot) {
+  state.operationalLoaded = true;
+  state.summary = {...snapshot.summary, meta: snapshot.meta};
+  state.records = snapshot.records;
+  applyMeta(snapshot.meta);
+  if (state.pendingCommit && commitVisible(snapshot, state.pendingCommit.meta, state.pendingCommit.verify)) {
+    state.pendingCommit = null;
+    state.mutationBusy = false;
+    state.operationStatus = "";
+    state.selectedIds.clear();
+  }
   reconcileDetailSelection();
   render();
-  startMetadataPolling();
+}
+
+async function loadData({includeAdmin = true} = {}) {
+  if (state.view === "admin" && includeAdmin) {
+    await loadAdminData();
+    startMetadataPolling();
+    return;
+  }
+  const generation = authGeneration;
+  const tenant = state.tenant;
+  // Administrative requests publish their own results even if working data fails.
+  const adminWork = includeAdmin ? loadAdminData() : Promise.resolve();
+  try {
+    const snapshot = await api("/snapshot");
+    if (generation !== authGeneration || tenant !== state.tenant) return;
+    if (state.pendingCommit && !commitVisible(snapshot, state.pendingCommit.meta, state.pendingCommit.verify)) return;
+    applyOperationalSnapshot(snapshot);
+    startMetadataPolling();
+  } finally {
+    await adminWork;
+  }
+}
+
+async function runDeletion(request, verify) {
+  if (state.mutationBusy) return;
+  const tenant = state.tenant;
+  const generation = authGeneration;
+  const stillCurrent = () => tenant === state.tenant && generation === authGeneration;
+  state.mutationBusy = true;
+  state.operationStatus = "delete.saving";
+  render();
+  let acknowledged = false;
+  try {
+    const result = await request();
+    if (!stillCurrent()) return;
+    acknowledged = true;
+    state.pendingCommit = {tenant, meta: result.meta, verify};
+    state.operationStatus = "delete.syncing";
+    render();
+    const snapshot = await observeCommit(() => api("/snapshot"), result.meta, verify, stillCurrent);
+    if (!stillCurrent()) return;
+    if (snapshot) {
+      applyOperationalSnapshot(snapshot);
+      showMessage(t("delete.complete"));
+    } else {
+      state.operationStatus = "delete.pending";
+      render();
+      showMessage(t("delete.pending"), false, {label: t("actions.refresh"), onClick: () => loadData({includeAdmin: false}).catch(error => showMessage(error.message, true))});
+    }
+  } catch (error) {
+    if (!stillCurrent()) return;
+    if (acknowledged) {
+      state.operationStatus = "delete.pending";
+      showMessage(error.message, true);
+    } else {
+      state.mutationBusy = false;
+      state.operationStatus = "";
+      await handleMutationError(error);
+    }
+    render();
+  }
+}
+
+function updateOperationStatus() {
+  const status = document.querySelector("#operationStatus");
+  if (!status) return;
+  status.hidden = !state.operationStatus;
+  status.innerHTML = state.operationStatus ? `<span class="operation-spinner" aria-hidden="true"></span><span>${escapeHtml(t(state.operationStatus))}</span>${state.pendingCommit ? `<button type="button" class="ghost-button" data-check-commit>${t("actions.refresh")}</button>` : ""}` : "";
 }
 
 function stopMetadataPolling() {
@@ -1434,6 +1586,15 @@ async function pollTenantMetadata() {
         state.accessRequests = requests.data || [];
         renderOrganizationChrome();
         if (state.view === "admin" && !dialog.open && !view.contains(document.activeElement)) renderAdmin();
+      }
+      if (state.pendingCommit) {
+        await loadData({includeAdmin: false});
+        scheduleMetadataPoll();
+        return;
+      }
+      if (state.view === "admin") {
+        scheduleMetadataPoll();
+        return;
       }
       const result = await api("/meta");
       const remoteRevision = Number(result.meta?.revision || 0);
@@ -1476,6 +1637,7 @@ function reconcileDetailSelection() {
 function render() {
   unmountAuthFlow();
   applyLanguage();
+  updateOperationStatus();
   renderSessionButtons();
   document.body.classList.toggle("is-loading", Boolean(state.isLoading) && state.authStatus === "signed_in");
   document.body.classList.toggle("is-auth-start", state.authStatus !== "signed_in");
@@ -1496,18 +1658,18 @@ function render() {
   viewTitle.textContent = t(`views.${state.view}`);
   tenantLabel.textContent = state.tenant;
   if (mobileTenantLabel) mobileTenantLabel.textContent = state.tenant;
-  primaryAction.hidden = (getAuthState().provider === "clerk" && state.view === "admin") || basic || state.view === "history" || (state.view === "admin" && !caps.admin);
+  primaryAction.hidden = (getAuthState().provider === "clerk" && state.view === "admin") || basic || state.view === "dashboard" || state.view === "history" || (state.view === "admin" && !caps.admin);
   primaryAction.textContent = state.view === "admin" ? t("actions.new_association") : state.view === "instruments" ? t("actions.new_instruments") : state.view === "members" ? t("actions.new_members") : state.view === "service_records" ? t("actions.new_service_records") : t("actions.new_rentals");
-  primaryAction.disabled = state.view === "admin" ? !caps.platform_admin : !caps.write;
+  primaryAction.disabled = state.view === "admin" ? !caps.platform_admin : !caps.write || state.mutationBusy;
   seedButton.hidden = basic || hasExistingTenantData();
-  seedButton.disabled = !caps.admin || seedButton.hidden;
-  exportButton.hidden = basic;
-  importButton.hidden = basic;
+  seedButton.disabled = !caps.admin || seedButton.hidden || state.mutationBusy;
+  exportButton.hidden = !caps.admin || basic;
+  importButton.hidden = !caps.admin || basic || state.view === "dashboard";
   refreshButton.hidden = basic;
   exportButton.disabled = !caps.admin || basic;
-  importButton.disabled = !caps.admin || basic;
+  importButton.disabled = !caps.admin || basic || state.mutationBusy;
   hitobitoImportButton.hidden = basic || state.view !== "members";
-  hitobitoImportButton.disabled = !caps.admin;
+  hitobitoImportButton.disabled = !caps.admin || state.mutationBusy;
   renderUserMenu();
   renderAssociationHelp();
 
@@ -1532,6 +1694,8 @@ function render() {
   renderOrganizationChrome();
   if (state.view === "history") renderHistory();
   if (state.view === "admin") renderAdmin();
+  view.setAttribute("aria-busy", String(state.mutationBusy && state.view !== "admin"));
+  if (state.mutationBusy) view.querySelectorAll("[data-edit], [data-delete], [data-return], [data-create], [data-import-instruments]").forEach(button => { button.disabled = true; });
 }
 
 function renderAuthStart() {
@@ -1632,6 +1796,7 @@ function renderDashboard() {
     .slice(0, 6);
   view.innerHTML = `
     ${capabilities().admin && state.accessRequests.some(item => item.status === "pending") ? `<section class="request-notice"><strong>${t("admin.pending_notice", {count: state.accessRequests.filter(item => item.status === "pending").length})}</strong><button class="ghost-button" data-jump="admin">${t("admin.review_requests")}</button></section>` : ""}
+    ${renderDashboardActions()}
     ${renderStats()}
     <div class="content-grid">
       <section class="panel">
@@ -1655,6 +1820,17 @@ function renderDashboard() {
       </section>
     </div>
   `;
+}
+
+function renderDashboardActions() {
+  if (!capabilities().write || isBasicProfile()) return "";
+  const icons = {
+    instruments: '<path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="17" cy="16" rx="3" ry="2"/>',
+    members: '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M19 8v6M16 11h6"/>',
+    rentals: '<path d="M3 7h16m-4-4 4 4-4 4M21 17H5m4-4-4 4 4 4"/>',
+    service_records: '<path d="m14 6-8 8a3 3 0 0 0 4 4l8-8a6 6 0 0 0 3-7l-4 4-3-3 4-4a6 6 0 0 0-7 3"/>'
+  };
+  return `<section class="dashboard-actions" aria-label="${t("sections.quick_actions")}">${["rentals", "instruments", "members", "service_records"].map(entity => `<button type="button" class="dashboard-create${entity === "rentals" ? " is-primary" : ""}" data-create="${entity}" ${state.mutationBusy ? "disabled" : ""}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${icons[entity]}</svg><span>${t(`actions.new_${entity}`)}</span></button>`).join("")}</section>`;
 }
 
 function renderBasicDashboard() {
@@ -1839,6 +2015,7 @@ function renderClerkAdmin() {
       </section>`;
     }).join("")}
     ${state.detail?.entity === "associations" ? renderAssociationDetail(state.detail.id) : ""}
+    ${renderDangerZone()}
   </div>`;
 }
 
@@ -1884,6 +2061,7 @@ function renderAdmin() {
         ${renderUserTable(userItems)}
       </section>
       ${renderInvitations()}
+      ${renderDangerZone()}
     </div>
     ${detail}
   </div>`;
@@ -1909,6 +2087,24 @@ function renderInvitations() {
       <button class="primary-button" type="submit" ${!state.invitationTenant ? "disabled" : ""}>${t("actions.invite")}</button>
     </form>
     <div data-invitation-list>${renderInvitationList()}</div>
+  </section>`;
+}
+
+function renderDangerZone() {
+  if (!capabilities().admin || isBasicProfile() || !validAssociationTenantId(state.tenant)) return "";
+  return `<section class="panel danger-zone" aria-labelledby="dangerZoneTitle">
+    <h2 id="dangerZoneTitle">${t("reset.title")}</h2>
+    <p>${t("reset.description")}</p>
+    <p class="muted">${t("reset.cascade")}</p>
+    <form data-reset-data>
+      <label for="resetScope">${t("reset.scope")}</label>
+      <select id="resetScope" name="scope" ${state.mutationBusy ? "disabled" : ""}>
+        ${["instruments", "members", "rentals", "all"].map(scope => `<option value="${scope}">${t(`reset.${scope}`)}</option>`).join("")}
+      </select>
+      <label for="resetConfirmation">${escapeHtml(t("reset.confirm", {tenant: state.tenant}))}</label>
+      <input id="resetConfirmation" name="confirm_tenant" type="text" autocomplete="off" required ${state.mutationBusy ? "disabled" : ""}>
+      <button type="submit" class="danger-button" disabled>${t("reset.action")}</button>
+    </form>
   </section>`;
 }
 
@@ -1972,6 +2168,7 @@ function filterAssociationItems(items) {
 
 function filterUserItems(items) {
   let filtered = [...items];
+  if (state.view === "rentals" && state.relatedRentalIds) filtered = filtered.filter(item => state.relatedRentalIds.has(item.id));
   if (state.search) {
     const search = state.search.toLowerCase();
     filtered = filtered.filter((item) => JSON.stringify(item).toLowerCase().includes(search));
@@ -2183,10 +2380,10 @@ function renderToolbar(entity) {
       <button class="icon-button" data-sort-direction aria-label="${escapeHtml(t(`sort.${state.sortDirection}`))}" title="${escapeHtml(t(`sort.${state.sortDirection}`))}">
         <span aria-hidden="true">${state.sortDirection === "asc" ? "↑" : "↓"}</span>
       </button>
-      ${entity === "instruments" && caps.admin ? `<div class="toolbar-actions">
-        <button class="ghost-button" data-export-instruments>${t("actions.export_instruments")}</button>
-        <button class="ghost-button" data-import-instruments>${t("actions.import_instruments")}</button>
-      </div>` : ""}
+      <div class="toolbar-actions">
+        ${entity === "rentals" && state.relatedRentalIds ? `<button type="button" class="ghost-button" data-clear-related>${t("delete.show_all_rentals")}</button>` : ""}
+
+      </div>
       ${statusOptions.length ? `<div class="segmented">
         ${statusOptions.map((status) => `<button data-status="${status}" aria-pressed="${state.status === status}" class="${state.status === status ? "is-active" : ""}">${filterLabel(status)}</button>`).join("")}
       </div>` : ""}
@@ -2194,8 +2391,15 @@ function renderToolbar(entity) {
   `;
 }
 
+function renderRecordSelection(entity, record) {
+  if (!state.bulkMode || state.view !== entity || !capabilities().admin || isBasicProfile()) return "";
+  const name = record.name || record.display_name || record.instrument_name || record.id;
+  return `<label class="record-selection-control"><input type="checkbox" class="record-selection" data-select-record="${escapeHtml(record.id)}" aria-label="${escapeHtml(t("delete.select_record", {name}))}" ${state.selectedIds.has(record.id) ? "checked" : ""} ${state.mutationBusy ? "disabled" : ""}></label>`;
+}
+
 function filterItems(items) {
   let filtered = [...items];
+  if (state.view === "rentals" && state.relatedRentalIds) filtered = filtered.filter(item => state.relatedRentalIds.has(item.id));
   if (state.search) {
     const search = state.search.toLowerCase();
     filtered = filtered.filter((item) => JSON.stringify(item).toLowerCase().includes(search));
@@ -2257,7 +2461,50 @@ function renderCollection(entity) {
         ? renderServiceTable(items)
         : renderRentalTable(items);
   const detail = state.detail?.entity === entity ? renderDetail(entity, state.detail.id) : "";
-  view.innerHTML = `${renderToolbar(entity)}<div class="${detail ? "split-view" : ""}"><div>${table}</div>${detail}</div>`;
+  const createAction = renderCollectionCreateAction(entity);
+  view.innerHTML = `${renderToolbar(entity)}<div class="${detail ? "split-view collection-context" : ""}"><div class="collection-list${createAction ? " has-create-action" : ""}">${table}${createAction}</div>${detail}</div>`;
+}
+
+function renderCollectionCreateAction(entity, location = "bottom") {
+  if (!capabilities().write || isBasicProfile()) return "";
+  const advanced = ["instruments", "members"].includes(entity) && capabilities().admin;
+  const expanded = !!state.advancedToolsOpen?.[entity];
+  const toolsId = `transfer-${entity}-${location}`;
+  const arrow = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/></svg>';
+  return `<div class="collection-action-bar">
+    <button type="button" class="collection-create" ${state.mutationBusy ? "disabled" : ""} data-create="${entity}">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+      <span>${t(`actions.new_${entity}`)}</span>
+    </button>
+    ${advanced ? `<div class="collection-transfer"><button type="button" class="collection-advanced-toggle" data-advanced-toggle="${entity}" data-action-location="${location}" aria-expanded="${expanded}" aria-controls="${toolsId}"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg><span>${t("actions.advanced")}</span></button>
+      <div id="${toolsId}" class="advanced-tools" ${expanded ? "" : "hidden"}>
+        <button type="button" class="collection-transfer-action" data-transfer="${entity}" ${state.mutationBusy ? "disabled" : ""}>${arrow.replace('M12 3v12m-4-4 4 4 4-4', 'M12 15V3m-4 4 4-4 4 4')}<span>${t("actions.import_csv")}</span></button>
+        <button type="button" class="collection-transfer-action" data-transfer="${entity}" data-transfer-mode="export" ${state.mutationBusy ? "disabled" : ""}>${arrow}<span>${t("actions.export_csv")}</span></button>
+      </div></div>` : ""}
+  </div>`;
+}
+
+function renderCollectionSelectionHeader(entity) {
+  if (state.view !== entity || !capabilities().admin || isBasicProfile()) return "";
+  return `<div class="bulk-actions">
+    <button type="button" class="ghost-button" data-bulk-toggle aria-pressed="${state.bulkMode}" ${state.mutationBusy ? "disabled" : ""}>${t(state.bulkMode ? "delete.cancel_selection" : "delete.select")}</button>
+    ${state.bulkMode ? `<button type="button" class="ghost-button" data-select-all ${state.mutationBusy ? "disabled" : ""}>${t("delete.select_visible")}</button><button type="button" class="danger-button" data-delete-selected ${!state.selectedIds.size || state.mutationBusy ? "disabled" : ""}>${t("delete.selected", {count: state.selectedIds.size})}</button>` : ""}
+  </div>`;
+}
+
+function renderCollectionCreateRow(entity, columns) {
+  if (state.view !== entity) return "";
+  const action = renderCollectionCreateAction(entity, "top");
+  return action ? `<tr class="collection-create-row"><td colspan="${columns}">${action}</td></tr>` : "";
+}
+
+function openCreateDialog(entity) {
+  if (state.mutationBusy || !capabilities().write || isBasicProfile() || !["instruments", "members", "rentals", "service_records"].includes(entity)) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const defaults = entity === "service_records"
+    ? {service_date: today, condition: "good"}
+    : {start_date: today, is_active: true};
+  openDialog(entity, defaults);
 }
 
 function renderDetail(entity, id) {
@@ -2286,16 +2533,32 @@ function renderInlineDetail(entity, id, colspan) {
   return `<tr class="inline-detail-row"><td colspan="${colspan}">${detail}</td></tr>`;
 }
 
+function renderTableAction(action, entity, item, compact = false) {
+  const iconOnly = !compact && state.view === entity && state.detail?.entity === entity;
+  const paths = {
+    edit: '<path d="m16 3 5 5-12 12-6 1 1-6L16 3Zm-2 2 5 5"/>',
+    delete: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
+    return: '<path d="m8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12h-3"/>'
+  };
+  const name = item.display_name || item.name || item.instrument_name || item.id;
+  const label = `${t(`actions.${action}`)}: ${name}`;
+  const attributes = action === "return" ? `data-return="${escapeHtml(item.id)}"` : `data-${action}="${entity}" data-id="${escapeHtml(item.id)}"`;
+  const style = action === "delete" ? "danger-button" : action === "return" ? "primary-button" : "ghost-button";
+  return `<button type="button" class="${style} table-action${iconOnly ? " is-icon-only" : ""}" ${attributes} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+    ${iconOnly ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths[action]}</svg>` : `<span>${t(`actions.${action}`)}</span>`}
+  </button>`;
+}
+
 function renderInstrumentTable(items) {
-  if (!items.length) return `<div class="empty">${t("empty.no_instruments")}</div>`;
   const caps = capabilities();
+  const selection = renderCollectionSelectionHeader("instruments");
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>${t("table.name")}</th><th>${t("table.type")}</th><th>${t("table.serial")}</th><th>${t("table.condition")}</th><th>${t("table.last_service")}</th><th>${t("table.next_service")}</th><th>${t("table.status")}</th><th></th></tr></thead>
-        <tbody>${items.map((item) => `
+        <thead class="collection-header${selection ? " has-selection" : ""}"><tr><th>${t("table.name")}</th><th>${t("table.type")}</th><th>${t("table.serial")}</th><th>${t("table.condition")}</th><th>${t("table.last_service")}</th><th>${t("table.next_service")}</th><th>${t("table.status")}</th><th class="collection-selection-header">${selection}</th></tr></thead>
+        <tbody>${renderCollectionCreateRow("instruments", 8)}${!items.length ? `<tr class="collection-empty-row"><td colspan="8"><div class="empty">${t("empty.no_instruments")}</div></td></tr>` : ""}${items.map((item) => `
           <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="instruments" data-id="${item.id}" tabindex="0">
-            <td data-label="${t("table.name")}"><strong>${escapeHtml(item.name)}</strong><div class="muted">${escapeHtml(item.brand)}</div></td>
+            <td data-label="${t("table.name")}">${renderRecordSelection("instruments", item)}<strong>${escapeHtml(item.name)}</strong><div class="muted">${escapeHtml(item.brand)}</div></td>
             <td data-label="${t("table.type")}">${escapeHtml(item.type)}</td>
             <td data-label="${t("table.serial")}">${escapeHtml(item.serial)}</td>
             <td data-label="${t("table.condition")}">${conditionPill(item.service_condition || "good")}</td>
@@ -2303,8 +2566,8 @@ function renderInstrumentTable(items) {
             <td data-label="${t("table.next_service")}">${item.next_service_date ? `${formatDate(item.next_service_date)} ${serviceDuePill(item.service_due_status)}` : ""}</td>
             <td data-label="${t("table.status")}">${statusPill(item.status)}</td>
             <td data-label="${t("table.action")}"><div class="row-actions">
-              ${caps.write ? `<button class="ghost-button" data-edit="instruments" data-id="${item.id}">${t("actions.edit")}</button>` : ""}
-              ${caps.admin ? `<button class="danger-button" data-delete="instruments" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
+              ${caps.write ? renderTableAction("edit", "instruments", item) : ""}
+              ${caps.admin ? renderTableAction("delete", "instruments", item) : ""}
             </div></td>
           </tr>
           ${renderInlineDetail("instruments", item.id, 8)}
@@ -2374,24 +2637,24 @@ function renderServiceJourney(items, caps, selectedId = null) {
 }
 
 function renderServiceTable(items) {
-  if (!items.length) return `<div class="empty">${t("empty.no_service_records")}</div>`;
   const caps = capabilities();
+  const selection = renderCollectionSelectionHeader("service_records");
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>${t("table.instrument")}</th><th>${t("fields.service_date")}</th><th>${t("table.condition")}</th><th>${t("table.next_service")}</th><th>${t("fields.provider")}</th><th></th></tr></thead>
-        <tbody>${items.map((item) => {
+        <thead class="collection-header${selection ? " has-selection" : ""}"><tr><th>${t("table.instrument")}</th><th>${t("fields.service_date")}</th><th>${t("table.condition")}</th><th>${t("table.next_service")}</th><th>${t("fields.provider")}</th><th class="collection-selection-header">${selection}</th></tr></thead>
+        <tbody>${renderCollectionCreateRow("service_records", 6)}${!items.length ? `<tr class="collection-empty-row"><td colspan="6"><div class="empty">${t("empty.no_service_records")}</div></td></tr>` : ""}${items.map((item) => {
           const dueStatus = serviceDueStatus(item.next_service_date);
           return `
             <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="service_records" data-id="${item.id}" tabindex="0">
-              <td data-label="${t("table.instrument")}"><strong>${escapeHtml(serviceInstrumentName(item))}</strong><div class="muted">${escapeHtml(item.job_type || "")}</div></td>
+              <td data-label="${t("table.instrument")}">${renderRecordSelection("service_records", item)}<strong>${escapeHtml(serviceInstrumentName(item))}</strong><div class="muted">${escapeHtml(item.job_type || "")}</div></td>
               <td data-label="${t("fields.service_date")}">${formatDate(item.service_date)}</td>
               <td data-label="${t("table.condition")}">${conditionPill(item.condition)}</td>
               <td data-label="${t("table.next_service")}">${item.next_service_date ? `${formatDate(item.next_service_date)} ${serviceDuePill(dueStatus)}` : ""}</td>
               <td data-label="${t("fields.provider")}">${escapeHtml(item.provider || "")}</td>
               <td data-label="${t("table.action")}"><div class="row-actions">
-                ${caps.write ? `<button class="ghost-button" data-edit="service_records" data-id="${item.id}">${t("actions.edit")}</button>` : ""}
-                ${caps.admin ? `<button class="danger-button" data-delete="service_records" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
+                ${caps.write ? renderTableAction("edit", "service_records", item) : ""}
+                ${caps.admin ? renderTableAction("delete", "service_records", item) : ""}
               </div></td>
             </tr>
             ${renderInlineDetail("service_records", item.id, 6)}
@@ -2456,21 +2719,21 @@ function renderRentalJourney(items) {
 }
 
 function renderMemberTable(items) {
-  if (!items.length) return `<div class="empty">${t("empty.no_members")}</div>`;
   const caps = capabilities();
+  const selection = renderCollectionSelectionHeader("members");
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>${t("table.name")}</th><th>${t("table.reference")}</th><th>${t("table.contact")}</th><th>${t("table.status")}</th><th></th></tr></thead>
-        <tbody>${items.map((item) => `
+        <thead class="collection-header${selection ? " has-selection" : ""}"><tr><th>${t("table.name")}</th><th>${t("table.reference")}</th><th>${t("table.contact")}</th><th>${t("table.status")}</th><th class="collection-selection-header">${selection}</th></tr></thead>
+        <tbody>${renderCollectionCreateRow("members", 5)}${!items.length ? `<tr class="collection-empty-row"><td colspan="5"><div class="empty">${t("empty.no_members")}</div></td></tr>` : ""}${items.map((item) => `
           <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="members" data-id="${item.id}" tabindex="0">
-            <td data-label="${t("table.name")}"><strong>${escapeHtml(item.display_name)}</strong></td>
+            <td data-label="${t("table.name")}">${renderRecordSelection("members", item)}<strong>${escapeHtml(item.display_name)}</strong></td>
             <td data-label="${t("table.reference")}">${escapeHtml(item.member_ref)}</td>
             <td data-label="${t("table.contact")}">${escapeHtml(item.contact_hint)}</td>
             <td data-label="${t("table.status")}">${item.is_active ? statusPill("active") : statusPill("inactive")}</td>
             <td data-label="${t("table.action")}"><div class="row-actions">
-              ${caps.write ? `<button class="ghost-button" data-edit="members" data-id="${item.id}">${t("actions.edit")}</button>` : ""}
-              ${caps.admin ? `<button class="danger-button" data-delete="members" data-id="${item.id}">${t("actions.delete")}</button>` : ""}
+              ${caps.write ? renderTableAction("edit", "members", item) : ""}
+              ${caps.admin ? renderTableAction("delete", "members", item) : ""}
             </div></td>
           </tr>
           ${renderInlineDetail("members", item.id, 5)}
@@ -2506,23 +2769,24 @@ function renderMemberDetail(item) {
 }
 
 function renderRentalTable(items, compact = false) {
-  if (!items.length) return `<div class="empty">${t("empty.no_rentals")}</div>`;
+  if (!items.length && (compact || state.view !== "rentals")) return `<div class="empty">${t("empty.no_rentals")}</div>`;
   const caps = capabilities();
+  const selection = compact ? "" : renderCollectionSelectionHeader("rentals");
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>${t("table.instrument")}</th><th>${t("table.member")}</th><th>${t("table.start")}</th><th>${t("table.due")}</th><th>${t("table.status")}</th><th></th></tr></thead>
-        <tbody>${items.map((item) => `
+        <thead class="collection-header${selection ? " has-selection" : ""}"><tr><th>${t("table.instrument")}</th><th>${t("table.member")}</th><th>${t("table.start")}</th><th>${t("table.due")}</th><th>${t("table.status")}</th><th class="collection-selection-header">${selection}</th></tr></thead>
+        <tbody>${!compact ? renderCollectionCreateRow("rentals", 6) : ""}${!items.length ? `<tr class="collection-empty-row"><td colspan="6"><div class="empty">${t("empty.no_rentals")}</div></td></tr>` : ""}${items.map((item) => `
           <tr class="clickable-row ${state.detail?.id === item.id ? "is-selected" : ""}" data-open="rentals" data-id="${item.id}" tabindex="0">
-            <td data-label="${t("table.instrument")}"><strong>${escapeHtml(item.instrument_name)}</strong><div class="muted">${escapeHtml(item.note)}</div></td>
+            <td data-label="${t("table.instrument")}">${renderRecordSelection("rentals", item)}<strong>${escapeHtml(item.instrument_name)}</strong><div class="muted">${escapeHtml(item.note)}</div></td>
             <td data-label="${t("table.member")}">${escapeHtml(item.member_name)}</td>
             <td data-label="${t("table.start")}">${formatDate(item.start_date)}</td>
             <td data-label="${t("table.due")}">${formatDate(item.due_date)}</td>
             <td data-label="${t("table.status")}">${statusPill(item.status)}</td>
             <td data-label="${t("table.action")}"><div class="row-actions">
-              ${caps.write && item.status !== "returned" ? `<button class="primary-button" data-return="${item.id}">${t("actions.return")}</button>` : ""}
-              ${compact ? "" : `${caps.write ? `<button class="ghost-button" data-edit="rentals" data-id="${item.id}">${t("actions.edit")}</button>` : ""}
-              ${caps.admin ? `<button class="danger-button" data-delete="rentals" data-id="${item.id}">${t("actions.delete")}</button>` : ""}`}
+              ${caps.write && item.status !== "returned" ? renderTableAction("return", "rentals", item, compact) : ""}
+              ${compact ? "" : `${caps.write ? renderTableAction("edit", "rentals", item, compact) : ""}
+              ${caps.admin ? renderTableAction("delete", "rentals", item, compact) : ""}`}
             </div></td>
           </tr>
           ${renderInlineDetail("rentals", item.id, 6)}
@@ -2883,6 +3147,7 @@ document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {
     switchView(button.dataset.view);
     render();
+    if (state.view === "admin" || !state.operationalLoaded) loadData().catch(error => showMessage(error.message, true));
   });
 });
 
@@ -2929,6 +3194,10 @@ userMenus.forEach((menu) => {
 });
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-check-commit]")) {
+    loadData({includeAdmin: false}).catch(error => showMessage(error.message, true));
+    return;
+  }
   const menu = event.target.closest(".user-menu");
   if (!menu) closeUserMenus();
 });
@@ -2945,7 +3214,22 @@ document.addEventListener("keydown", (event) => {
   openMenu.querySelector("summary")?.focus();
 });
 
+view.addEventListener("change", event => {
+  const checkbox = event.target.closest("[data-select-record]");
+  if (!checkbox || state.mutationBusy || !state.bulkMode || !capabilities().admin) return;
+  const id = checkbox.dataset.selectRecord;
+  if (checkbox.checked) state.selectedIds.add(id);
+  else state.selectedIds.delete(id);
+  render();
+  const next = [...view.querySelectorAll("[data-select-record]")].find(item => item.dataset.selectRecord === id);
+  next?.focus();
+});
+
 view.addEventListener("input", (event) => {
+  if (event.target.matches('[data-reset-data] [name="confirm_tenant"]')) {
+    event.target.form.querySelector('[type="submit"]').disabled = state.mutationBusy || event.target.value.trim() !== state.tenant;
+    return;
+  }
   if (event.target.matches("#inviteTenant")) {
     state.invitationTenant = event.target.value;
     event.target.form.querySelector('[type="submit"]').disabled = !validAssociationTenantId(state.invitationTenant);
@@ -2992,7 +3276,7 @@ document.addEventListener("click", (event) => {
 });
 
 view.addEventListener("click", async (event) => {
-  if (event.target.closest("[data-auth-provider-ui]")) return;
+  if (event.target.closest("[data-auth-provider-ui], [data-select-record], .record-selection-control")) return;
   const target = event.target.closest("button");
   if (target) {
     if (target.dataset.revokeInvitation) {
@@ -3007,6 +3291,36 @@ view.addEventListener("click", async (event) => {
       return;
     }
     event.stopPropagation();
+    if (target.dataset.advancedToggle) {
+      const entity = target.dataset.advancedToggle;
+      const location = target.dataset.actionLocation;
+      state.advancedToolsOpen[entity] = !state.advancedToolsOpen[entity];
+      render();
+      view.querySelector(`[data-advanced-toggle="${entity}"][data-action-location="${location}"]`)?.focus();
+      return;
+    }
+    if (target.dataset.bulkToggle !== undefined) {
+      if (state.mutationBusy || !capabilities().admin) return;
+      state.bulkMode = !state.bulkMode;
+      state.selectedIds.clear();
+      render();
+      return;
+    }
+    if (target.dataset.selectAll !== undefined) {
+      if (state.mutationBusy) return;
+      const ids = filterItems(state.records[state.view]).map(item => item.id);
+      const clear = ids.every(id => state.selectedIds.has(id));
+      for (const id of ids) clear ? state.selectedIds.delete(id) : state.selectedIds.add(id);
+      render();
+      return;
+    }
+    if (target.dataset.deleteSelected !== undefined) { await removeSelectedRecords(); return; }
+    if (target.dataset.clearRelated !== undefined) { state.relatedRentalIds = null; render(); return; }
+    if (state.mutationBusy && (target.dataset.create || target.dataset.edit || target.dataset.delete || target.dataset.return)) return;
+    if (target.dataset.create) {
+      openCreateDialog(target.dataset.create);
+      return;
+    }
     if (target.dataset.addTenantRole !== undefined) {
       const list = target.closest("[data-tenant-roles-field]")?.querySelector(".tenant-role-list");
       if (list) list.insertAdjacentHTML("beforeend", renderTenantRoleRow());
@@ -3069,6 +3383,10 @@ view.addEventListener("click", async (event) => {
     }
     if (target.dataset.exportInstruments !== undefined) {
       await exportInstruments();
+      return;
+    }
+    if (target.dataset.transfer) {
+      openSpreadsheetFlow(target.dataset.transfer, target.dataset.transferMode);
       return;
     }
     if (target.dataset.importInstruments !== undefined) {
@@ -3148,7 +3466,7 @@ view.addEventListener("click", async (event) => {
 });
 
 view.addEventListener("keydown", (event) => {
-  if (event.target.closest("[data-auth-provider-ui]")) return;
+  if (event.target.closest("[data-auth-provider-ui], [data-select-record], .record-selection-control")) return;
   if (event.key === "Escape" && state.detail) {
     state.detail = null;
     render();
@@ -3169,6 +3487,23 @@ view.addEventListener("keydown", (event) => {
 });
 
 view.addEventListener("submit", async (event) => {
+  if (event.target.matches("[data-reset-data]")) {
+    event.preventDefault();
+    if (!capabilities().admin || isBasicProfile() || state.mutationBusy) return;
+    const payload = Object.fromEntries(new FormData(event.target));
+    payload.confirm_tenant = String(payload.confirm_tenant || "").trim();
+    if (payload.confirm_tenant !== state.tenant) { showMessage(t("reset.confirm_error"), true); return; }
+    if (!window.confirm(t("reset.final_confirm"))) return;
+    const targets = payload.scope === "all" ? ["instruments", "members", "rentals", "service_records"]
+      : payload.scope === "instruments" ? ["instruments", "rentals", "service_records"]
+      : payload.scope === "members" ? ["members", "rentals"] : ["rentals"];
+    await runDeletion(async () => {
+      const snapshot = await api("/snapshot");
+      applyMeta(snapshot.meta);
+      return api("/reset-data", {method: "POST", body: JSON.stringify(payload)});
+    }, records => targets.every(entity => !records[entity]?.length));
+    return;
+  }
   if (event.target.matches("[data-invite-form]")) {
     event.preventDefault();
     const form = event.target;
@@ -3218,11 +3553,7 @@ primaryAction.addEventListener("click", () => {
     return;
   }
   const entity = state.view === "instruments" ? "instruments" : state.view === "members" ? "members" : state.view === "service_records" ? "service_records" : "rentals";
-  const today = new Date().toISOString().slice(0, 10);
-  const defaults = entity === "service_records"
-    ? {service_date: today, condition: "good"}
-    : {start_date: today, is_active: true};
-  openDialog(entity, defaults);
+  openCreateDialog(entity);
 });
 
 dialog.addEventListener("cancel", (event) => {
@@ -3312,14 +3643,32 @@ recordForm.addEventListener("click", (event) => {
 });
 
 async function removeRecord(entity, id) {
+  if (state.mutationBusy || !capabilities().admin || isBasicProfile()) return;
+  if (showDeletionBlockers(entity, [id])) return;
   if (!window.confirm(t("confirm.delete"))) return;
-  try {
-    await api(`/${entity}/${id}`, {method: "DELETE"});
-    await loadData();
-    showMessage(t("messages.deleted", {entity: singular(entity)}));
-  } catch (error) {
-    await handleMutationError(error);
-  }
+  await runDeletion(() => api(`/${entity}/${id}`, {method: "DELETE"}), records => !(records[entity] || []).some(item => item.id === id));
+}
+
+function showDeletionBlockers(entity, ids) {
+  if (!["members", "instruments"].includes(entity)) return false;
+  const key = entity === "members" ? "member_id" : "instrument_id";
+  const rentals = state.records.rentals.filter(item => ids.includes(item[key]));
+  if (!rentals.length) return false;
+  showMessage(t("delete.blocked"), true, {label: t("delete.view_rentals"), onClick: () => {
+    switchView("rentals");
+    state.relatedRentalIds = new Set(rentals.map(item => item.id));
+    render();
+  }});
+  return true;
+}
+
+async function removeSelectedRecords() {
+  if (state.mutationBusy || !state.bulkMode || !capabilities().admin || isBasicProfile()) return;
+  const entity = state.view;
+  const ids = [...state.selectedIds];
+  if (!ids.length || showDeletionBlockers(entity, ids)) return;
+  if (!window.confirm(t("delete.confirm_selected", {count: ids.length}))) return;
+  await runDeletion(() => api(`/${entity}/bulk-delete`, {method: "POST", body: JSON.stringify({ids})}), records => !(records[entity] || []).some(item => ids.includes(item.id)));
 }
 
 async function removeUser(id) {
@@ -3409,6 +3758,42 @@ hitobitoFile.addEventListener("change", async () => {
   }
 });
 
+function openSpreadsheetFlow(entity, mode = "import") {
+  if (!["members", "instruments"].includes(entity) || state.mutationBusy || !capabilities().admin || isBasicProfile() || !state.operationalLoaded) return;
+  const tenant = state.tenant;
+  const generation = authGeneration;
+  const isCurrent = () => tenant === state.tenant && generation === authGeneration && state.authStatus === "signed_in" && capabilities().admin && !isBasicProfile();
+  openRecordTransfer({
+    entity, tenant, mode, lang: state.lang, records: state.records[entity],
+    label: field => field === "groups" ? (state.lang === "de" ? "Gruppen" : "Groups") : ["members", "instruments"].includes(field) ? t(`views.${field}`) : t(`fields.${field}`),
+    isCurrent,
+    submit: async (rows, saved) => {
+      if (!isCurrent() || state.mutationBusy || state.pendingCommit) throw new Error(t("messages.revision_conflict"));
+      state.mutationBusy = true;
+      render();
+      try {
+        if (entity === "instruments") {
+          const result = await api("/instruments/import", {method: "PUT", body: JSON.stringify({instruments: rows.map(row => row.record)})});
+          if (isCurrent()) applyMeta(result.meta);
+          rows.forEach(saved);
+        } else {
+          for (const row of rows) {
+            if (!isCurrent()) throw new Error(t("messages.revision_conflict"));
+            const result = await api(row.targetId ? `/members/${encodeURIComponent(row.targetId)}` : "/members", {
+              method: row.targetId ? "PUT" : "POST", body: JSON.stringify(row.record)
+            });
+            if (isCurrent()) applyMeta(result.meta);
+            saved(row);
+          }
+        }
+      } finally {
+        if (isCurrent()) { state.mutationBusy = false; render(); }
+      }
+    },
+    refresh: () => loadData({includeAdmin: false})
+  });
+}
+
 async function exportInstruments() {
   try {
     const data = await api("/instruments/export");
@@ -3495,6 +3880,11 @@ function openAssociation(tenant) {
     showMessage(t("tenant.invalid"), true);
     return;
   }
+  state.pendingCommit = null;
+  state.mutationBusy = false;
+  state.operationStatus = "";
+  state.operationalLoaded = false;
+  state.meta = {revision: 0, updated_at: null};
   state.tenant = tenant;
   switchView("dashboard");
   tenantInput.value = tenant;
@@ -3503,6 +3893,12 @@ function openAssociation(tenant) {
 }
 
 async function init() {
+  state.pendingCommit = null;
+  state.mutationBusy = false;
+  state.operationStatus = "";
+  state.bulkMode = false;
+  state.selectedIds.clear();
+  state.operationalLoaded = false;
   const generation = authGeneration;
   state.authStatus = "checking";
   state.authError = "";

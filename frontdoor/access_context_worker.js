@@ -277,11 +277,30 @@ async function matchingMemberAssociations(email, associations, kv) {
   const matches = [];
   for (const association of associations) {
     if (!validAssociationTenantId(association.tenant_id) || (association.status && association.status !== "active")) continue;
-    const ids = await readStoredJson(kv, `tenant:${association.tenant_id}:index:members`, []);
-    validateStoredIds(ids);
-    for (const id of ids) {
-      const member = await readStoredJson(kv, `tenant:${association.tenant_id}:members:${id}`);
-      if (!member || typeof member !== "object" || Array.isArray(member) || member.id !== id) throw dataIntegrityError();
+    // Only the member identity match is operationally relevant to self-service.
+    // Staff roles never depend on rentals, instruments, history or their revision.
+    let members;
+    try {
+      const snapshot = await readStoredJson(kv, `tenant:${association.tenant_id}:snapshot`);
+      if (snapshot !== null) {
+        if (snapshot?.schema !== "rental-tenant-snapshot-v1" || !Array.isArray(snapshot?.records?.members)) continue;
+        members = snapshot.records.members;
+      } else {
+        const ids = await readStoredJson(kv, `tenant:${association.tenant_id}:index:members`, []);
+        if (!Array.isArray(ids)) continue;
+        members = [];
+        for (const id of ids) {
+          if (typeof id !== "string") continue;
+          const member = await readStoredJson(kv, `tenant:${association.tenant_id}:members:${id}`);
+          // An old index can briefly reference a deleted member. Never grant access
+          // from a missing record, and do not fail sign-in for every other tenant.
+          if (member && member.id === id) members.push(member);
+        }
+      }
+    } catch {
+      continue; // No membership match is inferred from unavailable data.
+    }
+    for (const member of members) {
       if (member?.is_active !== false && member?.access_email_hash === hash) {
         matches.push({tenant_id: association.tenant_id, display_name: association.display_name || association.tenant_id});
         break;

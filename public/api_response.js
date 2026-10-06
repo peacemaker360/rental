@@ -35,3 +35,25 @@ export async function requestJson(fetcher, url, options = {}, {recover = false, 
     }
   }
 }
+
+export function commitVisible(snapshot, expected, verify = () => true) {
+  const observed = snapshot?.meta || {};
+  const revision = Number(observed.revision || 0);
+  const target = Number(expected.revision || 0);
+  const matching = expected.commit_id ? observed.commit_id === expected.commit_id || revision > target : revision >= target;
+  return matching && verify(snapshot.records || {});
+}
+
+export async function observeCommit(read, expected, verify, stillCurrent = () => true, {attempts = 24, wait = ms => new Promise(resolve => setTimeout(resolve, ms))} = {}) {
+  for (let attempt = 0; attempt < attempts && stillCurrent(); attempt += 1) {
+    if (attempt) await wait(Math.min(attempt * 500, 3000));
+    if (!stillCurrent()) return null;
+    try {
+      const snapshot = await read();
+      if (stillCurrent() && commitVisible(snapshot, expected, verify)) return snapshot;
+    } catch (error) {
+      if (!error.retryable) throw error;
+    }
+  }
+  return null;
+}

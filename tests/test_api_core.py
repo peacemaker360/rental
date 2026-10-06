@@ -75,6 +75,108 @@ class FailingRepository(MemoryRepository):
 
 
 class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
+    async def deletion_fixture(self):
+        repo = MemoryRepository()
+        admin = RequestContext(tenant_id="tenant-a", role="admin", mode="signed")
+        for entity, payload in [("instruments", {"name": "Horn", "serial": "H-1"}), ("members", {"display_name": "Player"})]:
+            status, body = await handle_api_request("POST", f"/api/tid-tenant-a/{entity}", "", payload, repo, admin)
+            self.assertEqual(status, 201)
+            if entity == "instruments": instrument = body["data"]
+            else: member = body["data"]
+        _, rental = await handle_api_request("POST", "/api/tid-tenant-a/rentals", "", {
+            "instrument_id": instrument["id"], "member_id": member["id"], "start_date": "2026-01-01",
+        }, repo, admin)
+        _, service = await handle_api_request("POST", "/api/tid-tenant-a/service_records", "", {
+            "instrument_id": instrument["id"], "service_date": "2026-01-01", "condition": "good",
+        }, repo, admin)
+        return repo, admin, instrument, member, rental["data"], service["data"]
+
+    async def test_bulk_preflight_is_all_or_nothing_and_reports_related_rentals(self):
+        from copy import deepcopy
+        repo, admin, instrument, member, rental, _ = await self.deletion_fixture()
+        _, extra = await handle_api_request("POST", "/api/tid-tenant-a/members", "", {"display_name": "Other"}, repo, admin)
+        before = deepcopy(repo.tenants)
+        before_meta = deepcopy(repo.meta)
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/members/bulk-delete", "", {"ids": [extra["data"]["id"], member["id"]]}, repo, admin)
+        self.assertEqual(status, 409)
+        self.assertEqual(body["errorCode"], "DELETE_BLOCKED")
+        self.assertEqual(body["blockers"][0]["rental_ids"], [rental["id"]])
+        self.assertEqual(repo.tenants, before)
+        self.assertEqual(repo.meta, before_meta)
+        # Even a returned row retains its references until explicitly removed.
+        await handle_api_request("POST", f"/api/tid-tenant-a/rentals/{rental['id']}/return", "", {}, repo, admin)
+        status, body = await handle_api_request("DELETE", f"/api/tid-tenant-a/members/{member['id']}", "", {}, repo, admin)
+        self.assertEqual(status, 409)
+        self.assertEqual(body["errorCode"], "DELETE_BLOCKED")
+
+    async def test_bulk_rental_delete_preserves_history_and_does_not_touch_admin_data(self):
+        repo, admin, _, member, rental, _ = await self.deletion_fixture()
+        repo.associations = {"tenant-a": {"tenant_id": "tenant-a", "display_name": "A"}}
+        repo.users = {"user": {"role": "admin"}}
+        status, body = await handle_api_request("POST", "/api/tid-tenant-a/rentals/bulk-delete", "", {"ids": [rental["id"]]}, repo, admin)
+        self.assertEqual(status, 200)
+        self.assertEqual(repo.tenants["tenant-a"]["rentals"], [])
+        entry = repo.tenants["tenant-a"]["history"][-1]
+        self.assertEqual(entry["action"], "deleted")
+        self.assertEqual(entry["instrument_name"], "Horn")
+        self.assertEqual(entry["member_name"], "Player")
+        self.assertEqual(repo.users, {"user": {"role": "admin"}})
+        self.assertEqual(repo.associations["tenant-a"]["display_name"], "A")
+        status, _ = await handle_api_request("DELETE", f"/api/tid-tenant-a/members/{member['id']}", "", {}, repo, admin)
+        self.assertEqual(status, 200)
+
+    async def test_reset_scopes_cascade_live_dependencies_preserve_history_and_other_tenants(self):
+        from copy import deepcopy
+        for scope in ("instruments", "members", "rentals", "all"):
+            repo, admin, _, _, _, _ = await self.deletion_fixture()
+            history = deepcopy(repo.tenants["tenant-a"]["history"])
+            repo.tenants["other"] = {"private": "untouched"}
+            repo.associations = {"tenant-a": {"tenant_id": "tenant-a", "clerk_organization_id": "org_a"}}
+            repo.users = {"user": {"role": "admin"}}
+            before_admin = deepcopy((repo.associations, repo.users))
+            status, body = await handle_api_request("POST", "/api/tid-tenant-a/reset-data", "", {"scope": scope, "confirm_tenant": "tenant-a"}, repo, admin)
+            self.assertEqual(status, 200)
+            current = repo.tenants["tenant-a"]
+            self.assertEqual(current["rentals"], [])
+            self.assertEqual(bool(current["instruments"]), scope not in ("instruments", "all"))
+            self.assertEqual(bool(current["members"]), scope not in ("members", "all"))
+            self.assertEqual(bool(current["service_records"]), scope not in ("instruments", "all"))
+            self.assertEqual(current["history"][:len(history)], history)
+            self.assertTrue(any(item["action"] == "deleted" and item.get("member_name") == "Player" for item in current["history"]))
+            self.assertEqual(repo.tenants["other"], {"private": "untouched"})
+            self.assertEqual((repo.associations, repo.users), before_admin)
+
+    async def test_reset_and_bulk_require_full_tenant_admin_confirmation_and_revision(self):
+        from copy import deepcopy
+        repo, admin, _, _, rental, _ = await self.deletion_fixture()
+        before = deepcopy(repo.tenants)
+        routes = [("reset-data", {"scope": "all", "confirm_tenant": "tenant-a"}), ("rentals/bulk-delete", {"ids": [rental["id"]]})]
+        for route, payload in routes:
+            for role, profile in [("viewer", "full"), ("operator", "full"), ("admin", "basic")]:
+                context = RequestContext(tenant_id="tenant-a", role=role, mode="signed", access_profile=profile)
+                status, _ = await handle_api_request("POST", f"/api/tid-tenant-a/{route}", "", payload, repo, context)
+                self.assertEqual(status, 403)
+            status, _ = await handle_api_request("POST", f"/api/tid-other/{route}", "", payload, repo, admin)
+            self.assertEqual(status, 403)
+            status, _ = await handle_api_request("POST", f"/api/tid-tenant-a/{route}", "", payload, repo, admin, {"x-rental-expected-revision": "0"})
+            self.assertEqual(status, 409)
+        for scope in ("history", "users", "associations"):
+            status, _ = await handle_api_request("POST", "/api/tid-tenant-a/reset-data", "", {"scope": scope, "confirm_tenant": "tenant-a"}, repo, admin)
+            self.assertEqual(status, 400)
+        status, _ = await handle_api_request("POST", "/api/tid-tenant-a/reset-data", "", {"scope": "all", "confirm_tenant": "other"}, repo, admin)
+        self.assertEqual(status, 400)
+        self.assertEqual(repo.tenants, before)
+
+    async def test_snapshot_respects_member_privacy(self):
+        repo, admin, _, member, rental, _ = await self.deletion_fixture()
+        await handle_api_request("POST", "/api/tid-tenant-a/members", "", {"display_name": "Private Other"}, repo, admin)
+        member_context = RequestContext(tenant_id="tenant-a", role="viewer", access_profile="basic", member_id=member["id"], mode="signed")
+        status, body = await handle_api_request("GET", "/api/tid-tenant-a/snapshot", "", {}, repo, member_context)
+        self.assertEqual(status, 200)
+        self.assertEqual([item["id"] for item in body["records"]["members"]], [member["id"]])
+        self.assertEqual([item["id"] for item in body["records"]["rentals"]], [rental["id"]])
+        self.assertNotIn("Private Other", str(body))
+
     async def test_tenant_routes_require_explicit_namespace(self):
         repo = FailingRepository()
 
@@ -233,7 +335,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 403)
         self.assertEqual(body["error"], "operator role required")
 
-    async def test_crud_write_registers_tenant_association(self):
+    async def test_crud_write_does_not_register_tenant_association(self):
         repo = MemoryRepository()
         operator = RequestContext(tenant_id="new-band", actor_id="operator-user", role="operator")
         platform_admin = RequestContext(tenant_id="platform-admin", actor_id="admin-user", role="admin")
@@ -244,9 +346,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         status, body = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, platform_admin)
 
         self.assertEqual(status, 200)
-        self.assertEqual(body["data"][0]["tenant_id"], "new-band")
-        self.assertEqual(body["data"][0]["display_name"], "New Band")
-        self.assertEqual(body["data"][0]["meta"]["revision"], 1)
+        self.assertEqual(body["data"], [])
 
     async def test_crud_write_preserves_existing_association_details(self):
         repo = MemoryRepository()
@@ -304,14 +404,14 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertRegex(body["requestId"], r"^[a-f0-9]{32}$")
         self.assertTrue(body["retryable"])
 
-    async def test_context_metadata_failure_is_safe_and_not_an_auth_error(self):
+    async def test_context_ignores_operational_metadata_failure(self):
         repo = MemoryRepository()
         async def unavailable(_tenant):
             raise RuntimeError("secret credentials and private member")
         repo.load_metadata = unavailable
         status, body = await handle_api_request("GET", "/api/context", "", {}, repo)
-        self.assertEqual(status, 500)
-        self.assertEqual(body["errorCode"], "BACKEND_UNAVAILABLE")
+        self.assertEqual(status, 200)
+        self.assertNotIn("meta", body)
         self.assertNotIn("secret", str(body))
 
     async def test_bad_metadata_blocks_mutation_without_overwriting_data(self):
@@ -322,7 +422,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         snapshot = dict(kv.values)
         repo = KVRepository(kv)
         context = RequestContext(tenant_id="tenant-a", role="admin")
-        for method, path, payload in [("GET", "/api/context", {}), ("POST", "/api/tid-tenant-a/bootstrap", {})]:
+        for method, path, payload in [("GET", "/api/tid-tenant-a/meta", {}), ("POST", "/api/tid-tenant-a/bootstrap", {})]:
             status, body = await handle_api_request(method, path, "", payload, repo, context)
             self.assertEqual(status, 503)
             self.assertEqual(body["errorCode"], "DATA_INTEGRITY_ERROR")
@@ -457,7 +557,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(repo.associations["tenant-b"]["status"], "paused")
         self.assertEqual(repo.associations["tenant-b"]["updated_at"], "curated-time")
 
-    async def test_tenant_import_with_metadata_updates_association_display_name(self):
+    async def test_tenant_import_metadata_cannot_update_association_display_name(self):
         repo = MemoryRepository()
         repo.associations["tenant-b"] = {
             "tenant_id": "tenant-b",
@@ -480,7 +580,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         }, repo, admin)
 
         self.assertEqual(status, 200)
-        self.assertEqual(repo.associations["tenant-b"]["display_name"], "Imported Association Name")
+        self.assertEqual(repo.associations["tenant-b"]["display_name"], "Old Association Name")
         self.assertEqual(repo.associations["tenant-b"]["clerk_organization_id"], "org_original")
         self.assertEqual(repo.associations["tenant-b"]["status"], "active")
 
@@ -781,7 +881,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(body["capabilities"]["write"])
         self.assertFalse(body["capabilities"]["admin"])
         self.assertFalse(body["capabilities"]["platform_admin"])
-        self.assertEqual(body["meta"]["revision"], 0)
+        self.assertNotIn("meta", body)
 
     async def test_context_endpoint_defaults_to_local_admin(self):
         repo = MemoryRepository()
@@ -802,7 +902,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 404)
         self.assertEqual(body["error"], "route not found")
 
-    async def test_bootstrap_registers_association_for_admin_center(self):
+    async def test_bootstrap_does_not_register_association_in_admin_center(self):
         repo = MemoryRepository()
         admin = RequestContext(tenant_id="band-one", actor_id="admin-user", role="admin")
 
@@ -810,9 +910,7 @@ class ApiCoreTests(unittest.IsolatedAsyncioTestCase):
         status, body = await handle_api_request("GET", "/api/admin/associations", "", {}, repo, admin)
 
         self.assertEqual(status, 200)
-        self.assertEqual(body["data"][0]["tenant_id"], "band-one")
-        self.assertEqual(body["data"][0]["status"], "active")
-        self.assertEqual(body["data"][0]["meta"]["revision"], 1)
+        self.assertEqual(body["data"], [])
 
     async def test_admin_can_create_and_update_association_details(self):
         repo = MemoryRepository()

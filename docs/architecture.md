@@ -10,7 +10,7 @@
 - `worker/worker.py`: Python Worker entry point and static assets.
 - `worker/api_core.py`: authorization, routing, CRUD, and administration.
 - `worker/domain.py`: rental/service rules and validation.
-- `worker/storage.py`: KV records and indexes.
+- `worker/storage.py`: committed tenant snapshots, legacy KV reads, and administrative indexes.
 - `worker/clerk_directory.py`: Clerk-backed access and invitation management.
 - `scripts/local_dev_server.py`: local JSON-backed debug/mock server.
 
@@ -46,17 +46,32 @@ manage the cross-association registry; operators provision mappings.
 tenant:{tenant_id}:index:{entity}
 tenant:{tenant_id}:{entity}:{record_id}
 tenant:{tenant_id}:meta
+tenant:{tenant_id}:snapshot
 associations:index
 associations:{tenant_id}
 ```
 
 Entities include instruments, members, rentals, service_records, and history.
-Records also contain `tenant_id`; saves delete keys no longer indexed.
+Records also contain `tenant_id`; new operational saves do not rewrite legacy
+record/index keys or administrative keys.
 `TENANT_ACCESS_KV` stores join requests and notification delivery state. Legacy
 `user:{email}` keys may remain but are ignored and no longer written. Both Workers must share
 the namespace IDs for each binding.
 
-Writes increment `revision` and set `updated_at`. The frontend sends
+Operational writes publish records, history, `revision`, `commit_id`, and
+`updated_at` together under `tenant:{tenant_id}:snapshot`. This avoids reading
+a deleted record through an older entity index. Existing entity/index/meta keys
+are read only until the first successful snapshot write, then remain untouched
+for rollback/backup; they are no longer authoritative for that tenant. Back up
+before deployment. Manual operational KV edits must target the snapshot once it
+exists; association mappings and tool users keep their separate keys.
+
+KV propagation can still return an older complete snapshot. It does not provide
+distributed write transactions: simultaneous writers can still conflict or
+overwrite, so revision checks are advisory, not a global lock. Strong write
+serialization would require a Durable Object or transactional database.
+
+The frontend sends
 `x-rental-expected-revision`; stale writes receive `409` plus current metadata.
 This is an optimistic guard, not atomic compare-and-swap: KV is eventually
 consistent and simultaneous read/modify/write operations can still race.
@@ -119,8 +134,10 @@ migration uses [the separate Clerk tool](clerk-migration.md#migrating-existing-a
 
 ## Domain And Privacy
 
-Active rentals make instruments unavailable and block deleting the instrument
-or member. Returns release the instrument. Instrument deletion cascades service
+Active rentals make instruments unavailable. Any existing rental row blocks
+ordinary deletion of its instrument or member, including returned rows. The UI
+links to the assigned rentals for cleanup; deleting a rental retains its history.
+Returns release the instrument. Instrument deletion cascades service
 records but preserves deletion events. Maintenance tracks condition, job/date,
 next service, provider, cost, and notes. Conditions are `good`, `watch`,
 `needs_service`, `in_service`, and `retired`; due dates also flag attention.
